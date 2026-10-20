@@ -1,0 +1,16 @@
+{
+  "name": "ainos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ainos: a Spotify-style music streaming app (catalog, chunked streaming, loudness normalization, recommendations, Connect-style multi-device control). Zero dependencies.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "setup": "node --disable-warning=ExperimentalWarning scripts/generate.js",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"test/*.test.js\""
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Ainos",
+  "short_name": "Ainos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d12",
+  "theme_color": "#0d0d12",
+  "icons": [{ "src": "/img/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
