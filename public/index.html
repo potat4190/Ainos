@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Ainos</title>
-  <meta name="description" content="Ainos — stream, discover and share music.">
+  <title>Ainos — Christian Worship &amp; Praise</title>
+  <meta name="description" content="Ainos — Christian faith-based worship, praise and devotional music streaming.">
   <meta name="theme-color" content="#0d0d12">
   <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -14,11 +14,11 @@
 <body>
   <div id="login" class="login" hidden>
     <form class="login-card" id="login-form" autocomplete="on">
-      <div class="brand brand-lg"><img src="/img/icon.svg" alt="" width="40" height="40"><span>Ainos</span></div>
+      <div class="brand brand-lg"><img src="/img/icon.svg" alt="" width="40" height="40"><div><span>Ainos</span><small class="brand-sub" id="login-brand-sub">Christian Worship &amp; Praise</small></div></div>
       <h1 id="login-title">Log in to Ainos</h1>
-      <label>Username<input name="username" autocomplete="username" required minlength="3" maxlength="32"></label>
-      <label class="signup-only" hidden>Display name<input name="display_name" maxlength="40" autocomplete="nickname"></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      <label><span id="lbl-username">Username</span><input name="username" autocomplete="username" required minlength="3" maxlength="32"></label>
+      <label class="signup-only" hidden><span id="lbl-displayname">Display name</span><input name="display_name" maxlength="40" autocomplete="nickname"></label>
+      <label><span id="lbl-password">Password</span><input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="form-error" id="login-error" role="alert"></p>
       <button class="btn btn-primary btn-block" type="submit" id="login-submit">Log in</button>
       <button class="btn btn-ghost btn-block" type="button" id="demo-login">Use the demo account</button>
@@ -29,14 +29,14 @@
   <div id="app" class="app" hidden>
     <nav class="sidebar" aria-label="Main">
       <div class="panel nav-panel">
-        <a class="brand" href="#/"><img src="/img/icon.svg" alt="" width="28" height="28"><span>Ainos</span></a>
-        <a class="nav-link" href="#/" data-nav="home"><svg class="icon"><use href="#i-home"/></svg>Home</a>
-        <a class="nav-link" href="#/search" data-nav="search"><svg class="icon"><use href="#i-search"/></svg>Search</a>
-        <a class="nav-link" href="#/internals" data-nav="internals"><svg class="icon"><use href="#i-cpu"/></svg>Under the hood</a>
+        <a class="brand" href="#/"><img src="/img/icon.svg" alt="" width="28" height="28"><div><span>Ainos</span><small class="brand-sub" id="sidebar-brand-sub">Christian Worship &amp; Praise</small></div></a>
+        <a class="nav-link" href="#/" data-nav="home"><svg class="icon"><use href="#i-home"/></svg><span id="nav-home-text">Home</span></a>
+        <a class="nav-link" href="#/search" data-nav="search"><svg class="icon"><use href="#i-search"/></svg><span id="nav-search-text">Search</span></a>
+        <a class="nav-link" href="#/internals" data-nav="internals"><svg class="icon"><use href="#i-cpu"/></svg><span id="nav-internals-text">Under the hood</span></a>
       </div>
       <div class="panel library-panel">
         <div class="library-head">
-          <a class="nav-link" href="#/library" data-nav="library"><svg class="icon"><use href="#i-library"/></svg>Your Library</a>
+          <a class="nav-link" href="#/library" data-nav="library"><svg class="icon"><use href="#i-library"/></svg><span id="nav-library-text">Your Library</span></a>
           <button class="icon-btn" id="new-playlist" title="Create playlist" aria-label="Create playlist"><svg class="icon"><use href="#i-plus"/></svg></button>
         </div>
         <div class="library-list" id="library-list"></div>
@@ -51,10 +51,20 @@
         </div>
         <div class="topbar-search" id="topbar-search" hidden>
           <svg class="icon"><use href="#i-search"/></svg>
-          <input id="search-input" type="search" placeholder="What do you want to play?" aria-label="Search" autocomplete="off">
+          <input id="search-input" type="search" placeholder="Search Christian songs, worship artists or albums…" aria-label="Search" autocomplete="off">
         </div>
         <div class="topbar-user">
-          <span class="plan-badge" id="plan-badge"></span>
+          <label class="lang-picker" for="lang-select">
+            <span class="sr-only" id="lang-label">Language</span>
+            <select id="lang-select" class="lang-select" aria-label="Language">
+              <option value="en">English</option>
+              <option value="hi">हिन्दी (Hindi)</option>
+              <option value="ne">नेपाली (Nepali)</option>
+              <option value="zh">中文 (Chinese)</option>
+              <option value="ja">日本語 (Japanese)</option>
+              <option value="es">Español (Spanish)</option>
+            </select>
+          </label>
           <button class="avatar" id="user-menu-btn" aria-haspopup="menu" aria-label="Account"></button>
         </div>
       </header>
@@ -94,10 +104,10 @@
     </footer>
 
     <nav class="mobile-nav" aria-label="Main">
-      <a href="#/" data-nav="home"><svg class="icon"><use href="#i-home"/></svg>Home</a>
-      <a href="#/search" data-nav="search"><svg class="icon"><use href="#i-search"/></svg>Search</a>
-      <a href="#/library" data-nav="library"><svg class="icon"><use href="#i-library"/></svg>Library</a>
-      <a href="#/internals" data-nav="internals"><svg class="icon"><use href="#i-cpu"/></svg>Internals</a>
+      <a href="#/" data-nav="home"><svg class="icon"><use href="#i-home"/></svg><span id="mnav-home-text">Home</span></a>
+      <a href="#/search" data-nav="search"><svg class="icon"><use href="#i-search"/></svg><span id="mnav-search-text">Search</span></a>
+      <a href="#/library" data-nav="library"><svg class="icon"><use href="#i-library"/></svg><span id="mnav-library-text">Library</span></a>
+      <a href="#/internals" data-nav="internals"><svg class="icon"><use href="#i-cpu"/></svg><span id="mnav-internals-text">Internals</span></a>
     </nav>
   </div>
 

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { HttpError, parseCookies } from './http.js';
+import { stmt } from './db.js';
 
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 export const SESSION_COOKIE = 'ainos_session';
@@ -53,8 +54,8 @@ export const clearCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite
 export function userFromRequest(db, req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
-  const row = db
-    .prepare(`SELECT u.id, u.username, u.display_name, u.plan, s.expires_at
+  // Runs on every authenticated request, so the statement is compiled once.
+  const row = stmt(db, `SELECT u.id, u.username, u.display_name, u.language, s.expires_at
               FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`)
     .get(sha256(token));
   if (!row) return null;
@@ -62,7 +63,7 @@ export function userFromRequest(db, req) {
     destroySession(db, token);
     return null;
   }
-  return { id: row.id, username: row.username, display_name: row.display_name, plan: row.plan, token };
+  return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token };
 }
 
 /** Tiny fixed-window rate limiter (per key), e.g. login attempts per IP. */

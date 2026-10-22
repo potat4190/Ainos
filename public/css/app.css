@@ -60,9 +60,10 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .panel { background: var(--panel); border-radius: var(--radius); }
 .sidebar { grid-area: side; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .nav-panel { padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; padding: 2px 10px 12px; letter-spacing: -.02em; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; padding: 2px 10px 12px; letter-spacing: -.02em; line-height: 1.15; }
 .brand:hover { text-decoration: none; }
 .brand-lg { font-size: 30px; justify-content: center; padding-bottom: 8px; }
+.brand-sub { display: block; font-size: 11px; font-weight: 600; color: var(--text-2); letter-spacing: .01em; margin-top: 2px; }
 .nav-link { display: flex; align-items: center; gap: 14px; padding: 9px 10px; border-radius: 6px; color: var(--text-2); font-weight: 650; }
 .nav-link:hover { color: var(--text); text-decoration: none; }
 .nav-link.active { color: var(--text); background: var(--panel-2); }
@@ -90,8 +91,10 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .topbar-search input { flex: 1; background: none; border: 0; outline: none; height: 42px; font-size: 15px; }
 .topbar-user { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #f472b6); color: var(--accent-ink); font-weight: 800; display: grid; place-items: center; }
-.plan-badge { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; background: var(--panel-3); color: var(--text-2); }
-.plan-badge.premium { background: linear-gradient(135deg, #f5d0fe, var(--accent)); color: var(--accent-ink); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+.lang-select { height: 34px; padding: 0 12px; border-radius: 999px; background: var(--panel-3); color: var(--text); border: 1px solid var(--line); font-size: 13px; font-weight: 600; cursor: pointer; }
+.lang-select:hover, .lang-select:focus { border-color: var(--accent); outline: none; }
+.faith-banner { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); color: var(--text); font-size: 12.5px; font-weight: 600; margin-top: 6px; }
 .view { padding: 0 20px 40px; min-height: calc(100% - 66px); }
 
 .rightpanel { grid-area: right; overflow-y: auto; padding: 16px; min-width: 0; }
@@ -353,6 +356,7 @@ dialog h2 { margin-bottom: 16px; }
   .brand span, .nav-link { font-size: 0; gap: 0; justify-content: center; }
   .nav-link .icon { width: 24px; height: 24px; }
   .brand { justify-content: center; padding: 2px 0 12px; }
+  .sidebar .brand-sub { display: none; }
   .library-head { flex-direction: column; gap: 4px; padding: 0; }
   .lib-item { justify-content: center; padding: 6px 0; }
   .lib-item .meta { display: none; }

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name  TEXT NOT NULL,
   password_hash TEXT,
-  plan          TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free','premium')),
+  language      TEXT NOT NULL DEFAULT 'en',  -- UI language + which songs get recommended
   is_simulated  INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL
 );
@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS artists (
   id     TEXT PRIMARY KEY,
   name   TEXT NOT NULL,
   genre  TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT 'en',
   bio    TEXT NOT NULL DEFAULT '',
   image  TEXT NOT NULL,
   color  TEXT NOT NULL
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS tracks (
   track_no      INTEGER NOT NULL,
   duration_ms   INTEGER NOT NULL,
   genre         TEXT NOT NULL,
+  language      TEXT NOT NULL DEFAULT 'en',  -- language the song is sung in (ISO 639-1)
   -- one row per encoded file lives in track_files; these are analysis results
   loudness_lufs REAL NOT NULL,
   peak_db       REAL NOT NULL,
@@ -156,11 +158,51 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
 );
 `;
 
+// Language tags for the artists of the original (pre-language) seed catalog,
+// used once to upgrade databases created before songs had a language.
+const LEGACY_ARTIST_LANGUAGES = {
+  'Lumen Drift': 'en', 'Juniper Lane': 'en', 'Neon Harbor': 'en',
+  'Copper Fox': 'hi', 'Ossa': 'ne', 'Velvet Static': 'zh', 'Kite Theory': 'ja', 'Polar Bloom': 'es',
+};
+
+const columns = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+
+/** Bring databases created by older versions up to the current schema. */
+function migrate(db) {
+  const users = columns(db, 'users');
+  if (!users.includes('language')) db.exec("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
+  // There is a single plan now; the old free/premium column is gone.
+  if (users.includes('plan')) db.exec('ALTER TABLE users DROP COLUMN plan');
+
+  if (!columns(db, 'artists').includes('language')) {
+    db.exec("ALTER TABLE artists ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
+    const set = db.prepare('UPDATE artists SET language = ? WHERE name = ?');
+    for (const [name, lang] of Object.entries(LEGACY_ARTIST_LANGUAGES)) set.run(lang, name);
+  }
+  if (!columns(db, 'tracks').includes('language')) {
+    db.exec("ALTER TABLE tracks ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
+    db.exec('UPDATE tracks SET language = (SELECT a.language FROM artists a WHERE a.id = tracks.artist_id)');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS tracks_language ON tracks(language)');
+}
+
 export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Prepared-statement cache, so hot paths don't re-compile the same SQL per request.
+const stmtCache = new WeakMap();
+/** db.prepare(sql), compiled once per database connection. */
+export function stmt(db, sql) {
+  let m = stmtCache.get(db);
+  if (!m) stmtCache.set(db, (m = new Map()));
+  let s = m.get(sql);
+  if (!s) m.set(sql, (s = db.prepare(sql)));
+  return s;
 }
 
 /** Run fn inside a transaction; rolls back on throw. */

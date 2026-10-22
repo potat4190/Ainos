@@ -1,9 +1,10 @@
 // Read models for the catalog. Shapes are loosely modelled on the Spotify Web
 // API (id + uri + nested simplified artist/album objects).
 import { toUri } from './util.js';
+import { stmt } from './db.js';
 
 const TRACK_SELECT = `
-  SELECT t.id, t.title, t.track_no, t.duration_ms, t.genre, t.tempo, t.key, t.mode,
+  SELECT t.id, t.title, t.track_no, t.duration_ms, t.genre, t.language, t.tempo, t.key, t.mode,
          t.energy, t.valence, t.danceability, t.acousticness, t.loudness_lufs,
          a.id AS artist_id, a.name AS artist_name,
          al.id AS album_id, al.title AS album_title, al.cover AS album_cover, al.color AS album_color
@@ -19,6 +20,7 @@ export function trackDto(r) {
     track_no: r.track_no,
     duration_ms: r.duration_ms,
     genre: r.genre,
+    language: r.language,
     artist: { id: r.artist_id, name: r.artist_name },
     album: { id: r.album_id, title: r.album_title, cover: '/' + r.album_cover, color: r.album_color },
     features: {
@@ -52,29 +54,30 @@ export class Catalog {
   }
 
   albumSummary(r) {
-    return { id: r.id, uri: toUri('album', r.id), title: r.title, year: r.year, type: r.type, cover: '/' + r.cover, color: r.color, released_at: r.released_at, artist: { id: r.artist_id, name: r.artist_name } };
+    return { id: r.id, uri: toUri('album', r.id), title: r.title, year: r.year, type: r.type, cover: '/' + r.cover, color: r.color, released_at: r.released_at, language: r.artist_language, artist: { id: r.artist_id, name: r.artist_name } };
   }
 
   album(id) {
-    const r = this.db.prepare('SELECT al.*, a.name AS artist_name FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.id = ?').get(id);
+    const r = this.db.prepare('SELECT al.*, a.name AS artist_name, a.language AS artist_language FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.id = ?').get(id);
     if (!r) return null;
     const tracks = this.db.prepare(`${TRACK_SELECT} WHERE t.album_id = ? ORDER BY t.track_no`).all(id).map(trackDto);
     return { ...this.albumSummary(r), tracks, duration_ms: tracks.reduce((s, t) => s + t.duration_ms, 0) };
   }
 
-  albums({ newest = false, limit = 50 } = {}) {
+  albums({ newest = false, limit = 50, language = null } = {}) {
+    // `a.language = NULL` is NULL for every row, so no language keeps the plain order.
     return this.db
-      .prepare(`SELECT al.*, a.name AS artist_name FROM albums al JOIN artists a ON a.id = al.artist_id ORDER BY ${newest ? 'al.released_at DESC' : 'a.name, al.year'} LIMIT ?`)
-      .all(limit)
+      .prepare(`SELECT al.*, a.name AS artist_name, a.language AS artist_language FROM albums al JOIN artists a ON a.id = al.artist_id ORDER BY a.language = ? DESC, ${newest ? 'al.released_at DESC' : 'a.name, al.year'} LIMIT ?`)
+      .all(language, limit)
       .map((r) => this.albumSummary(r));
   }
 
   artistSummary(r) {
-    return { id: r.id, uri: toUri('artist', r.id), name: r.name, genre: r.genre, image: '/' + r.image, color: r.color };
+    return { id: r.id, uri: toUri('artist', r.id), name: r.name, genre: r.genre, language: r.language, image: '/' + r.image, color: r.color };
   }
 
-  artists() {
-    return this.db.prepare('SELECT * FROM artists ORDER BY name').all().map((r) => this.artistSummary(r));
+  artists({ language = null } = {}) {
+    return this.db.prepare('SELECT * FROM artists ORDER BY language = ? DESC, name').all(language).map((r) => this.artistSummary(r));
   }
 
   artistsByIds(ids) {
@@ -87,16 +90,18 @@ export class Catalog {
   artist(id) {
     const r = this.db.prepare('SELECT * FROM artists WHERE id = ?').get(id);
     if (!r) return null;
-    const top = this.db
-      .prepare(`${TRACK_SELECT} LEFT JOIN (SELECT track_id, COUNT(*) AS n FROM streams GROUP BY track_id) s ON s.track_id = t.id
-                WHERE t.artist_id = ? ORDER BY COALESCE(s.n, 0) DESC LIMIT 5`)
-      .all(id);
+    // Count plays for this artist's tracks only (not an aggregate over the whole streams table).
     const plays = this.db.prepare('SELECT track_id, COUNT(*) AS n FROM streams WHERE track_id IN (SELECT id FROM tracks WHERE artist_id = ?) GROUP BY track_id').all(id);
     const playMap = new Map(plays.map((p) => [p.track_id, p.n]));
+    const top = this.db
+      .prepare(`${TRACK_SELECT} WHERE t.artist_id = ?`)
+      .all(id)
+      .sort((x, y) => (playMap.get(y.id) || 0) - (playMap.get(x.id) || 0))
+      .slice(0, 5);
     const monthly = this.db
       .prepare('SELECT COUNT(DISTINCT s.user_id) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE t.artist_id = ? AND s.ended_at > ?')
       .get(id, Date.now() - 28 * 86400000).n;
-    const albums = this.db.prepare('SELECT al.*, a.name AS artist_name FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.artist_id = ? ORDER BY al.released_at DESC').all(id).map((x) => this.albumSummary(x));
+    const albums = this.db.prepare('SELECT al.*, a.name AS artist_name, a.language AS artist_language FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.artist_id = ? ORDER BY al.released_at DESC').all(id).map((x) => this.albumSummary(x));
     return {
       ...this.artistSummary(r),
       bio: r.bio,
@@ -107,11 +112,11 @@ export class Catalog {
   }
 
   playlistSummary(r) {
-    const covers = this.db
-      .prepare('SELECT DISTINCT al.cover FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id JOIN albums al ON al.id = t.album_id WHERE pt.playlist_id = ? ORDER BY pt.position LIMIT 4')
+    // Called once per playlist in every list (home, library, search): reuse compiled statements.
+    const covers = stmt(this.db, 'SELECT DISTINCT al.cover FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id JOIN albums al ON al.id = t.album_id WHERE pt.playlist_id = ? ORDER BY pt.position LIMIT 4')
       .all(r.id)
       .map((c) => '/' + c.cover);
-    const count = this.db.prepare('SELECT COUNT(*) AS n FROM playlist_tracks WHERE playlist_id = ?').get(r.id).n;
+    const count = stmt(this.db, 'SELECT COUNT(*) AS n FROM playlist_tracks WHERE playlist_id = ?').get(r.id).n;
     return {
       id: r.id, uri: toUri('playlist', r.id), name: r.name, description: r.description, color: r.color,
       owner: r.owner_id ? { id: r.owner_id, name: r.owner_name } : { id: null, name: 'Ainos' },
@@ -154,13 +159,34 @@ export class Catalog {
     return { name, tracks, artists };
   }
 
-  /** Most-streamed tracks in a recent window, across all listeners. */
-  popular(days = 7, limit = 10) {
+  /** Most-streamed tracks in a recent window, prioritizing the requested language. */
+  popular(days = 7, limit = 10, language = null) {
+    if (language) {
+      const langRows = this.db
+        .prepare('SELECT s.track_id, COUNT(*) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE s.ended_at > ? AND t.language = ? GROUP BY s.track_id ORDER BY n DESC LIMIT ?')
+        .all(Date.now() - days * 86400000, language, limit);
+      if (langRows.length < limit) {
+        const have = new Set(langRows.map((r) => r.track_id));
+        const extra = this.db.prepare('SELECT id FROM tracks WHERE language = ? ORDER BY track_no').all(language);
+        for (const e of extra) {
+          if (langRows.length >= limit) break;
+          if (!have.has(e.id)) { langRows.push({ track_id: e.id, n: 0 }); have.add(e.id); }
+        }
+      }
+      if (langRows.length) {
+        const tracks = this.tracksByIds(langRows.map((r) => r.track_id));
+        return tracks.map((t, i) => ({ ...t, plays: langRows[i].n }));
+      }
+    }
     const rows = this.db
       .prepare('SELECT track_id, COUNT(*) AS n FROM streams WHERE ended_at > ? GROUP BY track_id ORDER BY n DESC LIMIT ?')
       .all(Date.now() - days * 86400000, limit);
     const tracks = this.tracksByIds(rows.map((r) => r.track_id));
     return tracks.map((t, i) => ({ ...t, plays: rows[i].n }));
+  }
+
+  tracksByLanguage(language, limit = 20) {
+    return this.db.prepare(`${TRACK_SELECT} WHERE t.language = ? ORDER BY a.name, al.year, t.track_no LIMIT ?`).all(language, limit).map(trackDto);
   }
 
   /** Full-text search via SQLite FTS5 (prefix matching, BM25 ranking). */
@@ -174,7 +200,7 @@ export class Catalog {
     const ids = { track: [], artist: [], album: [], playlist: [] };
     for (const r of rows) if (ids[r.kind].length < limit) ids[r.kind].push(r.ref_id);
     const albums = ids.album.length
-      ? this.db.prepare(`SELECT al.*, a.name AS artist_name FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.id IN (${ids.album.map(() => '?').join(',')})`).all(...ids.album).map((r) => this.albumSummary(r))
+      ? this.db.prepare(`SELECT al.*, a.name AS artist_name, a.language AS artist_language FROM albums al JOIN artists a ON a.id = al.artist_id WHERE al.id IN (${ids.album.map(() => '?').join(',')})`).all(...ids.album).map((r) => this.albumSummary(r))
       : [];
     const playlists = ids.playlist.map((id) => this.playlistRow(id)).filter((r) => r && r.is_public).map((r) => this.playlistSummary(r));
     const result = {

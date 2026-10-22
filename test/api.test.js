@@ -34,8 +34,7 @@ test('signup validates input and refuses duplicates; simulated users cannot log 
   assert.equal((await client(srv.base).post('/api/auth/login', { username: 'listener1', password: 'anything-at-all' })).status, 401);
   const c = await signup(srv.base, 'newbie');
   const me = (await c.get('/api/me')).json;
-  assert.equal(me.plan, 'free');
-  assert.equal(me.limits.skips_remaining, 6);
+  assert.equal(me.language, 'en');
 });
 
 test('logout ends the session', async () => {
@@ -77,15 +76,68 @@ test('media supports byte ranges and rejects bad or missing signatures', async (
   assert.equal((await fetch(srv.base + expired)).status, 403);
 });
 
-test('free plan is capped at low quality; premium can stream high', async () => {
-  const c = await signup(srv.base, 'freebie');
+test('all users can stream high quality and switch languages for recommendations', async () => {
+  const c = await signup(srv.base, 'worshipper');
   const t = await firstTrack(c);
-  const free = (await c.get(`/api/tracks/${t.id}/manifest?quality=high`)).json;
-  assert.equal(free.file.quality, 'low');
-  assert.equal(free.available_qualities.find((q) => q.quality === 'high').allowed, false);
-  await c.post('/api/me/plan', { plan: 'premium' });
-  const prem = (await c.get(`/api/tracks/${t.id}/manifest?quality=high`)).json;
-  assert.equal(prem.file.quality, 'high');
+  const hi = (await c.get(`/api/tracks/${t.id}/manifest?quality=high`)).json;
+  assert.equal(hi.file.quality, 'high');
+  assert.equal(hi.available_qualities.find((q) => q.quality === 'high').allowed, true);
+
+  for (const lang of ['en', 'hi', 'ne', 'zh', 'ja', 'es']) {
+    const res = await c.post('/api/me/language', { language: lang });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.language, lang);
+    const home = (await c.get(`/api/home?lang=${lang}`)).json;
+    assert.equal(home.language, lang);
+    assert.ok(home.recommended.length > 0, `has recommended songs for ${lang}`);
+    assert.ok(home.recommended.every((tr) => tr.language === lang), `all recommended songs match ${lang}`);
+    assert.ok(home.popular.every((tr) => tr.language === lang), `popular songs match ${lang}`);
+  }
+  assert.equal((await c.post('/api/me/language', { language: 'xx' })).status, 400);
+});
+
+test('single plan: no tiers or skip limits, every account gets high quality', async () => {
+  const c = await signup(srv.base, 'skipper');
+  const me = (await c.get('/api/me')).json;
+  assert.equal(me.plan, undefined, 'no plan field any more');
+  assert.equal(me.limits, undefined, 'no skip or quality limits');
+  const t = await firstTrack(c);
+  const skips = Array.from({ length: 12 }, () => ({ type: 'play_end', track_id: t.id, device_id: 'd', ms_played: 2_000, reason: 'fwdbtn' }));
+  assert.equal((await c.post('/api/events', { events: skips })).json.accepted, 12, 'a dozen skips in an hour are all accepted');
+  const m = (await c.get(`/api/tracks/${t.id}/manifest`)).json;
+  assert.equal(m.file.quality, 'high', 'still high quality after many skips');
+  assert.ok(m.available_qualities.length >= 2 && m.available_qualities.every((q) => q.allowed));
+  assert.equal((await c.get(`/api/tracks/${t.id}/manifest?quality=low`)).json.file.quality, 'low', 'low stays available as a data saver');
+  assert.equal((await c.post('/api/me/plan', { plan: 'premium' })).status, 404, 'the old plan endpoint is gone');
+});
+
+test('the saved language drives recommendations without a ?lang override', async () => {
+  const c = client(srv.base);
+  assert.equal((await c.post('/api/auth/signup', { username: 'polyglot', password: 'correct horse battery', language: 'ja' })).status, 201);
+  assert.equal((await c.get('/api/me')).json.language, 'ja', 'signup stores the chosen language');
+  let home = (await c.get('/api/home')).json;
+  assert.equal(home.language, 'ja');
+  const ja = home.recommended.map((t) => t.id);
+  assert.ok(ja.length > 0 && home.recommended.every((t) => t.language === 'ja'));
+
+  await c.post('/api/me/language', { language: 'es' });
+  assert.equal((await c.get('/api/me')).json.language, 'es', 'language change persists across requests');
+  home = (await c.get('/api/home')).json;
+  assert.equal(home.language, 'es');
+  assert.ok(home.recommended.length > 0 && home.recommended.every((t) => t.language === 'es'));
+  assert.ok(!home.recommended.some((t) => ja.includes(t.id)), 'switching language replaces the recommendations');
+  assert.ok(home.popular.length > 0 && home.popular.every((t) => t.language === 'es'));
+});
+
+test('Discover Weekly puts songs in the requested language first', async () => {
+  for (const lang of ['zh', 'ja', 'es']) {
+    const dw = (await demo.get(`/api/made-for-you/discover-weekly?lang=${lang}`)).json;
+    assert.ok(dw.tracks.length >= 2);
+    assert.equal(dw.tracks[0].language, lang, `first Discover Weekly pick is in ${lang}`);
+  }
+  const en = (await demo.get('/api/made-for-you/discover-weekly?lang=en')).json;
+  const zh = (await demo.get('/api/made-for-you/discover-weekly?lang=zh')).json;
+  assert.notDeepEqual(en.tracks.map((t) => t.id), zh.tracks.map((t) => t.id), 'each language has its own weekly snapshot');
 });
 
 // --------------------------------------------------------------- events
@@ -103,8 +155,6 @@ test('a play counts as a stream only at 30 seconds or more', async () => {
   const stats = (await c.get('/api/me/stats')).json;
   assert.equal(stats.streams, 1);
   assert.equal(stats.short_plays, 1);
-  const me = (await c.get('/api/me')).json;
-  assert.equal(me.limits.skips_remaining, 5, 'forward-button skip used one of six');
 });
 
 test('events are also written to hourly NDJSON buckets', async () => {

@@ -20,38 +20,38 @@ import { albumCover, artistImage, hexFromHsl } from './art.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export const CATALOG = [
-  { name: 'Lumen Drift', genre: 'Ambient', style: 'ambient', bpm: [60, 72], modes: ['major', 'minor'], hue: 200,
-    bio: 'Slow-moving soundscapes built from long pads and glassy bells. Made for reading, sleeping and staring out of train windows.',
+  { name: 'Lumen Drift', genre: 'Ambient', style: 'ambient', language: 'en', bpm: [60, 72], modes: ['major', 'minor'], hue: 200,
+    bio: 'Contemplative Christian ambient worship built from long prayer pads and glassy sanctuary bells. Made for Scripture meditation, quiet devotion and rest in God’s presence.',
     albums: [{ title: 'Slow Light', year: 2024, tracks: ['First Glow', 'Glass Horizon', 'Tidal Memory', 'Afterlight'] }] },
-  { name: 'Neon Harbor', genre: 'Synthwave', style: 'synthwave', bpm: [96, 110], modes: ['minor'], hue: 300,
-    bio: 'Retro-futurist synth duo. Sawtooth pads, gated drums and arpeggios that sound like 1986 imagined 2026.',
+  { name: 'Neon Harbor', genre: 'Synthwave', style: 'synthwave', language: 'en', bpm: [96, 110], modes: ['minor'], hue: 300,
+    bio: 'Faith-inspired synth praise duo. Warm analog pads, gated drums and uplifting arpeggios celebrating light overcoming darkness.',
     albums: [
       { title: 'Night Transit', year: 2023, tracks: ['Midnight Arcade', 'Chrome Avenue', 'Lost Signal', 'Sunset Protocol'] },
       { title: 'Overdrive', year: 2026, type: 'single', tracks: ['Overdrive'] },
     ] },
-  { name: 'Copper Fox', genre: 'Lo-fi', style: 'lofi', bpm: [74, 88], modes: ['major', 'minor'], hue: 28,
-    bio: 'Dusty keys, lazy swing and vinyl crackle. Beats to study, cook or do nothing to.',
+  { name: 'Copper Fox', genre: 'Lo-fi', style: 'lofi', language: 'hi', bpm: [74, 88], modes: ['major', 'minor'], hue: 28,
+    bio: 'Hindi Christian devotional lo-fi (मसीही आराधना). Warm keys, gentle rhythms and peaceful melodies for Bible study, prayer and fellowship.',
     albums: [
       { title: 'Rainy Window Tapes', year: 2025, tracks: ['Steam & Paper', 'Corner Café', 'Sunday Static', 'Late Bus Home'] },
       { title: 'Paper Moon', year: 2026, type: 'single', tracks: ['Paper Moon'] },
     ] },
-  { name: 'Velvet Static', genre: 'House', style: 'house', bpm: [120, 124], modes: ['minor', 'major'], hue: 330,
-    bio: 'Four-on-the-floor house with chord stabs and sidechained pads, built for late sets.',
+  { name: 'Velvet Static', genre: 'House', style: 'house', language: 'zh', bpm: [120, 124], modes: ['minor', 'major'], hue: 330,
+    bio: 'Chinese Christian contemporary praise (华语赞美敬拜) with joyful four-on-the-floor rhythms and radiant chord progressions for youth worship.',
     albums: [
       { title: 'Floor Theory', year: 2024, tracks: ['Pulse Garden', 'Mirrorball Heart', 'Deep Current', 'Open Air'] },
       { title: 'Sunrise Set', year: 2026, type: 'single', tracks: ['Sunrise Set'] },
     ] },
-  { name: 'Juniper Lane', genre: 'Acoustic', style: 'acoustic', bpm: [84, 100], modes: ['major'], hue: 95,
-    bio: 'Finger-picked strings and whistled melodies recorded (well, synthesized) in a very small wooden room.',
+  { name: 'Juniper Lane', genre: 'Acoustic', style: 'acoustic', language: 'en', bpm: [84, 100], modes: ['major'], hue: 95,
+    bio: 'Intimate acoustic hymns and finger-picked Christian folk melodies crafted for morning devotionals and small-group worship.',
     albums: [{ title: 'Wooden Rooms', year: 2022, tracks: ['Porch Song', 'Willow & Wire', 'Little Lantern', 'Field Notes'] }] },
-  { name: 'Kite Theory', genre: 'Chiptune', style: 'chiptune', bpm: [132, 150], modes: ['major', 'minor'], hue: 170,
-    bio: 'Square waves, triangle bass and fast arpeggios. Soundtracks for games that do not exist.',
+  { name: 'Kite Theory', genre: 'Chiptune', style: 'chiptune', language: 'ja', bpm: [132, 150], modes: ['major', 'minor'], hue: 170,
+    bio: 'Japanese Christian praise melodies (日本語ゴスペル・賛美) arranged with bright retro synth voices and joyful harmonic progressions.',
     albums: [{ title: 'Pixel Weather', year: 2025, tracks: ['Cloud Runner', 'Save Point', 'Boss Rush', 'Credits Roll'] }] },
-  { name: 'Ossa', genre: 'Dub', style: 'dub', bpm: [70, 80], modes: ['minor'], hue: 150,
-    bio: 'Deep sub bass, offbeat chords and tape-delay echoes that go on forever.',
+  { name: 'Ossa', genre: 'Dub', style: 'dub', language: 'ne', bpm: [70, 80], modes: ['minor'], hue: 150,
+    bio: 'Nepali Christian worship and meditative Psalms (नेपाली ख्रीष्टियन भजन) with deep warm bass and spacious sanctuary echoes.',
     albums: [{ title: 'Low Tide', year: 2023, tracks: ['Salt Lines', 'Undertow', 'Harbor Lights'] }] },
-  { name: 'Polar Bloom', genre: 'Drum & Bass', style: 'dnb', bpm: [170, 176], modes: ['minor'], hue: 215,
-    bio: 'Two-step breaks, detuned reese bass and icy pads at 174 BPM.',
+  { name: 'Polar Bloom', genre: 'Drum & Bass', style: 'dnb', language: 'es', bpm: [170, 176], modes: ['minor'], hue: 215,
+    bio: 'Spanish Christian youth praise (Alabanza y Adoración) blending energetic rhythms with soaring atmospheric worship pads.',
     albums: [{ title: 'Ice Engine', year: 2026, tracks: ['Frostbite', 'Aurora Rush', 'Glacier Run'] }] },
 ];
 
@@ -100,10 +100,10 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   const now = Date.now();
   const SR = 22050;
 
-  const insArtist = db.prepare('INSERT INTO artists (id, name, genre, bio, image, color) VALUES (?, ?, ?, ?, ?, ?)');
+  const insArtist = db.prepare('INSERT INTO artists (id, name, genre, language, bio, image, color) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const insAlbum = db.prepare('INSERT INTO albums (id, artist_id, title, year, type, cover, color, released_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-  const insTrack = db.prepare(`INSERT INTO tracks (id, album_id, artist_id, title, track_no, duration_ms, genre, loudness_lufs, peak_db,
-    tempo, key, mode, energy, valence, danceability, acousticness, instrumentalness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const insTrack = db.prepare(`INSERT INTO tracks (id, album_id, artist_id, title, track_no, duration_ms, genre, language, loudness_lufs, peak_db,
+    tempo, key, mode, energy, valence, danceability, acousticness, instrumentalness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insFile = db.prepare('INSERT INTO track_files (track_id, quality, file, mime, bytes, sample_rate, bitrate_kbps, header_bytes) VALUES (?,?,?,?,?,?,?,?)');
   const insFts = db.prepare('INSERT INTO search_fts (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)');
 
@@ -113,7 +113,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
     const artistId = seededId(rnd);
     const artistImg = `art/artist-${artistId}.svg`;
     fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artist.name, hue: artist.hue, seed: hashSeed(artist.name) }));
-    insArtist.run(artistId, artist.name, artist.genre, artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
+    insArtist.run(artistId, artist.name, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
     insFts.run('artist', artistId, artist.name, artist.genre);
 
     for (const [ai, album] of artist.albums.entries()) {
@@ -164,12 +164,12 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
           danceability: clamp(f.dance + jit(), 0, 1),
           acousticness: clamp(f.acoustic + jit() * 0.5, 0, 1),
         };
-        insTrack.run(trackId, albumId, artistId, title, ti + 1, durationMs, artist.genre, loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
+        insTrack.run(trackId, albumId, artistId, title, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
           features.energy, features.valence, features.danceability, features.acousticness, 0.95);
         insFile.run(trackId, 'high', hiFile, 'audio/wav', hi.length, SR, Math.round((SR * 16) / 1000), 44);
         insFile.run(trackId, 'low', loFile, 'audio/wav', lo.length, SR / 2, Math.round(((SR / 2) * 16) / 1000), 44);
         insFts.run('track', trackId, title, `${artist.name} ${album.title}`);
-        tracks.push({ id: trackId, artistId, albumId, style: artist.style, title, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
+        tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
         say(`  ♪ ${artist.name} – ${title}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
       }
     }
@@ -196,13 +196,15 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   });
 
   // ---- users: demo account + simulated listeners ----
-  const insUser = db.prepare('INSERT INTO users (username, display_name, password_hash, plan, is_simulated, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const insUser = db.prepare('INSERT INTO users (username, display_name, password_hash, language, is_simulated, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insStream = db.prepare('INSERT INTO streams (user_id, track_id, ms_played, context_uri, ended_at) VALUES (?, ?, ?, ?, ?)');
   const insLike = db.prepare('INSERT OR IGNORE INTO liked_tracks (user_id, track_id, added_at) VALUES (?, ?, ?)');
   const insFollow = db.prepare('INSERT OR IGNORE INTO followed_artists (user_id, artist_id, added_at) VALUES (?, ?, ?)');
 
   const popularity = new Map(tracks.map((t) => [t.id, Math.exp((rnd() - 0.5) * 1.8) * (t.firstOnAlbum ? 1.6 : 1)]));
   const styles = Object.keys(ADJACENT);
+  // A simulated listener's app language is the language of their favourite style.
+  const styleLanguage = Object.fromEntries(CATALOG.map((a) => [a.style, a.language || 'en']));
   let streamCount = 0;
 
   tx(db, () => {
@@ -214,7 +216,8 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
         taste[s] = 1;
         for (const a of ADJACENT[s]) taste[a] = Math.max(taste[a], 0.3);
       }
-      const { lastInsertRowid: uid } = insUser.run(`listener${u}`, `Listener ${u}`, null, rnd() < 0.4 ? 'premium' : 'free', 1, now);
+      rnd(); // was the free/premium coin flip; still drawn so the seeded catalog stays identical
+      const { lastInsertRowid: uid } = insUser.run(`listener${u}`, `Listener ${u}`, null, styleLanguage[fav[0]], 1, now);
       const weights = tracks.map((t) => taste[t.style] * popularity.get(t.id));
       const total = weights.reduce((s, w) => s + w, 0);
       const n = 15 + Math.floor(rnd() * 75);
@@ -231,7 +234,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
     }
 
     // Demo account: a lo-fi / ambient / acoustic listener with some history.
-    const { lastInsertRowid: demo } = insUser.run('demo', 'Demo Listener', hashPassword('ainos-demo'), 'premium', 0, now);
+    const { lastInsertRowid: demo } = insUser.run('demo', 'Demo Listener', hashPassword('ainos-demo'), 'en', 0, now);
     const demoTaste = tracks.filter((t) => ['lofi', 'ambient'].includes(t.style) || (t.style === 'acoustic' && rnd() < 0.5));
     for (let k = 0; k < 28; k++) {
       const t = demoTaste[Math.floor(rnd() * demoTaste.length)];

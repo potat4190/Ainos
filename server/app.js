@@ -10,14 +10,14 @@ import {
 } from './auth.js';
 import { Catalog } from './catalog.js';
 import { Recommender } from './recommend.js';
-import { EventPipeline, FREE_SKIPS_PER_HOUR, STREAM_THRESHOLD_MS } from './events.js';
+import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
 import { randomId, toUri } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QUALITIES = ['low', 'high'];
-const PLAN_MAX_QUALITY = { free: 'low', premium: 'high' };
+export const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
 const TARGET_LUFS = -14;
 
 const SECURITY_HEADERS = {
@@ -52,12 +52,13 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
   r.post('/api/auth/signup', async ({ req, res }) => {
     const ip = req.socket.remoteAddress;
     if (!loginLimiter(ip)) throw new HttpError(429, 'Too many attempts, wait a minute');
-    const { username, password, display_name } = await readJson(req);
+    const { username, password, display_name, language } = await readJson(req);
     validateCredentials(username, password);
     if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw new HttpError(409, 'That username is taken', 'username_taken');
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
-    const { lastInsertRowid } = db.prepare('INSERT INTO users (username, display_name, password_hash, plan, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(username, name, hashPassword(password), 'free', Date.now());
+    const lang = LANGUAGES.includes(language) ? language : 'en';
+    const { lastInsertRowid } = db.prepare('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(username, name, hashPassword(password), lang, Date.now());
     const token = createSession(db, Number(lastInsertRowid));
     sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
   });
@@ -78,49 +79,53 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
   });
 
   r.get('/api/me', auth(({ res, user }) => {
-    const skips = events.skipsLastHour(user.id);
     sendJson(res, 200, {
-      id: user.id, username: user.username, display_name: user.display_name, plan: user.plan,
-      limits: {
-        max_quality: PLAN_MAX_QUALITY[user.plan],
-        skips_per_hour: user.plan === 'free' ? FREE_SKIPS_PER_HOUR : null,
-        skips_remaining: user.plan === 'free' ? Math.max(0, FREE_SKIPS_PER_HOUR - skips) : null,
-      },
+      id: user.id, username: user.username, display_name: user.display_name, language: user.language,
       stream_threshold_ms: STREAM_THRESHOLD_MS,
     });
   }));
 
-  r.post('/api/me/plan', auth(async ({ req, res, user }) => {
-    const { plan } = await readJson(req);
-    if (!['free', 'premium'].includes(plan)) throw new HttpError(400, 'plan must be free or premium');
-    db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, user.id);
-    sendJson(res, 200, { ok: true, plan });
+  r.post('/api/me/language', auth(async ({ req, res, user }) => {
+    const { language } = await readJson(req);
+    if (!LANGUAGES.includes(language)) throw new HttpError(400, `language must be one of: ${LANGUAGES.join(', ')}`);
+    db.prepare('UPDATE users SET language = ? WHERE id = ?').run(language, user.id);
+    sendJson(res, 200, { ok: true, language });
   }));
 
   // ---------------- catalog ----------------
-  r.get('/api/home', auth(({ res, user }) => {
+  r.get('/api/home', auth(({ res, user, query }) => {
+    const lang = requestLang(query, user);
+    const taste = recommender.scoresForUser(user.id);
     const madeForYou = [];
-    const dw = recommender.discoverWeekly(user.id);
+    const dw = recommender.discoverWeekly(user.id, 12, { language: lang, taste });
     if (dw.ids.length) madeForYou.push(mixCard(dw));
-    for (const m of recommender.dailyMixes(user.id)) if (m.ids.length) madeForYou.push(mixCard(m));
+    for (const m of recommender.dailyMixes(user.id, 3, { language: lang, taste })) if (m.ids.length) madeForYou.push(mixCard(m));
     const onRepeat = onRepeatIds(user.id);
     if (onRepeat.length >= 3) madeForYou.push(mixCard({ kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids: onRepeat }));
 
     const following = db.prepare('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY added_at DESC').all(user.id).map((x) => x.artist_id);
+    const allArtists = catalog.artists({ language: lang });
+    const langArtists = allArtists.filter((a) => a.language === lang && !following.includes(a.id)).map((a) => a.id);
     const related = new Map();
     for (const a of following) for (const rel of recommender.relatedArtists(a, 4)) if (!following.includes(rel.id)) related.set(rel.id, (related.get(rel.id) || 0) + rel.score);
-    const suggested = [...related.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
-    const fallbackArtists = catalog.artists().map((a) => a.id).filter((id) => !following.includes(id));
+    const suggested = [...new Set([...langArtists, ...[...related.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id), ...allArtists.map((a) => a.id).filter((id) => !following.includes(id))])];
 
     sendJson(res, 200, {
+      language: lang,
+      recommended: catalog.tracksByIds(recommender.recommendForLanguage(user.id, lang, 12, { taste })),
       recent: recentTracks(user.id, 8),
       made_for_you: madeForYou,
-      popular: catalog.popular(7, 10),
-      new_releases: catalog.albums({ newest: true, limit: 6 }),
+      popular: catalog.popular(7, 10, lang),
+      new_releases: catalog.albums({ newest: true, limit: 6, language: lang }),
       editorial: catalog.editorialPlaylists(),
-      suggested_artists: catalog.artistsByIds((suggested.length ? suggested : fallbackArtists).slice(0, 6)),
+      suggested_artists: catalog.artistsByIds(suggested.slice(0, 6)),
     });
   }));
+
+  /** The ?lang= the client asked for, else the user's saved language. */
+  function requestLang(query, user) {
+    return LANGUAGES.includes(query.get('lang')) ? query.get('lang') : user.language;
+  }
 
   function mixCard(m) {
     const tracks = catalog.tracksByIds(m.ids.slice(0, 16));
@@ -141,25 +146,29 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
     return tracks.map((t, i) => ({ ...t, played_at: rows[i].ts }));
   }
 
-  r.get('/api/made-for-you/:kind', auth(({ res, user, params }) => {
+  r.get('/api/made-for-you/:kind', auth(({ res, user, params, query }) => {
+    const lang = requestLang(query, user);
     let mix;
-    if (params.kind === 'discover-weekly') mix = recommender.discoverWeekly(user.id);
+    if (params.kind === 'discover-weekly') mix = recommender.discoverWeekly(user.id, 12, { language: lang });
     else if (params.kind === 'on-repeat') mix = { kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids: onRepeatIds(user.id) };
-    else if (/^daily-mix-\d$/.test(params.kind)) mix = recommender.dailyMixes(user.id).find((m) => m.kind === params.kind);
+    else if (/^daily-mix-\d$/.test(params.kind)) mix = recommender.dailyMixes(user.id, 3, { language: lang }).find((m) => m.kind === params.kind);
     if (!mix) throw new HttpError(404, 'Mix not found');
     const tracks = catalog.tracksByIds(mix.ids);
     sendJson(res, 200, { ...mixCard(mix), uri: toUri('mix', mix.kind), period: mix.period || null, tracks });
   }));
 
-  r.get('/api/radio/:id', auth(({ res, params }) => {
+  r.get('/api/radio/:id', auth(({ res, params, query, user }) => {
+    const lang = requestLang(query, user);
     const seed = catalog.track(params.id);
     if (!seed) throw new HttpError(404, 'Track not found');
-    const scored = recommender.similarTracks(params.id, 19);
+    const scored = recommender.similarTracks(params.id, 19, { language: lang });
     const tracks = catalog.tracksByIds([params.id, ...scored.map((s) => s.id)]);
+    // Pair scores by id: tracksByIds drops unknown ids, so indexes may not line up.
+    const simById = new Map(scored.map((s) => [s.id, s.similarity]));
     sendJson(res, 200, {
       kind: 'radio', uri: toUri('radio', params.id), title: `${seed.title} Radio`,
       description: `Tracks similar to ${seed.title} by ${seed.artist.name}, from listening patterns and audio features.`,
-      covers: [seed.album.cover], tracks: tracks.map((t, i) => (i === 0 ? t : { ...t, similarity: Math.round(scored[i - 1].score * 100) / 100 })),
+      covers: [seed.album.cover], tracks: tracks.map((t) => (t.id === params.id ? t : { ...t, similarity: Math.round(simById.get(t.id) * 100) / 100 })),
     });
   }));
 
@@ -183,21 +192,20 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
 
   // Manifest: which file to fetch, signed CDN-style URLs, seek info and the
   // loudness normalization gain. The client never builds media URLs itself.
-  r.get('/api/tracks/:id/manifest', auth(({ res, params, query, user }) => {
+  r.get('/api/tracks/:id/manifest', auth(({ res, params, query }) => {
     const t = db.prepare('SELECT id, duration_ms, loudness_lufs, peak_db FROM tracks WHERE id = ?').get(params.id);
     if (!t) throw new HttpError(404, 'Track not found');
     const files = db.prepare('SELECT * FROM track_files WHERE track_id = ?').all(t.id);
-    const maxQ = PLAN_MAX_QUALITY[user.plan];
-    const wanted = QUALITIES.includes(query.get('quality')) ? query.get('quality') : maxQ;
-    const quality = QUALITIES.indexOf(wanted) > QUALITIES.indexOf(maxQ) ? maxQ : wanted;
-    const f = files.find((x) => x.quality === quality);
+    const quality = QUALITIES.includes(query.get('quality')) ? query.get('quality') : 'high';
+    const f = files.find((x) => x.quality === quality) || files.find((x) => x.quality === 'high') || files[0];
+    if (!f) throw new HttpError(404, 'No audio for this track');
     const url = signMediaPath(secret, '/' + f.file);
     const bytesPerSecond = f.sample_rate * 2;
     sendJson(res, 200, {
       track_id: t.id,
       duration_ms: t.duration_ms,
-      file: { quality, mime: f.mime, bitrate_kbps: f.bitrate_kbps, sample_rate: f.sample_rate, bytes: f.bytes, url, cdn_urls: [url] },
-      available_qualities: files.map((x) => ({ quality: x.quality, bitrate_kbps: x.bitrate_kbps, allowed: QUALITIES.indexOf(x.quality) <= QUALITIES.indexOf(maxQ) })),
+      file: { quality: f.quality, mime: f.mime, bitrate_kbps: f.bitrate_kbps, sample_rate: f.sample_rate, bytes: f.bytes, url, cdn_urls: [url] },
+      available_qualities: files.map((x) => ({ quality: x.quality, bitrate_kbps: x.bitrate_kbps, allowed: true })),
       normalization: { loudness_lufs: round(t.loudness_lufs, 2), peak_db: round(t.peak_db, 2), target_lufs: TARGET_LUFS, gain_db: round(normalizationGainDb(t.loudness_lufs, t.peak_db, TARGET_LUFS), 2) },
       seektable: { header_bytes: f.header_bytes, bytes_per_second: bytesPerSecond, chunk_bytes: 16384, chunks: Math.ceil(f.bytes / 16384) },
       expires_in: 3600,
@@ -301,6 +309,7 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
       db.prepare('INSERT INTO playlists (id, owner_id, name, description, color, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .run(id, user.id, name, cleanName(body.description, 300), colors[count % colors.length], body.is_public ? 1 : 0, now, now);
       if (Array.isArray(body.track_ids)) addTracks(id, body.track_ids);
+      syncPlaylistSearch(id); // a playlist created public must be searchable right away
     });
     sendJson(res, 201, catalog.playlist(id));
   }));
@@ -330,7 +339,8 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
   }));
 
   function addTracks(playlistId, ids) {
-    const valid = ids.filter((x) => typeof x === 'string').slice(0, 200).filter((id) => db.prepare('SELECT 1 FROM tracks WHERE id = ?').get(id));
+    const exists = db.prepare('SELECT 1 FROM tracks WHERE id = ?');
+    const valid = ids.filter((x) => typeof x === 'string').slice(0, 200).filter((id) => exists.get(id));
     let pos = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM playlist_tracks WHERE playlist_id = ?').get(playlistId).p;
     const ins = db.prepare('INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES (?, ?, ?, ?)');
     for (const id of valid) ins.run(playlistId, id, pos++, Date.now());

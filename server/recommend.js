@@ -13,11 +13,18 @@
 //    brute-force cosine is exact and fast enough for this catalog).
 
 import { isoWeek, isoDay, mulberry32, hashSeed, shuffled } from './util.js';
+import { stmt } from './db.js';
 
 // Defaults sized for a small catalog: few factors + strong regularization, so
 // the model generalizes instead of memorizing (K must be well below #items).
 // Picked by a sweep over K in {4,6,8,16} x lambda in {0.1,2,10,40}.
 const DEFAULTS = { factors: 8, lambda: 10, alpha: 12, iterations: 15 };
+const RADIO_LANG_BOOST = 0.1;
+const LANG_BOOST = 1.0;
+
+/** Scores sorted best-first, with tracks in `language` lifted above the rest. */
+const rankedFor = (scores, language) =>
+  scores.map((s) => (language && s.language === language ? { ...s, score: s.score + LANG_BOOST } : s)).sort((a, b) => b.score - a.score);
 
 function solve(A, b) {
   // Gaussian elimination with partial pivoting; A is k x k (array of Float64Array)
@@ -98,7 +105,7 @@ export class Recommender {
     const t0 = Date.now();
     const db = this.db;
     const { factors: K, lambda: LAMBDA, alpha: ALPHA, iterations: ITERS } = this.opts;
-    const tracks = db.prepare(`SELECT id, artist_id, genre, tempo, key, mode, energy, valence, danceability, acousticness FROM tracks ORDER BY id`).all();
+    const tracks = db.prepare(`SELECT id, artist_id, genre, language, tempo, key, mode, energy, valence, danceability, acousticness FROM tracks ORDER BY id`).all();
     const itemIndex = new Map(tracks.map((t, i) => [t.id, i]));
     const interactions = db.prepare('SELECT user_id, track_id, COUNT(*) AS n FROM streams GROUP BY user_id, track_id').all();
     const likes = db.prepare('SELECT user_id, track_id FROM liked_tracks').all();
@@ -156,7 +163,9 @@ export class Recommender {
     }
     for (let i = 0; i < I; i++) for (let j = 0; j < I; j++) coSim[i][j] /= norms[i] * norms[j];
 
-    this.model = { tracks, itemIndex, userIndex, X, Y, content, userRows, playCounts, losses, coSim };
+    let maxPop = 0;
+    for (const c of playCounts) if (c > maxPop) maxPop = c;
+    this.model = { tracks, itemIndex, userIndex, X, Y, content, userRows, playCounts, maxPop: maxPop || 1, losses, coSim };
     this.trainedAt = Date.now();
     this.stats = { users: U, items: I, interactions: weights.size, factors: K, iterations: ITERS, lambda: LAMBDA, alpha: ALPHA, ms: Date.now() - t0, loss_first: losses[0], loss_last: losses.at(-1) };
     return this.stats;
@@ -181,14 +190,21 @@ export class Recommender {
   }
 
   /** Item-item similarity: co-listening blended with audio content. */
-  similarTracks(trackId, n = 20, { cfWeight = 0.7 } = {}) {
+  similarTracks(trackId, n = 20, { cfWeight = 0.7, language = null } = {}) {
     const m = this.ensure();
     const i = m.itemIndex.get(trackId);
     if (i === undefined) return [];
     const cfConfidence = Math.min(1, m.playCounts[i] / 50); // little data -> lean on content
     const w = cfWeight * cfConfidence;
     return m.tracks
-      .map((t, j) => ({ id: t.id, score: j === i ? -Infinity : w * m.coSim[i][j] + (1 - w) * cosine(m.content[i], m.content[j]) }))
+      .map((t, j) => {
+        if (j === i) return null; // never recommend the seed itself (it would reappear when n >= catalog size)
+        const similarity = w * m.coSim[i][j] + (1 - w) * cosine(m.content[i], m.content[j]);
+        // A light tie-breaker toward the listener's language; it must not outrank clearly closer tracks.
+        const langBoost = language && t.language === language ? RADIO_LANG_BOOST : 0;
+        return { id: t.id, language: t.language, similarity, score: similarity + langBoost };
+      })
+      .filter(Boolean)
       .sort((a, b) => b.score - a.score)
       .slice(0, n);
   }
@@ -198,8 +214,8 @@ export class Recommender {
     const m = this.ensure();
     const u = m.userIndex.get(userId);
     const heard = new Map();
-    for (const r of this.db.prepare('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? GROUP BY track_id').all(userId)) heard.set(r.track_id, r.n);
-    for (const r of this.db.prepare('SELECT track_id FROM liked_tracks WHERE user_id = ?').all(userId)) heard.set(r.track_id, (heard.get(r.track_id) || 0) + 4);
+    for (const r of stmt(this.db, 'SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? GROUP BY track_id').all(userId)) heard.set(r.track_id, r.n);
+    for (const r of stmt(this.db, 'SELECT track_id FROM liked_tracks WHERE user_id = ?').all(userId)) heard.set(r.track_id, (heard.get(r.track_id) || 0) + 4);
 
     // Content taste profile = weighted mean of content vectors of what they played.
     const profile = new Float64Array(m.content[0].length);
@@ -211,24 +227,38 @@ export class Recommender {
       m.content[i].forEach((v, d) => (profile[d] += v * lw));
       tw += lw;
     }
-    const maxPop = Math.max(...m.playCounts) || 1;
+    const maxPop = m.maxPop;
     const scores = m.tracks.map((t, i) => {
       const cf = u !== undefined ? dot(m.X[u], m.Y[i]) : 0;
       const cb = tw > 0 ? cosine(profile, m.content[i]) : 0;
       const pop = m.playCounts[i] / maxPop;
       const score = u !== undefined ? 0.7 * cf + 0.22 * cb + 0.08 * pop : 0.5 * cb + 0.5 * pop;
-      return { id: t.id, artist_id: t.artist_id, genre: t.genre, score, cf, cb, pop };
+      return { id: t.id, artist_id: t.artist_id, genre: t.genre, language: t.language, score, cf, cb, pop };
     });
     return { scores, heard, coldStart: u === undefined };
   }
 
-  /** Discover Weekly: unheard tracks, ranked, max 2 per artist, frozen per ISO week. */
-  discoverWeekly(userId, n = 12) {
-    return this.#snapshot(userId, 'discover-weekly', isoWeek(), () => {
-      const { scores, heard, coldStart } = this.scoresForUser(userId);
+  // The methods below accept `taste` (a scoresForUser result) so one request
+  // can share a single scoring pass across them.
+
+  /** Tracks strictly in the requested language, ranked by the user's taste profile. */
+  recommendForLanguage(userId, language = 'en', n = 12, { taste = null } = {}) {
+    const { scores } = taste || this.scoresForUser(userId);
+    return scores
+      .filter((s) => s.language === language)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, n)
+      .map((s) => s.id);
+  }
+
+  /** Discover Weekly: unheard tracks, ranked (prioritizing user's language), max 2 per artist, frozen per ISO week. */
+  discoverWeekly(userId, n = 12, { language = null, taste = null } = {}) {
+    const period = language ? `${isoWeek()}-${language}` : isoWeek();
+    return this.#snapshot(userId, 'discover-weekly', period, () => {
+      const { scores, heard, coldStart } = taste || this.scoresForUser(userId);
       const perArtist = new Map();
       const out = [];
-      for (const s of scores.filter((s) => !heard.has(s.id)).sort((a, b) => b.score - a.score)) {
+      for (const s of rankedFor(scores.filter((s) => !heard.has(s.id)), language)) {
         const c = perArtist.get(s.artist_id) || 0;
         if (c >= 2) continue;
         perArtist.set(s.artist_id, c + 1);
@@ -241,27 +271,36 @@ export class Recommender {
     });
   }
 
-  /** Daily Mixes: one per top genre, mixing favourites with close recommendations. */
-  dailyMixes(userId, maxMixes = 3) {
-    const day = isoDay();
-    const { scores, heard } = this.scoresForUser(userId);
-    if (heard.size === 0) return [];
+  /** Daily Mixes: one per top genre, mixing favourites with close recommendations, prioritizing the active language. */
+  dailyMixes(userId, maxMixes = 3, { language = null, taste = null } = {}) {
+    const day = language ? `${isoDay()}-${language}` : isoDay();
+    const { scores, heard } = taste || this.scoresForUser(userId);
+    if (heard.size === 0 && !language) return [];
     const byId = new Map(scores.map((s) => [s.id, s]));
     const genreWeight = new Map();
+    if (language) {
+      for (const s of scores.filter((x) => x.language === language)) {
+        genreWeight.set(s.genre, (genreWeight.get(s.genre) || 0) + 5);
+      }
+    }
     for (const [tid, w] of heard) {
       const s = byId.get(tid);
       if (s) genreWeight.set(s.genre, (genreWeight.get(s.genre) || 0) + w);
     }
     const genres = [...genreWeight.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxMixes).map(([g]) => g);
+    // Unheard tracks ranked once for all mixes; the language lift puts in-language picks first.
+    const recs = rankedFor(scores.filter((s) => !heard.has(s.id)), language);
     return genres.map((genre, gi) =>
       this.#snapshot(userId, `daily-mix-${gi + 1}`, day, () => {
         const rnd = mulberry32(hashSeed(`${userId}/${day}/${genre}`));
-        const favourites = [...heard.keys()].filter((id) => byId.get(id)?.genre === genre);
-        const recs = scores.filter((s) => !heard.has(s.id)).sort((a, b) => b.score - a.score);
+        const favourites = [...heard.keys()].filter((id) => byId.get(id)?.genre === genre && (!language || byId.get(id)?.language === language));
         const sameGenre = recs.filter((s) => s.genre === genre).map((s) => s.id);
         const nearby = recs.filter((s) => s.genre !== genre).slice(0, 3).map((s) => s.id);
-        const ids = shuffled([...shuffled(favourites, rnd).slice(0, 8), ...sameGenre.slice(0, 3), ...nearby.slice(0, 2)], rnd);
-        return { title: `Daily Mix ${gi + 1}`, description: `${genre} and more, based on what you play.`, ids };
+        // Listeners without favourites yet get more same-genre picks instead.
+        const picks = shuffled(favourites, rnd).slice(0, 8);
+        const ids = shuffled([...picks, ...sameGenre.slice(0, 11 - picks.length), ...nearby.slice(0, 2)], rnd);
+        // Mixes built before any listening are not frozen, so they personalize right away.
+        return { title: `Daily Mix ${gi + 1}`, description: `${genre} and more, based on what you play.`, ids, persist: heard.size > 0 };
       }),
     );
   }
@@ -276,7 +315,8 @@ export class Recommender {
     const mine = [], byArtist = new Map(), content = new Map();
     m.tracks.forEach((t, i) => {
       if (t.artist_id === artistId) mine.push(i);
-      else byArtist.set(t.artist_id, [...(byArtist.get(t.artist_id) || []), i]);
+      else if (byArtist.has(t.artist_id)) byArtist.get(t.artist_id).push(i);
+      else byArtist.set(t.artist_id, [i]);
       const cb = content.get(t.artist_id) || new Float64Array(m.content[0].length);
       m.content[i].forEach((x, d) => (cb[d] += x));
       content.set(t.artist_id, cb);
@@ -290,7 +330,7 @@ export class Recommender {
   }
 
   #snapshot(userId, kind, period, build) {
-    const row = this.db.prepare('SELECT title, description, track_ids FROM generated_playlists WHERE user_id = ? AND kind = ? AND period = ?').get(userId, kind, period);
+    const row = stmt(this.db, 'SELECT title, description, track_ids FROM generated_playlists WHERE user_id = ? AND kind = ? AND period = ?').get(userId, kind, period);
     if (row) return { kind, period, title: row.title, description: row.description, ids: JSON.parse(row.track_ids) };
     const { persist = true, ...built } = build();
     if (built.ids.length && persist) {

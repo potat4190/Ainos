@@ -9,12 +9,13 @@ import { HttpError } from './http.js';
 import { tx } from './db.js';
 
 export const STREAM_THRESHOLD_MS = 30_000;
-export const FREE_SKIPS_PER_HOUR = 6;
 const TYPES = new Set(['play_start', 'play_end', 'pause', 'resume', 'seek', 'error', 'latency', 'prefetch', 'cache_hit', 'transfer']);
 const REASONS = new Set(['trackdone', 'fwdbtn', 'backbtn', 'clickrow', 'endplay', 'remote', 'logout', 'appload', 'trackerror', 'playbtn', 'transfer', 'unknown']);
 
 const clean = (v, max = 200) => (typeof v === 'string' ? v.slice(0, max) : null);
 const int = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(Math.round(v), 24 * 3600 * 1000)) : null);
+// Client clock (epoch ms). Must not go through int(), which caps durations at 24 h.
+const epochMs = (v) => (Number.isFinite(v) && v > 0 && v < 8.64e15 ? Math.round(v) : null);
 
 export class EventPipeline {
   constructor(db, dataDir, { onStreams } = {}) {
@@ -43,7 +44,7 @@ export class EventPipeline {
       accepted.push({
         user_id: user.id, device_id: clean(e.device_id, 64) || 'unknown', type: e.type, track_id: trackId,
         ms_played: int(e.ms_played), position_ms: int(e.position_ms), reason, context_uri: clean(e.context_uri, 120),
-        client_ts: int(e.ts) ?? null, server_ts: now, payload: extra,
+        client_ts: epochMs(e.ts), server_ts: now, payload: extra,
       });
     }
     let streams = 0;
@@ -62,13 +63,6 @@ export class EventPipeline {
     }
     if (streams) this.onStreams(streams);
     return { accepted: accepted.length, rejected: events.length - accepted.length, streams_counted: streams };
-  }
-
-  /** Forward-button skips in the last hour (free tier limit). */
-  skipsLastHour(userId) {
-    return this.db
-      .prepare("SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND type = 'play_end' AND reason = 'fwdbtn' AND server_ts > ?")
-      .get(userId, Date.now() - 3600_000).n;
   }
 
   stats() {

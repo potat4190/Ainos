@@ -224,7 +224,7 @@ Spotify Connect lets you start music on your phone and play it on a laptop or sp
 | Prefetch at −30 s | Second audio "deck" loads the next track at 30 s remaining; instant swap | `public/js/player.js` (`#prefetchNext`) |
 | Latency & stutter metrics | Click-to-first-audio and buffer underruns measured, reported as events | `player.js` (`#onPlaying`, `waiting` listener) |
 | Encrypted LRU cache | Service worker LRU cache (60 MB) + pinned offline downloads, range-served from cache | `public/sw.js` |
-| Quality tiers by plan | Low 176 kbps / High 353 kbps; free plan capped at Low; "Automatic" uses Network Information API | manifest route, `player.js` (`#quality`) |
+| Quality tiers | Low 176 kbps / High 353 kbps; every account can stream High (single All-Access plan); "Automatic" uses Network Information API | manifest route, `player.js` (`#quality`) |
 | Loudness normalization | BS.1770-4 meter (verified: −3.01 LUFS on the reference tone); Loud/Normal/Quiet targets; gain capped at −1 dBFS peak | `server/loudness.js`, `player.js` (`normalizationGainDb`) |
 | Event delivery | Batched client events → hourly NDJSON buckets + SQLite; `sendBeacon` on page close | `server/events.js`, `player.js` (`flush`) |
 | 30-second rule | `play_end` with ≥ 30 000 ms ⇒ a stream | `server/events.js` |
@@ -233,7 +233,7 @@ Spotify Connect lets you start music on your phone and play it on a laptop or sp
 | Nearest-neighbour search | Exact cosine search (fine at this catalog size; Voyager/Annoy needed at millions) | `server/recommend.js` |
 | Discover Weekly / Daily Mix / Radio | Weekly snapshot of unheard tracks (max 2 per artist); per-genre daily mixes; seed + neighbours | `server/recommend.js` |
 | Connect | Server-Sent Events push channel per device; state fan-out, remote commands, transfer with position | `server/connect.js`, `public/js/connect.js` |
-| Freemium | Free: Low quality, 6 skips/hour; Premium: High, unlimited | `server/app.js`, `player.js` (`canSkip`) |
+| Freemium | Not implemented: Ainos has one All-Access plan for everyone (High quality, unlimited skips) | manifest route in `server/app.js` |
 | Web UI in a shell | Single-page web app (no framework), installable PWA | `public/` |
 
 **Where Ainos deliberately differs**

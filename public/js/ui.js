@@ -1,4 +1,5 @@
 // DOM helpers. Everything user-provided goes in via text nodes, never innerHTML.
+import { t } from './i18n.js';
 
 export function h(tag, attrs = {}, ...children) {
   const el = tag === 'svg' || tag === 'use' ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
@@ -141,7 +142,7 @@ export function showMenu(anchorOrEvent, items) {
 }
 
 // ---------- dialog ----------
-export function promptDialog({ title, fields, submitLabel = 'Save' }) {
+export function promptDialog({ title, fields, submitLabel = t('save') }) {
   return new Promise((resolve) => {
     const form = h('form', { method: 'dialog' });
     const inputs = {};
@@ -154,7 +155,7 @@ export function promptDialog({ title, fields, submitLabel = 'Save' }) {
       inputs[f.name] = input;
       form.append(h('label', { class: 'field' }, f.label, input));
     }
-    const cancel = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'Cancel');
+    const cancel = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, t('cancel'));
     form.append(h('div', { class: 'dialog-actions' }, cancel, h('button', { type: 'submit', class: 'btn btn-primary btn-sm' }, submitLabel)));
     const dlg = h('dialog', {}, form);
     document.body.append(dlg);

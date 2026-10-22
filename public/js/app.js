@@ -2,6 +2,7 @@ import { api, onUnauthorized } from './api.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider } from './ui.js';
 import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
+import { getLang, setLang, t, langDisplayName, translateGenre } from './i18n.js';
 import * as views from './views.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,26 +31,103 @@ class App {
       await this.loadMe();
     } catch (err) {
       if (err.status === 401) return this.showLogin();
-      document.body.append(h('div', { class: 'empty' }, h('h2', {}, 'Can’t reach Ainos'), h('p', {}, err.message)));
+      document.body.append(h('div', { class: 'empty' }, h('h2', {}, t('cantReachAinos')), h('p', {}, err.message)));
       return;
     }
     this.start();
   }
 
   async loadMe() {
+    const prevLang = getLang();
     this.me = await api.get('/api/me');
+    if (this.pendingLang) {
+      // A local language change hasn't reached the server yet: keep it (and retry) instead of reverting to the stale server value.
+      if (this.me.language === this.pendingLang) this.pendingLang = null;
+      else this.saveLanguage(this.pendingLang).catch(() => {});
+      this.me.language = getLang();
+    } else if (this.me.language && this.me.language !== prevLang) {
+      setLang(this.me.language);
+    }
     if (this.player) {
       this.player.me = this.me;
-      this.player.skipsRemaining = this.me.limits.skips_remaining;
     }
-    const badge = $('plan-badge');
-    badge.textContent = this.me.plan;
-    badge.classList.toggle('premium', this.me.plan === 'premium');
+    const sel = $('lang-select');
+    if (sel) sel.value = getLang();
     $('user-menu-btn').textContent = (this.me.display_name || '?')[0].toUpperCase();
     $('user-menu-btn').title = this.me.display_name;
+    this.applyI18n();
+    // The 2-minute refresh can pick up a language changed on another device: re-render, don't leave a mixed-language UI.
+    if (this.started && this.player && getLang() !== prevLang) {
+      this.renderLibrary();
+      this.renderPlayerBar();
+      this.renderRight();
+      this.refresh();
+    }
+  }
+
+  async changeLanguage(lang) {
+    setLang(lang);
+    const sel = $('lang-select');
+    if (sel) sel.value = lang;
+    if (this.me) {
+      this.me.language = lang;
+      this.pendingLang = lang;
+      try {
+        await this.saveLanguage(lang);
+      } catch (err) {
+        toast(err.message, { error: true });
+      }
+    }
+    this.applyI18n();
+    this.renderLibrary();
+    this.renderPlayerBar();
+    this.renderRight();
+    await this.refresh();
+    toast(t('languageChangedToast', { lang: langDisplayName(lang) }));
+  }
+
+  async saveLanguage(lang) {
+    await api.post('/api/me/language', { language: lang });
+    if (this.pendingLang === lang) this.pendingLang = null;
+  }
+
+  applyI18n() {
+    const setTxt = (id, key) => { const el = $(id); if (el) el.textContent = t(key); };
+    setTxt('login-brand-sub', 'brandSubtitle');
+    setTxt('sidebar-brand-sub', 'brandSubtitle');
+    setTxt('lbl-username', 'username');
+    setTxt('lbl-displayname', 'displayName');
+    setTxt('lbl-password', 'password');
+    setTxt('demo-login', 'demoBtn');
+    setTxt('nav-home-text', 'navHome');
+    setTxt('nav-search-text', 'navSearch');
+    setTxt('nav-library-text', 'navLibrary');
+    setTxt('nav-internals-text', 'navInternals');
+    setTxt('mnav-home-text', 'navHome');
+    setTxt('mnav-search-text', 'navSearch');
+    setTxt('mnav-library-text', 'navLibraryShort');
+    setTxt('mnav-internals-text', 'navInternalsShort');
+    setTxt('lang-label', 'languageLabel');
+    const np = $('new-playlist');
+    if (np) { np.title = t('createPlaylist'); np.setAttribute('aria-label', t('createPlaylist')); }
+    $('nav-back')?.setAttribute('aria-label', t('goBack'));
+    $('nav-fwd')?.setAttribute('aria-label', t('goForward'));
+    const si = $('search-input');
+    if (si) { si.placeholder = t('searchPlaceholder'); si.setAttribute('aria-label', t('navSearch')); }
+    $('lang-select')?.setAttribute('aria-label', t('languageLabel'));
+    $('user-menu-btn')?.setAttribute('aria-label', t('accountLabel'));
+    $('btn-shuffle')?.setAttribute('aria-label', t('shuffle'));
+    $('btn-prev')?.setAttribute('aria-label', t('previous'));
+    $('btn-next')?.setAttribute('aria-label', t('next'));
+    $('btn-nowplaying')?.setAttribute('aria-label', t('nowPlayingView'));
+    $('btn-queue')?.setAttribute('aria-label', t('queue'));
+    $('btn-devices')?.setAttribute('aria-label', t('connectDevice'));
+    $('btn-mute')?.setAttribute('aria-label', t('mute'));
+    $('volume')?.setAttribute('aria-label', t('volume'));
   }
 
   showLogin() {
+    this.applyI18n();
     $('app').hidden = true;
     $('login').hidden = false;
     const form = $('login-form');
@@ -58,10 +136,10 @@ class App {
     let mode = 'login';
     const setMode = (m) => {
       mode = m;
-      $('login-title').textContent = m === 'login' ? 'Log in to Ainos' : 'Sign up for Ainos';
-      $('login-submit').textContent = m === 'login' ? 'Log in' : 'Create account';
-      $('login-switch-text').textContent = m === 'login' ? 'Don’t have an account?' : 'Already have an account?';
-      $('login-switch').textContent = m === 'login' ? 'Sign up' : 'Log in';
+      $('login-title').textContent = m === 'login' ? t('loginTitle') : t('signupTitle');
+      $('login-submit').textContent = m === 'login' ? t('loginBtn') : t('signupBtn');
+      $('login-switch-text').textContent = m === 'login' ? t('noAccount') : t('hasAccount');
+      $('login-switch').textContent = m === 'login' ? t('signupLink') : t('loginLink');
       form.querySelector('.signup-only').hidden = m === 'login';
       form.password.autocomplete = m === 'login' ? 'current-password' : 'new-password';
       $('login-error').textContent = '';
@@ -71,7 +149,7 @@ class App {
       $('login-error').textContent = '';
       this.loggingIn = true;
       try {
-        await api.post(m === 'login' ? '/api/auth/login' : '/api/auth/signup', body);
+        await api.post(m === 'login' ? '/api/auth/login' : '/api/auth/signup', { ...body, language: getLang() });
         if (this.started) return location.reload();
         await this.loadMe();
         this.start();
@@ -97,7 +175,6 @@ class App {
     const identity = deviceIdentity();
     this.player = new Player({ deviceId: identity.id });
     this.player.me = this.me;
-    this.player.skipsRemaining = this.me.limits.skips_remaining;
     this.connect = new Connect(this.player, identity);
     this.player.connect = this.connect;
     this.connect.start();
@@ -107,13 +184,13 @@ class App {
     this.player.addEventListener('error', (e) => toast(e.detail.message, { error: true }));
     this.player.addEventListener('downloads', () => this.renderLibrary());
     this.connect.addEventListener('change', () => { this.renderPlayerBar(); this.scheduleRight(); });
-    this.connect.addEventListener('error', (e) => toast(e.detail.message || 'Remote command failed', { error: true }));
+    this.connect.addEventListener('error', (e) => toast(e.detail.message || t('remoteCommandFailed'), { error: true }));
 
     this.bindChrome();
     await Promise.all([this.refreshLibrary(), this.loadLiked()]);
     addEventListener('hashchange', () => this.route());
-    addEventListener('offline', () => toast('You’re offline. Downloaded music still plays.'));
-    addEventListener('online', () => toast('Back online'));
+    addEventListener('offline', () => toast(t('offlineToast')));
+    addEventListener('online', () => toast(t('onlineToast')));
     setInterval(() => this.loadMe().catch(() => {}), 120_000);
     this.route();
     this.renderPlayerBar();
@@ -144,7 +221,7 @@ class App {
     const fresh = h('div');
     const slow = setTimeout(() => { if (seq === this.renderSeq) clear(container).append(h('div', { class: 'skeleton', style: { height: '220px', 'margin-top': '16px' } })); }, 180);
     try {
-      if (!view) throw Object.assign(new Error('Page not found'), { status: 404 });
+      if (!view) throw Object.assign(new Error(t('pageNotFound')), { status: 404 });
       const cleanup = await view(fresh, { ...params, id }, this);
       clearTimeout(slow);
       if (seq !== this.renderSeq) return cleanup?.();
@@ -156,7 +233,7 @@ class App {
     } catch (err) {
       clearTimeout(slow);
       if (seq !== this.renderSeq) return;
-      clear(container).append(h('div', { class: 'empty' }, h('h2', {}, err.status === 404 ? 'Page not found' : 'Something went wrong'), h('p', {}, err.message), h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, 'Go home')));
+      clear(container).append(h('div', { class: 'empty' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.message), h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome'))));
     }
   }
 
@@ -203,7 +280,7 @@ class App {
     this.syncLikeButtons(track.id);
     try {
       await (on ? api.put(`/api/me/liked/${track.id}`) : api.del(`/api/me/liked/${track.id}`));
-      toast(on ? 'Added to Liked Songs' : 'Removed from Liked Songs');
+      toast(on ? t('addedToLiked') : t('removedFromLiked'));
       this.library.liked_count += on ? 1 : -1;
       this.renderLibrary();
     } catch (err) {
@@ -217,7 +294,7 @@ class App {
     const on = this.liked.has(id);
     for (const b of document.querySelectorAll(`[data-like-id="${CSS.escape(id)}"]`)) {
       b.classList.toggle('on', on);
-      b.setAttribute('aria-label', on ? 'Remove from Liked Songs' : 'Save to Liked Songs');
+      b.setAttribute('aria-label', on ? t('removeFromLiked') : t('saveToLiked'));
       clear(b).append(icon(on ? 'heart-fill' : 'heart'));
     }
   }
@@ -233,10 +310,10 @@ class App {
     };
     const downloads = Object.keys(this.player?.downloads || {}).length;
     clear(list).append(...[
-      item('#/liked', likedArt('art'), 'Liked Songs', `Playlist · ${this.library.liked_count} songs`, 'ainos:collection:liked'),
-      downloads ? item('#/downloads', h('div', { class: 'art art-liked', style: { background: 'linear-gradient(135deg,#0f766e,#5eead4)' } }, icon('download')), 'Downloaded', `${downloads} songs`, 'ainos:downloads') : null,
-      ...this.library.playlists.map((p) => item(`#/playlist/${p.id}`, mosaic(p.covers, 'art'), p.name, `Playlist · ${p.owner.name}`, p.uri)),
-      ...this.library.artists.map((a) => item(`#/artist/${a.id}`, img(a.image, 'art round'), a.name, 'Artist', a.uri)),
+      item('#/liked', likedArt('art'), t('likedSongs'), `${t('playlist')} · ${t('songsCount', { n: this.library.liked_count })}`, 'ainos:collection:liked'),
+      downloads ? item('#/downloads', h('div', { class: 'art art-liked', style: { background: 'linear-gradient(135deg,#0f766e,#5eead4)' } }, icon('download')), t('downloaded'), t('songsCount', { n: downloads }), 'ainos:downloads') : null,
+      ...this.library.playlists.map((p) => item(`#/playlist/${p.id}`, mosaic(p.covers, 'art'), p.name, `${t('playlist')} · ${p.owner.name}`, p.uri)),
+      ...this.library.artists.map((a) => item(`#/artist/${a.id}`, img(a.image, 'art round'), a.name, t('artist'), a.uri)),
     ].filter(Boolean));
   }
 
@@ -244,36 +321,36 @@ class App {
     const p = await api.post('/api/playlists', { track_ids: trackIds });
     await this.refreshLibrary();
     location.hash = `#/playlist/${p.id}`;
-    toast(`Created “${p.name}”`);
+    toast(t('createdPlaylistToast', { name: p.name }));
     return p;
   }
 
   trackMenu(track, e, { playlist, position } = {}) {
     const p = this.player;
     const items = [
-      { label: 'Add to queue', icon: 'queue', onClick: () => { p.addToQueue(track); toast('Added to queue'); } },
-      { label: 'Go to song radio', icon: 'radio', onClick: () => (location.hash = `#/radio/${track.id}`) },
-      { label: 'Go to artist', onClick: () => (location.hash = `#/artist/${track.artist.id}`) },
-      { label: 'Go to album', onClick: () => (location.hash = `#/album/${track.album.id}`) },
+      { label: t('addToQueue'), icon: 'queue', onClick: () => { p.addToQueue(track); toast(t('addedToQueueToast')); } },
+      { label: t('goToRadio'), icon: 'radio', onClick: () => (location.hash = `#/radio/${track.id}`) },
+      { label: t('goToArtist'), onClick: () => (location.hash = `#/artist/${track.artist.id}`) },
+      { label: t('goToAlbum'), onClick: () => (location.hash = `#/album/${track.album.id}`) },
       'sep',
       {
-        label: 'Add to playlist', icon: 'plus', submenu: [
-          { label: 'New playlist', icon: 'plus', onClick: () => this.createPlaylist([track.id]) },
+        label: t('addToPlaylist'), icon: 'plus', submenu: [
+          { label: t('newPlaylist'), icon: 'plus', onClick: () => this.createPlaylist([track.id]) },
           ...(this.library.playlists.length ? ['sep'] : []),
           ...this.library.playlists.map((pl) => ({
             label: pl.name,
-            onClick: async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(`Added to ${pl.name}`); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); },
+            onClick: async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(t('addedToPlaylistToast', { name: pl.name })); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); },
           })),
         ],
       },
-      { label: this.isLiked(track.id) ? 'Remove from your Liked Songs' : 'Save to your Liked Songs', icon: this.isLiked(track.id) ? 'heart-fill' : 'heart', onClick: () => this.toggleLike(track) },
+      { label: this.isLiked(track.id) ? t('removeFromLiked') : t('saveToLiked'), icon: this.isLiked(track.id) ? 'heart-fill' : 'heart', onClick: () => this.toggleLike(track) },
     ];
     if (playlist?.is_owner && Number.isInteger(position)) {
-      items.push({ label: 'Remove from this playlist', icon: 'close', onClick: async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); } });
+      items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); } });
     }
     items.push(p.downloads[track.id]
-      ? { label: 'Remove download', icon: 'download', onClick: () => p.removeDownload(track.id).then(() => toast('Download removed')) }
-      : { label: 'Download', icon: 'download', onClick: () => p.download([track]).then(() => toast('Downloaded')).catch((err) => toast(err.message, { error: true })) });
+      ? { label: t('removeDownload'), icon: 'download', onClick: () => p.removeDownload(track.id).then(() => toast(t('downloadRemovedToast'))) }
+      : { label: t('download'), icon: 'download', onClick: () => p.download([track]).then(() => toast(t('downloadedToast'))).catch((err) => toast(err.message, { error: true })) });
     showMenu(e, items);
   }
 
@@ -292,15 +369,16 @@ class App {
     $('nav-back').addEventListener('click', () => history.back());
     $('nav-fwd').addEventListener('click', () => history.forward());
     $('new-playlist').addEventListener('click', () => this.createPlaylist());
+    $('lang-select')?.addEventListener('change', (e) => this.changeLanguage(e.target.value));
     $('user-menu-btn').addEventListener('click', (e) => showMenu(e, [
-      { label: 'Your stats', icon: 'sparkle', onClick: () => (location.hash = '#/stats') },
-      { label: 'Recently played', icon: 'clock', onClick: () => (location.hash = '#/recent') },
-      { label: 'Downloaded', icon: 'download', onClick: () => (location.hash = '#/downloads') },
-      { label: 'Under the hood', icon: 'cpu', onClick: () => (location.hash = '#/internals') },
-      { label: 'How Spotify works (evidence)', onClick: () => (location.hash = '#/docs') },
-      { label: 'Settings', onClick: () => (location.hash = '#/settings') },
+      { label: t('yourStats'), icon: 'sparkle', onClick: () => (location.hash = '#/stats') },
+      { label: t('recentlyPlayed'), icon: 'clock', onClick: () => (location.hash = '#/recent') },
+      { label: t('downloaded'), icon: 'download', onClick: () => (location.hash = '#/downloads') },
+      { label: t('navInternals'), icon: 'cpu', onClick: () => (location.hash = '#/internals') },
+      { label: t('howItWorks'), onClick: () => (location.hash = '#/docs') },
+      { label: t('settingsTitle'), onClick: () => (location.hash = '#/settings') },
       'sep',
-      { label: 'Log out', onClick: () => this.logout() },
+      { label: t('logoutTitle'), onClick: () => this.logout() },
     ]));
 
     let searchTimer;
@@ -344,22 +422,22 @@ class App {
     const v = this.player.view();
     const left = clear($('np-left'));
     if (v.track) {
-      const t = v.track;
-      const like = h('button', { class: `icon-btn${this.isLiked(t.id) ? ' on' : ''}`, 'aria-label': 'Save to Liked Songs', dataset: { likeId: t.id } }, icon(this.isLiked(t.id) ? 'heart-fill' : 'heart'));
-      like.addEventListener('click', () => this.toggleLike(t));
-      like.style.setProperty('color', this.isLiked(t.id) ? 'var(--accent)' : '');
+      const tr = v.track;
+      const like = h('button', { class: `icon-btn${this.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': this.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(this.isLiked(tr.id) ? 'heart-fill' : 'heart'));
+      like.addEventListener('click', () => this.toggleLike(tr));
+      like.style.setProperty('color', this.isLiked(tr.id) ? 'var(--accent)' : '');
       left.append(
-        h('a', { href: `#/album/${t.album.id}` }, img(t.album.cover)),
-        h('div', { class: 'meta' }, h('div', { class: 'title' }, h('a', { href: `#/album/${t.album.id}` }, t.title)), h('div', { class: 'sub' }, h('a', { href: `#/artist/${t.artist.id}` }, t.artist.name))),
+        h('a', { href: `#/album/${tr.album.id}` }, img(tr.album.cover)),
+        h('div', { class: 'meta' }, h('div', { class: 'title' }, h('a', { href: `#/album/${tr.album.id}` }, tr.title)), h('div', { class: 'sub' }, h('a', { href: `#/artist/${tr.artist.id}` }, tr.artist.name))),
         like);
     }
     const play = $('btn-play');
     clear(play).append(icon(v.isPlaying ? 'pause' : 'play'));
-    play.setAttribute('aria-label', v.isPlaying ? 'Pause' : 'Play');
+    play.setAttribute('aria-label', v.isPlaying ? t('pause') : t('play'));
     $('btn-shuffle').setAttribute('aria-pressed', String(!!v.shuffle));
     const rep = $('btn-repeat');
     rep.setAttribute('aria-pressed', String(v.repeat !== 'off'));
-    rep.setAttribute('aria-label', `Repeat: ${v.repeat}`);
+    rep.setAttribute('aria-label', `${t('repeat')}: ${v.repeat}`);
     clear(rep).append(icon(v.repeat === 'track' ? 'repeat-one' : 'repeat'));
     clear($('btn-mute')).append(icon(v.muted || v.volume === 0 ? 'mute' : 'volume'));
     $('btn-next').disabled = !v.track;
@@ -370,7 +448,7 @@ class App {
     const app = $('app');
     app.classList.toggle('remote', v.remote);
     const bar = clear($('connect-bar'));
-    if (v.remote) bar.append(icon('devices'), `Playing on ${this.connect.deviceName(v.deviceId)}`);
+    if (v.remote) bar.append(icon('devices'), t('playingOn', { device: this.connect.deviceName(v.deviceId) }));
   }
 
   tick() {
@@ -398,7 +476,7 @@ class App {
       const n = row.querySelector('.n');
       if (!n) continue;
       if (!n.dataset.n) n.dataset.n = n.textContent;
-      if (on && v.isPlaying) { if (!n.querySelector('.eq')) clear(n).append(h('span', { class: 'eq', 'aria-label': 'Playing' }, h('i'), h('i'), h('i'))); }
+      if (on && v.isPlaying) { if (!n.querySelector('.eq')) clear(n).append(h('span', { class: 'eq', 'aria-label': t('playing') }, h('i'), h('i'), h('i'))); }
       else if (n.textContent !== n.dataset.n) n.textContent = n.dataset.n;
     }
     for (const fab of document.querySelectorAll('[data-ctx-uri]')) {
@@ -429,86 +507,86 @@ class App {
     const seq = (this.rightSeq = (this.rightSeq || 0) + 1);
     const content = h('div');
     const head = (title) => {
-      const close = h('button', { class: 'icon-btn', 'aria-label': 'Close panel' }, icon('close'));
+      const close = h('button', { class: 'icon-btn', 'aria-label': t('closePanel') }, icon('close'));
       close.addEventListener('click', () => this.setRight(null));
       return h('div', { class: 'rp-head' }, h('h2', {}, title), close);
     };
     const v = this.player.view();
     if (this.rightMode === 'devices') {
-      content.append(head('Connect to a device'));
+      content.append(head(t('connectDevice')));
       const me = this.connect.identity.id;
       const devices = this.connect.devices.slice().sort((a, b) => (b.id === me) - (a.id === me));
       for (const d of devices) {
         const active = d.is_active || (!v.remote && d.id === me && v.track);
         const b = h('button', { class: `device${active ? ' active' : ''}` }, icon(d.type === 'smartphone' || d.type === 'tablet' ? 'phone' : 'computer'),
-          h('div', {}, d.id === me ? 'This browser' : d.name, h('small', {}, active ? (v.isPlaying ? 'Playing' : 'Active') : d.id === me ? d.name : 'Tap to play here')));
+          h('div', {}, d.id === me ? t('thisBrowser') : d.name, h('small', {}, active ? (v.isPlaying ? t('playing') : t('active')) : d.id === me ? d.name : t('tapToPlay'))));
         b.addEventListener('click', async () => {
           if (active) return;
           try { await this.connect.transfer(d.id); } catch (err) { toast(err.message, { error: true }); }
         });
         content.append(b);
       }
-      if (!this.connect.connected) content.append(h('p', { class: 'dim small' }, 'Connecting…'));
-      content.append(h('div', { class: 'rp-card' }, h('h3', {}, 'Try it'), h('p', { class: 'muted small', style: { margin: 0 } },
-        'Open Ainos in another tab, browser or phone and log in with the same account. Each one shows up here. Pick a device to move playback there (it continues at the same position), or control the active device from any other.',
-        h('br'), h('br'), 'For phones on your Wi-Fi, start the server with ', h('code', { class: 'mono' }, 'HOST=0.0.0.0'), '.')));
+      if (!this.connect.connected) content.append(h('p', { class: 'dim small' }, t('connecting')));
+      content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('tryIt')), h('p', { class: 'muted small', style: { margin: 0 } },
+        t('connectHelp'),
+        h('br'), h('br'), h('code', { class: 'mono' }, 'HOST=0.0.0.0'))));
     } else if (this.rightMode === 'queue') {
-      content.append(head('Queue'));
-      if (!v.track) content.append(h('p', { class: 'muted' }, 'Nothing playing.'));
+      content.append(head(t('queue')));
+      if (!v.track) content.append(h('p', { class: 'muted' }, t('nothingPlaying')));
       else {
-        content.append(h('div', { class: 'queue-label' }, 'Now playing'), this.queueItem(v.track, { current: true }));
+        content.append(h('div', { class: 'queue-label' }, t('nowPlaying')), this.queueItem(v.track, { current: true }));
         if (v.remote) {
-          content.append(h('p', { class: 'muted small' }, `The queue lives on ${this.connect.deviceName(v.deviceId)}. Use “Add to queue” here and it is sent there.`));
+          content.append(h('p', { class: 'muted small' }, t('queueLivesOn', { device: this.connect.deviceName(v.deviceId) })));
         } else {
           const p = this.player;
           if (p.userQueue.length) {
-            content.append(h('div', { class: 'queue-label' }, 'Next in queue'));
-            p.userQueue.forEach((t, i) => content.append(this.queueItem(t, { onPlay: () => p.playFromQueue(i), onRemove: () => p.removeFromQueue(i) })));
+            content.append(h('div', { class: 'queue-label' }, t('nextInQueue')));
+            p.userQueue.forEach((tr, i) => content.append(this.queueItem(tr, { onPlay: () => p.playFromQueue(i), onRemove: () => p.removeFromQueue(i) })));
           }
           const up = p.upNext(40);
           if (up.length) {
-            content.append(h('div', { class: 'queue-label' }, `Next from: ${p.context?.title || ''}`));
+            content.append(h('div', { class: 'queue-label' }, t('nextFrom', { title: p.context?.title || '' })));
             up.forEach(({ track, orderIndex }) => content.append(this.queueItem(track, { onPlay: () => p.jumpTo(orderIndex) })));
           }
-          if (!p.userQueue.length && !up.length) content.append(h('p', { class: 'muted small' }, p.repeat === 'off' ? 'Nothing after this one. Turn on repeat or add songs to the queue.' : 'Repeat is on.'));
+          if (!p.userQueue.length && !up.length) content.append(h('p', { class: 'muted small' }, p.repeat === 'off' ? t('nothingAfter') : t('repeatIsOn')));
         }
       }
     } else {
-      content.append(head(v.contextTitle || 'Now playing'));
+      content.append(head(v.contextTitle || t('nowPlaying')));
       if (!v.track) {
-        content.append(h('p', { class: 'muted' }, 'Pick something to play. Details about the stream, its loudness and audio features show up here.'));
+        content.append(h('p', { class: 'muted' }, t('pickSomething')));
       } else {
-        const t = v.track;
-        content.append(img(t.album.cover, 'rp-cover'), h('div', { class: 'rp-title' }, h('a', { href: `#/album/${t.album.id}` }, t.title)), h('div', { class: 'muted' }, h('a', { href: `#/artist/${t.artist.id}` }, t.artist.name)));
-        if (v.contextUri && uriToRoute(v.contextUri)) content.append(h('div', { class: 'dim small', style: { 'margin-top': '4px' } }, 'Playing from ', h('a', { href: uriToRoute(v.contextUri) }, v.contextTitle || 'context')));
+        const tr = v.track;
+        content.append(img(tr.album.cover, 'rp-cover'), h('div', { class: 'rp-title' }, h('a', { href: `#/album/${tr.album.id}` }, tr.title)), h('div', { class: 'muted' }, h('a', { href: `#/artist/${tr.artist.id}` }, tr.artist.name)));
+        if (v.contextUri && uriToRoute(v.contextUri)) content.append(h('div', { class: 'dim small', style: { 'margin-top': '4px' } }, t('playingFrom'), h('a', { href: uriToRoute(v.contextUri) }, v.contextTitle || 'context')));
         if (!v.remote) {
           const d = this.player.debug();
           const lat = d.metrics.latencies.at(-1);
           const nextUp = this.player.peekNext();
           const cacheState = h('dd', {}, '…');
           this.player.isCached(this.player.deck.manifest).then((s) => { cacheState.textContent = s || 'network'; });
-          content.append(h('div', { class: 'rp-card' }, h('h3', {}, 'Stream'),
+          content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('streamCard')),
             h('dl', { class: 'kv' },
-              h('dt', {}, 'Quality'), h('dd', {}, d.active.quality ? `${d.active.quality} · ${d.active.kbps} kbps` : '—'),
-              h('dt', {}, 'Loudness'), h('dd', {}, d.normalization ? `${d.normalization.loudness_lufs.toFixed(1)} LUFS → ${d.active.gainDb >= 0 ? '+' : ''}${d.active.gainDb.toFixed(1)} dB` : '—'),
-              h('dt', {}, 'Start latency'), h('dd', {}, lat && lat.title === t.title ? `${lat.ms} ms${lat.prefetched ? ' (prefetched)' : ''}` : '—'),
-              h('dt', {}, 'Source'), cacheState,
-              h('dt', {}, 'Next track'), h('dd', {}, nextUp ? `${nextUp.title} · ${d.prefetch.trackId === nextUp.id ? d.prefetch.state : 'loads at −30 s'}` : '—'),
-              h('dt', {}, 'Counts as a stream'), h('dd', {}, d.session ? (d.session.msPlayed >= 30000 ? 'yes ✓' : `after ${Math.ceil((30000 - d.session.msPlayed) / 1000)} s more`) : '—'))));
+              h('dt', {}, t('qualityLabel')), h('dd', {}, d.active.quality ? `${d.active.quality} · ${d.active.kbps} kbps` : '—'),
+              h('dt', {}, t('loudnessLabel')), h('dd', {}, d.normalization ? `${d.normalization.loudness_lufs.toFixed(1)} LUFS → ${d.active.gainDb >= 0 ? '+' : ''}${d.active.gainDb.toFixed(1)} dB` : '—'),
+              h('dt', {}, t('startLatencyLabel')), h('dd', {}, lat && lat.title === tr.title ? `${lat.ms} ms${lat.prefetched ? ' (prefetched)' : ''}` : '—'),
+              h('dt', {}, t('sourceLabel')), cacheState,
+              h('dt', {}, t('nextTrackLabel')), h('dd', {}, nextUp ? `${nextUp.title} · ${d.prefetch.trackId === nextUp.id ? d.prefetch.state : 'loads at −30 s'}` : '—'),
+              h('dt', {}, t('countsAsStreamLabel')), h('dd', {}, d.session ? (d.session.msPlayed >= 30000 ? 'yes ✓' : `after ${Math.ceil((30000 - d.session.msPlayed) / 1000)} s more`) : '—'))));
         }
-        const f = t.features;
+        const f = tr.features;
         if (f) {
           const bar = (label, val) => h('div', { class: 'feature-bar' }, h('span', {}, label), h('div', { class: 'bar' }, h('i', { style: { width: `${Math.round(val * 100)}%` } })), h('span', { class: 'dim' }, `${Math.round(val * 100)}`));
-          content.append(h('div', { class: 'rp-card' }, h('h3', {}, 'Audio features'),
-            h('div', { class: 'dim small', style: { 'margin-bottom': '8px' } }, `${Math.round(f.tempo)} BPM · ${KEY_NAMES[f.key]} ${f.mode ? 'major' : 'minor'} · ${t.genre}`),
-            h('div', { class: 'feature-bars' }, bar('Energy', f.energy), bar('Danceability', f.danceability), bar('Valence', f.valence), bar('Acousticness', f.acousticness))));
+          content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('audioFeaturesCard')),
+            h('div', { class: 'dim small', style: { 'margin-bottom': '8px' } }, `${Math.round(f.tempo)} BPM · ${KEY_NAMES[f.key]} ${f.mode ? 'major' : 'minor'} · ${translateGenre(tr.genre)}`),
+            h('div', { class: 'feature-bars' }, bar(t('energy'), f.energy), bar(t('danceability'), f.danceability), bar(t('valence'), f.valence), bar(t('acousticness'), f.acousticness))));
         }
-        let artist = this.artistCache.get(t.artist.id);
+        let artist = this.artistCache.get(tr.artist.id);
         if (!artist) {
-          api.get(`/api/artists/${t.artist.id}`).then((a) => { this.artistCache.set(a.id, a); this.scheduleRight(); }).catch(() => {});
+          api.get(`/api/artists/${tr.artist.id}`).then((a) => { this.artistCache.set(a.id, a); this.scheduleRight(); }).catch(() => {});
         } else {
-          content.append(h('div', { class: 'rp-card' }, h('h3', {}, 'About the artist'),
-            h('a', { href: `#/artist/${artist.id}`, style: { display: 'flex', gap: '12px', 'align-items': 'center', 'margin-bottom': '8px' } }, img(artist.image, 'art'), h('div', {}, h('b', {}, artist.name), h('div', { class: 'dim small' }, `${fmtNumber(artist.monthly_listeners)} monthly listeners`))),
+          content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('aboutArtistCard')),
+            h('a', { href: `#/artist/${artist.id}`, style: { display: 'flex', gap: '12px', 'align-items': 'center', 'margin-bottom': '8px' } }, img(artist.image, 'art'), h('div', {}, h('b', {}, artist.name), h('div', { class: 'dim small' }, t('monthlyListeners', { n: fmtNumber(artist.monthly_listeners) })))),
             h('p', { class: 'muted small', style: { margin: 0 } }, artist.bio)));
           content.querySelector('.rp-card:last-child .art')?.style.setProperty('width', '48px');
           content.querySelector('.rp-card:last-child .art')?.style.setProperty('border-radius', '50%');
@@ -519,11 +597,11 @@ class App {
     clear(panel).append(...content.childNodes);
   }
 
-  queueItem(t, { current = false, onPlay, onRemove } = {}) {
-    const row = h('div', { class: `queue-item${current ? ' current' : ''}` }, img(t.album.cover), h('div', { class: 'meta' }, h('div', { class: 't' }, t.title), h('div', { class: 's' }, t.artist.name)));
+  queueItem(tr, { current = false, onPlay, onRemove } = {}) {
+    const row = h('div', { class: `queue-item${current ? ' current' : ''}` }, img(tr.album.cover), h('div', { class: 'meta' }, h('div', { class: 't' }, tr.title), h('div', { class: 's' }, tr.artist.name)));
     if (onPlay) { row.style.cursor = 'pointer'; row.addEventListener('dblclick', onPlay); row.addEventListener('click', (e) => { if (matchMedia('(pointer: coarse)').matches || e.detail === 0) onPlay(); }); }
     if (onRemove) {
-      const x = h('button', { class: 'icon-btn', 'aria-label': `Remove ${t.title} from queue` }, icon('close'));
+      const x = h('button', { class: 'icon-btn', 'aria-label': t('removeFromQueueLabel', { title: tr.title }) }, icon('close'));
       x.addEventListener('click', (e) => { e.stopPropagation(); onRemove(); });
       row.append(x);
     }

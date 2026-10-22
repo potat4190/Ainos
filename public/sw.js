@@ -4,12 +4,12 @@
 // browser equivalent. Audio is cached as whole files and range requests from
 // the <audio> element are answered by slicing the cached blob.
 
-const SHELL = 'ainos-shell-v1';
+const SHELL = 'ainos-shell-v2';
 const OFFLINE = 'ainos-offline';
 const LRU = 'ainos-lru';
 const LRU_LIMIT = 60 * 1024 * 1024; // 60 MB
 const META = '/__lru-meta__';
-const SHELL_FILES = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/ui.js', '/js/player.js', '/js/connect.js', '/js/views.js', '/js/markdown.js', '/img/icon.svg', '/manifest.webmanifest'];
+const SHELL_FILES = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/i18n.js', '/js/ui.js', '/js/player.js', '/js/connect.js', '/js/views.js', '/js/markdown.js', '/img/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
@@ -34,7 +34,17 @@ async function writeMeta(meta) {
   await c.put(META, new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
 }
 
-async function lruTouch(key, bytes) {
+// Meta is read-modify-write; concurrent touches (parallel range requests plus a
+// 'cache' message) would otherwise drop entries, leaving cached files that are
+// never evicted. Serialize them.
+let metaLock = Promise.resolve();
+function lruTouch(key, bytes) {
+  const run = metaLock.then(() => lruTouchNow(key, bytes));
+  metaLock = run.catch(() => {});
+  return run;
+}
+
+async function lruTouchNow(key, bytes) {
   const meta = await readMeta();
   meta[key] = { bytes: bytes ?? meta[key]?.bytes ?? 0, at: Date.now() };
   let total = Object.values(meta).reduce((s, m) => s + m.bytes, 0);

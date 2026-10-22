@@ -2,7 +2,7 @@
   "name": "ainos",
   "version": "1.0.0",
   "private": true,
-  "description": "Ainos: a Spotify-style music streaming app (catalog, chunked streaming, loudness normalization, recommendations, Connect-style multi-device control). Zero dependencies.",
+  "description": "Ainos: a Christian faith-based worship & praise music streaming app with multi-language recommendations (English, Hindi, Nepali, Chinese, Japanese, Spanish) and unified all-access features. Zero dependencies.",
   "type": "module",
   "engines": {
     "node": ">=22.13"

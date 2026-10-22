@@ -11,8 +11,9 @@ export function deviceIdentity() {
     try { localStorage.setItem('ainos.device_id', id); } catch { /* ignore */ }
   }
   // Each browser tab is its own device, so two tabs can control each other.
-  let tab = sessionStorage.getItem('ainos.tab');
-  if (!tab) { tab = Math.random().toString(36).slice(2, 6); sessionStorage.setItem('ainos.tab', tab); }
+  let tab;
+  try { tab = sessionStorage.getItem('ainos.tab'); } catch { /* storage blocked */ }
+  if (!tab) { tab = Math.random().toString(36).slice(2, 6); try { sessionStorage.setItem('ainos.tab', tab); } catch { /* ignore */ } }
   const ua = navigator.userAgent;
   const type = /Mobi|Android|iPhone/.test(ua) ? 'smartphone' : /iPad|Tablet/.test(ua) ? 'tablet' : 'computer';
   const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';

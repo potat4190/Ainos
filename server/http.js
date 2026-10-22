@@ -35,7 +35,11 @@ export class Router {
       pathMatched = true;
       if (r.method !== method && !(method === 'HEAD' && r.method === 'GET')) continue;
       const params = {};
-      r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
+      try {
+        r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
+      } catch {
+        throw new HttpError(400, 'Malformed URL'); // e.g. a stray "%" would otherwise be a 500
+      }
       return { handler: r.handler, params };
     }
     return pathMatched ? { methodNotAllowed: true } : null;

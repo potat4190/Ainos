@@ -25,13 +25,20 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
 
+// Only kinds that have a page in the router (app.js ROUTES) get a link;
+// e.g. ainos:chart:* and ainos:track:* have no page and return null.
+const ID_ROUTES = new Set(['album', 'artist', 'playlist', 'mix', 'radio', 'genre']);
 export function uriToRoute(uri) {
+  if (uri === 'ainos:downloads') return '#/downloads';
+  if (uri === 'ainos:recent') return '#/recent';
   const m = /^ainos:(\w+):(.+)$/.exec(uri || '');
   if (!m) return null;
   const [, kind, id] = m;
   if (kind === 'collection') return '#/liked';
-  if (kind === 'mix') return `#/mix/${id}`;
-  return `#/${kind}/${id}`;
+  if (kind === 'stats') return '#/stats';
+  if (kind === 'search') return `#/search?q=${encodeURIComponent(id)}`;
+  if (ID_ROUTES.has(kind)) return `#/${kind}/${encodeURIComponent(id)}`;
+  return null;
 }
 
 function shuffleRest(n, first) {
@@ -49,7 +56,6 @@ export class Player extends EventTarget {
     this.deviceId = deviceId;
     this.settings = { ...DEFAULTS, ...store.get('ainos.settings', {}) };
     this.me = null;
-    this.skipsRemaining = null;
     this.decks = [this.#makeDeck(), this.#makeDeck()];
     this.active = 0;
     this.ctx = null;
@@ -182,14 +188,17 @@ export class Player extends EventTarget {
     }
   }
 
-  async #load(deck, track) {
+  /** Resolves false (deck untouched) when `isCurrent()` says the load went stale while the manifest was in flight. */
+  async #load(deck, track, isCurrent = () => true) {
     const manifest = await this.getManifest(track.id);
+    if (!isCurrent()) return false;
     deck.trackId = track.id;
     deck.track = track;
     deck.manifest = manifest;
     deck.audio.src = manifest.file.url;
     deck.audio.load();
     this.#applyGain(deck);
+    return true;
   }
 
   // -------------------------------------------------------------- playback
@@ -202,7 +211,7 @@ export class Player extends EventTarget {
     const token = ++this.loadToken;
     const t0 = performance.now();
     let prefetched = false;
-    if (this.spare.trackId === track.id && this.spare.audio.src) {
+    if (this.spare.trackId === track.id && this.spare.audio.src && !this.spare.audio.error) {
       this.#unload(this.deck);
       this.active = 1 - this.active;
       prefetched = true;
@@ -212,7 +221,8 @@ export class Player extends EventTarget {
       this.deck.audio.pause();
       this.metrics.coldStarts++;
       try {
-        await this.#load(this.deck, track);
+        // A newer startTrack may finish first; this one must not then overwrite its src.
+        await this.#load(this.deck, track, () => token === this.loadToken);
       } catch (err) {
         if (token === this.loadToken) this.#emit('error', { message: `Can’t play “${track.title}”: ${err.message}` });
         return;
@@ -277,13 +287,15 @@ export class Player extends EventTarget {
   async #prefetchNext() {
     const next = this.peekNext();
     if (!next || next.id === this.track?.id) { this.prefetch = { trackId: null, state: 'none' }; return; }
-    this.prefetch = { trackId: next.id, state: 'loading' };
+    const prefetch = { trackId: next.id, state: 'loading' };
+    this.prefetch = prefetch;
+    const deck = this.spare;
     this.#emit('debug');
     try {
-      await this.#load(this.spare, next);
-      this.#log('prefetch', { track_id: next.id });
+      // Stale if invalidated, superseded or if the decks swapped meanwhile: never touch the active deck.
+      if (await this.#load(deck, next, () => this.prefetch === prefetch && deck === this.spare)) this.#log('prefetch', { track_id: next.id });
     } catch {
-      this.prefetch = { trackId: null, state: 'failed' };
+      if (this.prefetch === prefetch) this.prefetch = { trackId: null, state: 'failed' };
     }
     this.#emit('debug');
   }
@@ -303,7 +315,9 @@ export class Player extends EventTarget {
     this.#emit('error', { message: `Playback error${err?.message ? `: ${err.message}` : ''}. Skipping.` });
     this.#endSession('trackerror');
     this.manifests.delete(this.track?.id);
-    setTimeout(() => this.next('trackerror'), 600);
+    const token = this.loadToken;
+    // Skip only if the user hasn't already started something else in the meantime.
+    setTimeout(() => { if (token === this.loadToken) this.next('trackerror'); }, 600);
   }
 
   #endSession(reasonEnd) {
@@ -336,16 +350,8 @@ export class Player extends EventTarget {
     return out;
   }
 
-  canSkip() {
-    return !(this.me?.plan === 'free' && this.skipsRemaining !== null && this.skipsRemaining <= 0);
-  }
-
   async next(reason = 'fwdbtn') {
     if (this.isRemote) return this.connect.command({ type: 'next' });
-    if (reason === 'fwdbtn') {
-      if (!this.canSkip()) return this.#emit('error', { message: 'Free plan: you’ve used your 6 skips this hour. Switch to Premium in Settings for unlimited skips.' });
-      if (this.me?.plan === 'free' && this.skipsRemaining !== null) this.skipsRemaining--;
-    }
     if (this.userQueue.length) {
       this.#endSession(reason);
       return this.startTrack(this.userQueue.shift(), { reason });
@@ -604,15 +610,19 @@ export class Player extends EventTarget {
   async onRemoteState(state) {
     if (!state) return;
     if (!state.device_id) {
+      this.remoteSeq = (this.remoteSeq || 0) + 1; // drop any remote state still resolving
       // nobody is playing anymore; remember where we were so Play resumes here
       if (this.isRemote) this.resumeState = state;
       this.remote = null;
       this.#changed();
       return;
     }
-    if (state.device_id === this.deviceId) return;
+    if (state.device_id === this.deviceId) { this.remoteSeq = (this.remoteSeq || 0) + 1; return; } // we're active: drop pending remote states
     if (this.session) { this.#endSession('remote'); this.pause(); }
+    // States can resolve out of order (cached vs fetched track); only the latest may win.
+    const seq = (this.remoteSeq = (this.remoteSeq || 0) + 1);
     const [track] = state.track_id ? await tracksByIds([state.track_id]) : [null];
+    if (seq !== this.remoteSeq) return;
     this.remote = { ...state, track, receivedAt: Date.now() };
     this.#changed();
   }
@@ -638,6 +648,7 @@ export class Player extends EventTarget {
   }
 
   async onTakeOver({ state, play }) {
+    this.remoteSeq = (this.remoteSeq || 0) + 1; // a remote state still resolving must not re-mark us as remote
     this.remote = null;
     if (state) await this.restoreState(state, { play, reason: 'transfer' });
     this.#changed();
@@ -666,7 +677,8 @@ export class Player extends EventTarget {
     const batch = this.queue.splice(0, 200);
     const body = JSON.stringify({ events: batch });
     if (beacon && navigator.sendBeacon) {
-      navigator.sendBeacon('/api/events', new Blob([body], { type: 'text/plain' }));
+      // sendBeacon refuses payloads over its quota (~64 KB); keep them for the next flush.
+      if (!navigator.sendBeacon('/api/events', new Blob([body], { type: 'text/plain' }))) this.queue.unshift(...batch);
       return;
     }
     try {
@@ -683,25 +695,30 @@ export class Player extends EventTarget {
     if (!sw) return Promise.resolve(null);
     return new Promise((resolve) => {
       const ch = new MessageChannel();
-      ch.port1.onmessage = (e) => resolve(e.data);
+      const done = (data) => { clearTimeout(timer); ch.port1.close(); resolve(data); };
+      const timer = setTimeout(() => done(null), 60_000);
+      ch.port1.onmessage = (e) => done(e.data);
       sw.postMessage(msg, [ch.port2]);
-      setTimeout(() => resolve(null), 60_000);
     });
   }
 
   async download(tracks) {
     if (!navigator.serviceWorker?.controller) throw new Error('Offline storage needs the service worker (reload the page once)');
     let ok = 0;
-    for (const t of tracks) {
-      const m = await this.getManifest(t.id);
-      const res = await this.#swMessage({ type: 'download', url: m.file.url });
-      if (res?.ok) {
-        this.downloads[t.id] = { track: t, manifest: m, bytes: res.bytes, savedAt: Date.now() };
-        ok++;
+    try {
+      for (const t of tracks) {
+        const m = await this.getManifest(t.id);
+        const res = await this.#swMessage({ type: 'download', url: m.file.url });
+        if (res?.ok) {
+          this.downloads[t.id] = { track: t, manifest: m, bytes: res.bytes, savedAt: Date.now() };
+          ok++;
+        }
       }
+    } finally {
+      // persist what did get saved even if a later track failed (e.g. went offline mid-batch)
+      store.set('ainos.downloads', this.downloads);
+      this.#emit('downloads');
     }
-    store.set('ainos.downloads', this.downloads);
-    this.#emit('downloads');
     return ok;
   }
 
