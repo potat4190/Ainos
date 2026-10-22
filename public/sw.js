@@ -4,7 +4,7 @@
 // browser equivalent. Audio is cached as whole files and range requests from
 // the <audio> element are answered by slicing the cached blob.
 
-const SHELL = 'ainos-shell-v2';
+const SHELL = 'ainos-shell-v3';
 const OFFLINE = 'ainos-offline';
 const LRU = 'ainos-lru';
 const LRU_LIMIT = 60 * 1024 * 1024; // 60 MB

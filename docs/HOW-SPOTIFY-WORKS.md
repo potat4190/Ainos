@@ -226,7 +226,7 @@ Spotify Connect lets you start music on your phone and play it on a laptop or sp
 | Encrypted LRU cache | Service worker LRU cache (60 MB) + pinned offline downloads, range-served from cache | `public/sw.js` |
 | Quality tiers | Low 176 kbps / High 353 kbps; every account can stream High (single All-Access plan); "Automatic" uses Network Information API | manifest route, `player.js` (`#quality`) |
 | Loudness normalization | BS.1770-4 meter (verified: −3.01 LUFS on the reference tone); Loud/Normal/Quiet targets; gain capped at −1 dBFS peak | `server/loudness.js`, `player.js` (`normalizationGainDb`) |
-| Event delivery | Batched client events → hourly NDJSON buckets + SQLite; `sendBeacon` on page close | `server/events.js`, `player.js` (`flush`) |
+| Event delivery | Batched client events → hourly NDJSON buckets (local) + the database (SQLite locally, Postgres when hosted); `sendBeacon` on page close | `server/events.js`, `player.js` (`flush`) |
 | 30-second rule | `play_end` with ≥ 30 000 ms ⇒ a stream | `server/events.js` |
 | Collaborative filtering | Weighted ALS on streams + likes (8 factors, λ = 10, chosen by a parameter sweep) scores tracks for each user; co-listening cosine powers track-to-track similarity (it beat ALS item factors on this small catalog: 2.76 vs 2.06 same-genre tracks in the top 3) | `server/recommend.js` |
 | Audio-based cold start | Audio-feature vectors blended in, weighted by how much play data a track has | `server/recommend.js` (`similarTracks`) |
@@ -241,7 +241,7 @@ Spotify Connect lets you start music on your phone and play it on a laptop or sp
 - **Audio:** Ainos ships 16-bit PCM WAV that it synthesizes itself (Node has no built-in lossy encoder, and real songs can't be redistributed). Spotify uses Ogg Vorbis, AAC and FLAC.
 - **No DRM:** Ainos protects files with signed, expiring URLs only. Spotify uses Widevine on the web and an encrypted cache.
 - **No peer-to-peer:** Spotify itself dropped it in 2014.
-- **Recommendation scale:** 33 tracks and 301 users in Ainos versus 100M+ tracks at Spotify. The algorithms are the same family; the infrastructure (Pub/Sub, Dataflow, Voyager indexes) is replaced by SQLite and in-process code.
+- **Recommendation scale:** 33 tracks and 301 users in Ainos versus 100M+ tracks at Spotify. The algorithms are the same family; the infrastructure (Pub/Sub, Dataflow, Voyager indexes) is replaced by SQLite (or Postgres when hosted) and in-process code.
 - **Loud mode:** Ainos caps gain at −1 dBFS peak instead of running a limiter, so very quiet, peaky masters may stay slightly below target.
 
 ---

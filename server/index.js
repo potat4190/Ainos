@@ -9,9 +9,10 @@ const dataDir = process.env.AINOS_DATA || path.join(ROOT, 'data');
 const PORT = Number(process.env.PORT || 4321);
 const HOST = process.env.HOST || '127.0.0.1';
 
+const usePostgres = !!process.env.DATABASE_URL; // data lives in Postgres; nothing to generate locally
 const hasDb = fs.existsSync(path.join(dataDir, 'ainos.db'));
 const hasMedia = fs.existsSync(path.join(dataDir, 'media'));
-if (!hasDb || !hasMedia) {
+if (!usePostgres && (!hasDb || !hasMedia)) {
   // A database without its media/ folder (e.g. copied without data/media) means every song and cover would 404.
   console.log(hasDb
     ? `Catalog database found but ${path.join(dataDir, 'media')} is missing — regenerating the catalog (old database kept as ainos.db.bak; takes ~15 seconds)...\n`
@@ -28,7 +29,7 @@ if (!hasDb || !hasMedia) {
   console.log('');
 }
 
-const app = createApp({ dataDir });
+const app = await createApp({ dataDir });
 app.server.listen(PORT, HOST, () => {
   console.log(`Ainos is running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   if (HOST === '0.0.0.0') {

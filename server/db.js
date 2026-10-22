@@ -151,10 +151,14 @@ CREATE TABLE IF NOT EXISTS generated_playlists (
   PRIMARY KEY (user_id, kind, period)
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-  kind UNINDEXED, ref_id UNINDEXED, title, subtitle,
-  tokenize = 'unicode61 remove_diacritics 2',
-  prefix = '1 2 3'
+-- Search documents (tracks, artists, albums, public playlists). Ranking is done
+-- in the app (catalog.js), so the same code works on SQLite and Postgres.
+CREATE TABLE IF NOT EXISTS search_index (
+  kind     TEXT NOT NULL,
+  ref_id   TEXT NOT NULL,
+  title    TEXT NOT NULL,
+  subtitle TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (kind, ref_id)
 );
 `;
 
@@ -184,6 +188,13 @@ function migrate(db) {
     db.exec('UPDATE tracks SET language = (SELECT a.language FROM artists a WHERE a.id = tracks.artist_id)');
   }
   db.exec('CREATE INDEX IF NOT EXISTS tracks_language ON tracks(language)');
+
+  // Search used to live in an FTS5 table; move its rows into search_index.
+  const hasFts = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'search_fts'").get();
+  if (hasFts) {
+    db.exec("INSERT OR IGNORE INTO search_index (kind, ref_id, title, subtitle) SELECT kind, ref_id, title, COALESCE(subtitle, '') FROM search_fts");
+    db.exec('DROP TABLE search_fts');
+  }
 }
 
 export function openDb(file) {

@@ -13,7 +13,6 @@
 //    brute-force cosine is exact and fast enough for this catalog).
 
 import { isoWeek, isoDay, mulberry32, hashSeed, shuffled } from './util.js';
-import { stmt } from './db.js';
 
 // Defaults sized for a small catalog: few factors + strong regularization, so
 // the model generalizes instead of memorizing (K must be well below #items).
@@ -75,8 +74,10 @@ function alsStep(rows, other, k, lambda) {
 }
 
 export class Recommender {
-  constructor(db, opts = {}) {
-    this.db = db;
+  /** @param {import('./store.js').Store} store */
+  constructor(store, opts = {}) {
+    this.store = store;
+    this.training = null;
     this.opts = { ...DEFAULTS, ...opts };
     this.model = null;
     this.trainedAt = 0;
@@ -91,7 +92,7 @@ export class Recommender {
       this.timer = setTimeout(() => {
         this.timer = null;
         this.pending = 0;
-        this.train();
+        this.train().catch(() => {}); // keep serving the previous model if a retrain fails
       }, 1500);
       this.timer.unref?.();
     }
@@ -101,14 +102,21 @@ export class Recommender {
     if (this.timer) clearTimeout(this.timer);
   }
 
+  /** Train once; concurrent callers share the same run. */
   train() {
+    if (!this.training) this.training = this.#train().finally(() => { this.training = null; });
+    return this.training;
+  }
+
+  async #train() {
     const t0 = Date.now();
-    const db = this.db;
     const { factors: K, lambda: LAMBDA, alpha: ALPHA, iterations: ITERS } = this.opts;
-    const tracks = db.prepare(`SELECT id, artist_id, genre, language, tempo, key, mode, energy, valence, danceability, acousticness FROM tracks ORDER BY id`).all();
+    const [tracks, interactions, likes] = await Promise.all([
+      this.store.all('SELECT id, artist_id, genre, language, tempo, key, mode, energy, valence, danceability, acousticness FROM tracks ORDER BY id'),
+      this.store.all('SELECT user_id, track_id, COUNT(*) AS n FROM streams GROUP BY user_id, track_id'),
+      this.store.all('SELECT user_id, track_id FROM liked_tracks'),
+    ]);
     const itemIndex = new Map(tracks.map((t, i) => [t.id, i]));
-    const interactions = db.prepare('SELECT user_id, track_id, COUNT(*) AS n FROM streams GROUP BY user_id, track_id').all();
-    const likes = db.prepare('SELECT user_id, track_id FROM liked_tracks').all();
 
     const userIndex = new Map();
     const weights = new Map(); // "u:i" -> raw weight
@@ -184,14 +192,15 @@ export class Recommender {
     return l;
   }
 
-  ensure() {
-    if (!this.model) this.train();
+  /** The trained model, training first if needed (e.g. on a cold start). */
+  async ready() {
+    if (!this.model) await this.train();
     return this.model;
   }
 
   /** Item-item similarity: co-listening blended with audio content. */
-  similarTracks(trackId, n = 20, { cfWeight = 0.7, language = null } = {}) {
-    const m = this.ensure();
+  async similarTracks(trackId, n = 20, { cfWeight = 0.7, language = null } = {}) {
+    const m = await this.ready();
     const i = m.itemIndex.get(trackId);
     if (i === undefined) return [];
     const cfConfidence = Math.min(1, m.playCounts[i] / 50); // little data -> lean on content
@@ -210,12 +219,16 @@ export class Recommender {
   }
 
   /** Per-user scores for every track (hybrid CF + content profile). */
-  scoresForUser(userId) {
-    const m = this.ensure();
+  async scoresForUser(userId) {
+    const m = await this.ready();
     const u = m.userIndex.get(userId);
     const heard = new Map();
-    for (const r of stmt(this.db, 'SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? GROUP BY track_id').all(userId)) heard.set(r.track_id, r.n);
-    for (const r of stmt(this.db, 'SELECT track_id FROM liked_tracks WHERE user_id = ?').all(userId)) heard.set(r.track_id, (heard.get(r.track_id) || 0) + 4);
+    const [played, liked] = await Promise.all([
+      this.store.all('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? GROUP BY track_id', [userId]),
+      this.store.all('SELECT track_id FROM liked_tracks WHERE user_id = ?', [userId]),
+    ]);
+    for (const r of played) heard.set(r.track_id, r.n);
+    for (const r of liked) heard.set(r.track_id, (heard.get(r.track_id) || 0) + 4);
 
     // Content taste profile = weighted mean of content vectors of what they played.
     const profile = new Float64Array(m.content[0].length);
@@ -242,8 +255,8 @@ export class Recommender {
   // can share a single scoring pass across them.
 
   /** Tracks strictly in the requested language, ranked by the user's taste profile. */
-  recommendForLanguage(userId, language = 'en', n = 12, { taste = null } = {}) {
-    const { scores } = taste || this.scoresForUser(userId);
+  async recommendForLanguage(userId, language = 'en', n = 12, { taste = null } = {}) {
+    const { scores } = taste || (await this.scoresForUser(userId));
     return scores
       .filter((s) => s.language === language)
       .sort((a, b) => b.score - a.score)
@@ -254,8 +267,8 @@ export class Recommender {
   /** Discover Weekly: unheard tracks, ranked (prioritizing user's language), max 2 per artist, frozen per ISO week. */
   discoverWeekly(userId, n = 12, { language = null, taste = null } = {}) {
     const period = language ? `${isoWeek()}-${language}` : isoWeek();
-    return this.#snapshot(userId, 'discover-weekly', period, () => {
-      const { scores, heard, coldStart } = taste || this.scoresForUser(userId);
+    return this.#snapshot(userId, 'discover-weekly', period, async () => {
+      const { scores, heard, coldStart } = taste || (await this.scoresForUser(userId));
       const perArtist = new Map();
       const out = [];
       for (const s of rankedFor(scores.filter((s) => !heard.has(s.id)), language)) {
@@ -272,9 +285,9 @@ export class Recommender {
   }
 
   /** Daily Mixes: one per top genre, mixing favourites with close recommendations, prioritizing the active language. */
-  dailyMixes(userId, maxMixes = 3, { language = null, taste = null } = {}) {
+  async dailyMixes(userId, maxMixes = 3, { language = null, taste = null } = {}) {
     const day = language ? `${isoDay()}-${language}` : isoDay();
-    const { scores, heard } = taste || this.scoresForUser(userId);
+    const { scores, heard } = taste || (await this.scoresForUser(userId));
     if (heard.size === 0 && !language) return [];
     const byId = new Map(scores.map((s) => [s.id, s]));
     const genreWeight = new Map();
@@ -290,7 +303,7 @@ export class Recommender {
     const genres = [...genreWeight.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxMixes).map(([g]) => g);
     // Unheard tracks ranked once for all mixes; the language lift puts in-language picks first.
     const recs = rankedFor(scores.filter((s) => !heard.has(s.id)), language);
-    return genres.map((genre, gi) =>
+    return Promise.all(genres.map((genre, gi) =>
       this.#snapshot(userId, `daily-mix-${gi + 1}`, day, () => {
         const rnd = mulberry32(hashSeed(`${userId}/${day}/${genre}`));
         const favourites = [...heard.keys()].filter((id) => byId.get(id)?.genre === genre && (!language || byId.get(id)?.language === language));
@@ -302,16 +315,16 @@ export class Recommender {
         // Mixes built before any listening are not frozen, so they personalize right away.
         return { title: `Daily Mix ${gi + 1}`, description: `${genre} and more, based on what you play.`, ids, persist: heard.size > 0 };
       }),
-    );
+    ));
   }
 
   /** Radio: seed track first, then its nearest neighbours. */
-  radio(trackId, n = 20) {
-    return [trackId, ...this.similarTracks(trackId, n - 1).map((s) => s.id)];
+  async radio(trackId, n = 20) {
+    return [trackId, ...(await this.similarTracks(trackId, n - 1)).map((s) => s.id)];
   }
 
-  relatedArtists(artistId, n = 6) {
-    const m = this.ensure();
+  async relatedArtists(artistId, n = 6) {
+    const m = await this.ready();
     const mine = [], byArtist = new Map(), content = new Map();
     m.tracks.forEach((t, i) => {
       if (t.artist_id === artistId) mine.push(i);
@@ -329,14 +342,21 @@ export class Recommender {
       .slice(0, n);
   }
 
-  #snapshot(userId, kind, period, build) {
-    const row = stmt(this.db, 'SELECT title, description, track_ids FROM generated_playlists WHERE user_id = ? AND kind = ? AND period = ?').get(userId, kind, period);
+  async #snapshot(userId, kind, period, build) {
+    const row = await this.store.get('SELECT title, description, track_ids FROM generated_playlists WHERE user_id = ? AND kind = ? AND period = ?', [userId, kind, period]);
     if (row) return { kind, period, title: row.title, description: row.description, ids: JSON.parse(row.track_ids) };
-    const { persist = true, ...built } = build();
+    const { persist = true, ...built } = await build();
     if (built.ids.length && persist) {
-      this.db.prepare('INSERT OR REPLACE INTO generated_playlists (user_id, kind, period, title, description, track_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(userId, kind, period, built.title, built.description, JSON.stringify(built.ids), Date.now());
+      // Two requests may build the same snapshot at once; the first one wins.
+      await this.store.run(`INSERT INTO generated_playlists (user_id, kind, period, title, description, track_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (user_id, kind, period) DO NOTHING`,
+      [userId, kind, period, built.title, built.description, JSON.stringify(built.ids), Date.now()]);
     }
     return { kind, period, ...built };
+  }
+
+  /** Drop snapshots from past periods (they are never read again). */
+  pruneSnapshots(olderThanMs = 15 * 86400000) {
+    return this.store.run('DELETE FROM generated_playlists WHERE created_at < ?', [Date.now() - olderThanMs]);
   }
 }

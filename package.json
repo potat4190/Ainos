@@ -2,7 +2,7 @@
   "name": "ainos",
   "version": "1.0.0",
   "private": true,
-  "description": "Ainos: a Christian faith-based worship & praise music streaming app with multi-language recommendations (English, Hindi, Nepali, Chinese, Japanese, Spanish) and unified all-access features. Zero dependencies.",
+  "description": "Ainos: a Christian faith-based worship & praise music streaming app with multi-language recommendations (English, Hindi, Nepali, Chinese, Japanese, Spanish) and unified all-access features. Runs locally with zero dependencies; deploys to Vercel + Supabase.",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -11,6 +11,12 @@
     "setup": "node --disable-warning=ExperimentalWarning scripts/generate.js",
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"test/*.test.js\""
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"test/*.test.js\"",
+    "build:vercel": "node --disable-warning=ExperimentalWarning scripts/vercel-build.js",
+    "smoke": "node scripts/smoke.js"
+  },
+  "dependencies": {
+    "@vercel/functions": "^2.2.13",
+    "pg": "^8.23.1"
   }
 }

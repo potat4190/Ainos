@@ -474,13 +474,13 @@ export async function internals(el, _p, app) {
   el.append(h('h2', { class: 'section', style: { 'font-size': '20px' } }, 'This device'), live, h('h2', { class: 'section', style: { 'font-size': '20px' } }, 'Server'), server);
 
   const mapping = [
-    ['Catalog & metadata', 'SQLite catalog; Web-API-shaped JSON (ids, uris, nested artist/album)', 'Spotify Web API reference', 'web-api'],
+    ['Catalog & metadata', 'SQLite (local) or Postgres (hosted) catalog; Web-API-shaped JSON (ids, uris, nested artist/album)', 'Spotify Web API reference', 'web-api'],
     ['Chunked streaming', 'Signed media URLs + HTTP Range (16 KB chunks); browser fetches the start first, seeks anywhere', 'Kreitz & Niemelä 2010 §II; seektable + CDN base_urls in the desktop client', 'streaming'],
     ['Prefetch next track', 'Spare audio deck loads the next track at 30 s remaining; instant hand-off', 'Paper §II-C: prefetch at 30 s / 10 s left; 390→265 ms latency', 'prefetching'],
     ['Client cache', 'Service worker: LRU streaming cache (60 MB) + pinned offline downloads', 'Paper §II-A: encrypted LRU cache, partial tracks', 'caching'],
     ['Loudness normalization', 'BS.1770 loudness measured at ingest; per-track gain to −11/−14/−19 LUFS, capped at −1 dBFS peak', 'Spotify for Artists: −14 LUFS, ITU 1770', 'loudness'],
     ['Quality tiers', 'Low 176 kbps / High 353 kbps PCM; High unlocked for all listeners', 'Lossless-grade PCM streaming', 'quality'],
-    ['Event delivery', 'Batched client events → hourly NDJSON buckets + SQLite; beacon on page close', 'Event delivery (hourly buckets)', 'events'],
+    ['Event delivery', 'Batched client events → hourly NDJSON buckets (local) + database; beacon on page close', 'Event delivery (hourly buckets)', 'events'],
     ['30-second stream rule', 'play_end ≥ 30 000 ms ⇒ a stream; drives stats & recommendations', 'Streams count after 30 s', 'streams'],
     ['Recommendations', 'Implicit-feedback ALS + audio-feature similarity + language preference; Discover Weekly / Daily Mix / Radio', 'CF (ALS) + audio features + multi-language worship ranking', 'recommendations'],
     ['Connect', 'SSE push channel per device; state fan-out, remote commands, transfer', 'Dealer push channel + connect-state service', 'connect'],
@@ -545,7 +545,7 @@ export async function internals(el, _p, app) {
       h('div', { class: 'box' }, h('h3', {}, 'Streaming'), h('p', { class: 'lede' }, 'Media is only served with a valid HMAC signature and expiry.'),
         kv([['Range requests', fmtNumber(srv.streaming.range_requests)], ['Full-file requests', fmtNumber(srv.streaming.full_requests)], ['Bytes requested', fmtBytes(srv.streaming.bytes_requested)],
           ...srv.media.map((m) => [`${m.quality} tier`, `${m.files} files · ${m.kbps} kbps · ${fmtBytes(m.bytes)}`])])),
-      h('div', { class: 'box' }, h('h3', {}, 'Event pipeline'), h('p', { class: 'lede' }, 'Raw events land in hourly files and in SQLite; streams are derived.'),
+      h('div', { class: 'box' }, h('h3', {}, 'Event pipeline'), h('p', { class: 'lede' }, 'Raw events land in the database (and hourly files when running locally); streams are derived.'),
         kv([['Events stored', fmtNumber(srv.events.total)], ...srv.events.by_type.slice(0, 6).map((t) => [t.type, fmtNumber(t.n)]),
           ['Hourly buckets', h('span', { class: 'mono' }, srv.events.hourly_files.join(', ') || '—')],
           ['Median latency (all clients)', ms(srv.events.latency_ms.median_all)]])),

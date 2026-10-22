@@ -9,7 +9,7 @@ import { createApp } from '../server/app.js';
 export async function startTestServer() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-test-'));
   await generateCatalog({ dataDir, quick: true, quiet: true });
-  const app = createApp({ dataDir, log: () => {}, authAttemptsPerMinute: 10_000 });
+  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000 });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {

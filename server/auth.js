@@ -1,23 +1,32 @@
 import crypto from 'node:crypto';
 import { HttpError, parseCookies } from './http.js';
-import { stmt } from './db.js';
 
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 export const SESSION_COOKIE = 'ainos_session';
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 
-export function hashPassword(password) {
+// scrypt is CPU-heavy; the async version keeps the event loop free while hashing.
+const scrypt = (password, salt, keylen, opts) =>
+  new Promise((resolve, reject) => crypto.scrypt(password, salt, keylen, opts, (err, key) => (err ? reject(err) : resolve(key))));
+const encode = (salt, hash) => `scrypt$${SCRYPT.N}$${salt.toString('base64')}$${hash.toString('base64')}`;
+
+export async function hashPassword(password) {
   const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
-  return `scrypt$${SCRYPT.N}$${salt.toString('base64')}$${hash.toString('base64')}`;
+  return encode(salt, await scrypt(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p }));
 }
 
-export function verifyPassword(password, stored) {
+/** Synchronous variant for the catalog generator. */
+export function hashPasswordSync(password) {
+  const salt = crypto.randomBytes(16);
+  return encode(salt, crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p }));
+}
+
+export async function verifyPassword(password, stored) {
   if (!stored) return false;
   const [algo, n, saltB64, hashB64] = stored.split('$');
   if (algo !== 'scrypt') return false;
   const expected = Buffer.from(hashB64, 'base64');
-  const actual = crypto.scryptSync(password, Buffer.from(saltB64, 'base64'), expected.length, { N: Number(n), r: SCRYPT.r, p: SCRYPT.p });
+  const actual = await scrypt(password, Buffer.from(saltB64, 'base64'), expected.length, { N: Number(n), r: SCRYPT.r, p: SCRYPT.p });
   return crypto.timingSafeEqual(expected, actual);
 }
 
@@ -32,15 +41,20 @@ export function validateCredentials(username, password) {
   }
 }
 
-export function createSession(db, userId) {
+export async function createSession(store, userId) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
-  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(sha256(token), userId, now, now + SESSION_TTL_MS);
+  await store.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [sha256(token), userId, now, now + SESSION_TTL_MS]);
   return token;
 }
 
-export function destroySession(db, token) {
-  if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
+export async function destroySession(store, token) {
+  if (token) await store.run('DELETE FROM sessions WHERE token_hash = ?', [sha256(token)]);
+}
+
+/** Delete expired sessions (otherwise they are only removed when their token is used again). */
+export function purgeExpiredSessions(store) {
+  return store.run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
 }
 
 export function sessionCookie(token, { secure = false } = {}) {
@@ -51,16 +65,14 @@ export function sessionCookie(token, { secure = false } = {}) {
 
 export const clearCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 
-export function userFromRequest(db, req) {
+export async function userFromRequest(store, req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
-  // Runs on every authenticated request, so the statement is compiled once.
-  const row = stmt(db, `SELECT u.id, u.username, u.display_name, u.language, s.expires_at
-              FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`)
-    .get(sha256(token));
+  const row = await store.get(`SELECT u.id, u.username, u.display_name, u.language, s.expires_at
+              FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, [sha256(token)]);
   if (!row) return null;
   if (row.expires_at < Date.now()) {
-    destroySession(db, token);
+    await destroySession(store, token);
     return null;
   }
   return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token };

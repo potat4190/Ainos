@@ -248,11 +248,11 @@ test('radio starts with the seed and prefers the same genre', async () => {
   assert.ok(r.tracks.slice(1, 4).some((x) => x.genre === t.genre), 'a same-genre track is among the nearest neighbours');
 });
 
-test('item similarity follows co-listening: most neighbours share the seed genre', () => {
+test('item similarity follows co-listening: most neighbours share the seed genre', async () => {
   const rec = srv.app.recommender;
-  const tracks = rec.ensure().tracks;
+  const tracks = (await rec.ready()).tracks;
   let same = 0;
-  for (const t of tracks) same += rec.similarTracks(t.id, 3).filter((s) => tracks.find((x) => x.id === s.id).genre === t.genre).length;
+  for (const t of tracks) same += (await rec.similarTracks(t.id, 3)).filter((s) => tracks.find((x) => x.id === s.id).genre === t.genre).length;
   assert.ok(same / tracks.length >= 1.5, `avg same-genre neighbours ${(same / tracks.length).toFixed(2)}`);
 });
 

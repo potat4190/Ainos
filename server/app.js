@@ -2,10 +2,10 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, tx } from './db.js';
+import { sqliteStore, postgresStore, inList } from './store.js';
 import { Router, HttpError, sendJson, readJson, serveFile, serveRange, safeJoin } from './http.js';
 import {
-  hashPassword, verifyPassword, validateCredentials, createSession, destroySession, sessionCookie, clearCookie,
+  hashPassword, verifyPassword, validateCredentials, createSession, destroySession, purgeExpiredSessions, sessionCookie, clearCookie,
   userFromRequest, rateLimiter, signMediaPath, verifyMediaSignature,
 } from './auth.js';
 import { Catalog } from './catalog.js';
@@ -20,29 +20,57 @@ const QUALITIES = ['low', 'high'];
 export const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
 const TARGET_LUFS = -14;
 
-const SECURITY_HEADERS = {
+export const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'same-origin',
   'Cross-Origin-Opener-Policy': 'same-origin',
 };
 
-export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.join(ROOT, 'public'), docsDir = path.join(ROOT, 'docs'), log = console.log, authAttemptsPerMinute = 10 } = {}) {
-  const dbFile = path.join(dataDir, 'ainos.db');
-  if (!fs.existsSync(dbFile)) throw new Error(`No catalog at ${dbFile}. Run "npm run setup" first.`);
-  const db = openDb(dbFile);
-  const secret = process.env.AINOS_SECRET || fs.readFileSync(path.join(dataDir, 'secret.key'), 'utf8').trim();
-  const catalog = new Catalog(db);
-  const recommender = new Recommender(db);
-  const events = new EventPipeline(db, dataDir, { onStreams: (n) => recommender.noteNewStreams(n) });
+/**
+ * Build the app. Data lives in SQLite under dataDir by default, or in Postgres
+ * when databaseUrl (or the DATABASE_URL env var) is set.
+ */
+export async function createApp({
+  dataDir = path.join(ROOT, 'data'),
+  databaseUrl = process.env.DATABASE_URL,
+  secret = process.env.AINOS_SECRET,
+  publicDir = path.join(ROOT, 'public'),
+  docsDir = path.join(ROOT, 'docs'),
+  eventLogDir = databaseUrl ? null : path.join(dataDir, 'events'),
+  trustProxy = !!process.env.VERCEL,
+  log = console.log,
+  authAttemptsPerMinute = 10,
+} = {}) {
+  let store;
+  if (databaseUrl) {
+    store = await postgresStore(databaseUrl);
+  } else {
+    const dbFile = path.join(dataDir, 'ainos.db');
+    if (!fs.existsSync(dbFile)) throw new Error(`No catalog at ${dbFile}. Run "npm run setup" first.`);
+    store = sqliteStore(dbFile);
+  }
+  if (!secret) secret = fs.readFileSync(path.join(dataDir, 'secret.key'), 'utf8').trim();
+
+  const catalog = new Catalog(store);
+  const recommender = new Recommender(store);
+  const events = new EventPipeline(store, eventLogDir, { onStreams: (n) => recommender.noteNewStreams(n) });
   const hub = new ConnectHub();
   const loginLimiter = rateLimiter({ limit: authAttemptsPerMinute, windowMs: 60_000 });
+  const retrainLimiter = rateLimiter({ limit: 2, windowMs: 60_000 });
   const metrics = { started_at: Date.now(), requests: 0, media_range_requests: 0, media_full_requests: 0, media_bytes_requested: 0 };
-  recommender.train();
+
+  // Housekeeping: expired sessions and old mix snapshots are never read again.
+  const housekeeping = () => Promise.all([purgeExpiredSessions(store), recommender.pruneSnapshots()]).catch((err) => log('[housekeeping]', err.message));
+  housekeeping();
+  const housekeepingTimer = setInterval(housekeeping, 6 * 3600 * 1000);
+  housekeepingTimer.unref?.();
+
+  const clientIp = (req) => (trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket?.remoteAddress || 'unknown';
 
   const r = new Router();
   const auth = (handler) => async (ctx) => {
-    const user = userFromRequest(db, ctx.req);
+    const user = await userFromRequest(store, ctx.req);
     if (!user) throw new HttpError(401, 'Not logged in', 'unauthorized');
     ctx.user = user;
     return handler(ctx);
@@ -50,31 +78,37 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
 
   // ---------------- auth ----------------
   r.post('/api/auth/signup', async ({ req, res }) => {
-    const ip = req.socket.remoteAddress;
-    if (!loginLimiter(ip)) throw new HttpError(429, 'Too many attempts, wait a minute');
+    if (!loginLimiter(clientIp(req))) throw new HttpError(429, 'Too many attempts, wait a minute');
     const { username, password, display_name, language } = await readJson(req);
     validateCredentials(username, password);
-    if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw new HttpError(409, 'That username is taken', 'username_taken');
+    const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
+    if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
     const lang = LANGUAGES.includes(language) ? language : 'en';
-    const { lastInsertRowid } = db.prepare('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(username, name, hashPassword(password), lang, Date.now());
-    const token = createSession(db, Number(lastInsertRowid));
+    let row;
+    try {
+      row = await store.get('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
+        [username, name, await hashPassword(password), lang, Date.now()]);
+    } catch (err) {
+      if (/unique/i.test(err.message)) throw taken(); // two signups for one name at the same moment
+      throw err;
+    }
+    const token = await createSession(store, Number(row.id));
     sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
   });
 
   r.post('/api/auth/login', async ({ req, res }) => {
-    if (!loginLimiter(req.socket.remoteAddress)) throw new HttpError(429, 'Too many attempts, wait a minute');
+    if (!loginLimiter(clientIp(req))) throw new HttpError(429, 'Too many attempts, wait a minute');
     const { username, password } = await readJson(req);
-    const row = typeof username === 'string' ? db.prepare('SELECT id, password_hash FROM users WHERE username = ? AND is_simulated = 0').get(username) : null;
-    if (!row || typeof password !== 'string' || !verifyPassword(password, row.password_hash)) throw new HttpError(401, 'Wrong username or password', 'bad_credentials');
-    const token = createSession(db, row.id);
+    const row = typeof username === 'string' ? await store.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?) AND is_simulated = 0', [username]) : null;
+    if (!row || typeof password !== 'string' || !(await verifyPassword(password, row.password_hash))) throw new HttpError(401, 'Wrong username or password', 'bad_credentials');
+    const token = await createSession(store, row.id);
     sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
   });
 
   r.post('/api/auth/logout', async ({ req, res }) => {
-    const user = userFromRequest(db, req);
-    if (user) destroySession(db, user.token);
+    const user = await userFromRequest(store, req);
+    if (user) await destroySession(store, user.token);
     sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
   });
 
@@ -88,37 +122,46 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
   r.post('/api/me/language', auth(async ({ req, res, user }) => {
     const { language } = await readJson(req);
     if (!LANGUAGES.includes(language)) throw new HttpError(400, `language must be one of: ${LANGUAGES.join(', ')}`);
-    db.prepare('UPDATE users SET language = ? WHERE id = ?').run(language, user.id);
+    await store.run('UPDATE users SET language = ? WHERE id = ?', [language, user.id]);
     sendJson(res, 200, { ok: true, language });
   }));
 
   // ---------------- catalog ----------------
-  r.get('/api/home', auth(({ res, user, query }) => {
+  r.get('/api/home', auth(async ({ res, user, query }) => {
     const lang = requestLang(query, user);
-    const taste = recommender.scoresForUser(user.id);
-    const madeForYou = [];
-    const dw = recommender.discoverWeekly(user.id, 12, { language: lang, taste });
-    if (dw.ids.length) madeForYou.push(mixCard(dw));
-    for (const m of recommender.dailyMixes(user.id, 3, { language: lang, taste })) if (m.ids.length) madeForYou.push(mixCard(m));
-    const onRepeat = onRepeatIds(user.id);
-    if (onRepeat.length >= 3) madeForYou.push(mixCard({ kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids: onRepeat }));
+    const taste = await recommender.scoresForUser(user.id);
+    const [dw, daily, onRepeat, followRows, allArtists] = await Promise.all([
+      recommender.discoverWeekly(user.id, 12, { language: lang, taste }),
+      recommender.dailyMixes(user.id, 3, { language: lang, taste }),
+      onRepeatIds(user.id),
+      store.all('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY added_at DESC', [user.id]),
+      catalog.artists({ language: lang }),
+    ]);
+    const mixes = [];
+    if (dw.ids.length) mixes.push(dw);
+    for (const m of daily) if (m.ids.length) mixes.push(m);
+    if (onRepeat.length >= 3) mixes.push(onRepeatMix(onRepeat));
 
-    const following = db.prepare('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY added_at DESC').all(user.id).map((x) => x.artist_id);
-    const allArtists = catalog.artists({ language: lang });
+    const following = followRows.map((x) => x.artist_id);
     const langArtists = allArtists.filter((a) => a.language === lang && !following.includes(a.id)).map((a) => a.id);
     const related = new Map();
-    for (const a of following) for (const rel of recommender.relatedArtists(a, 4)) if (!following.includes(rel.id)) related.set(rel.id, (related.get(rel.id) || 0) + rel.score);
+    for (const a of following) {
+      for (const rel of await recommender.relatedArtists(a, 4)) if (!following.includes(rel.id)) related.set(rel.id, (related.get(rel.id) || 0) + rel.score);
+    }
     const suggested = [...new Set([...langArtists, ...[...related.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id), ...allArtists.map((a) => a.id).filter((id) => !following.includes(id))])];
 
+    const [madeForYou, recommended, recent, popular, newReleases, editorial, suggestedArtists] = await Promise.all([
+      Promise.all(mixes.map((m) => mixCard(m))),
+      recommender.recommendForLanguage(user.id, lang, 12, { taste }).then((ids) => catalog.tracksByIds(ids)),
+      recentTracks(user.id, 8),
+      catalog.popular(7, 10, lang),
+      catalog.albums({ newest: true, limit: 6, language: lang }),
+      catalog.editorialPlaylists(),
+      catalog.artistsByIds(suggested.slice(0, 6)),
+    ]);
     sendJson(res, 200, {
-      language: lang,
-      recommended: catalog.tracksByIds(recommender.recommendForLanguage(user.id, lang, 12, { taste })),
-      recent: recentTracks(user.id, 8),
-      made_for_you: madeForYou,
-      popular: catalog.popular(7, 10, lang),
-      new_releases: catalog.albums({ newest: true, limit: 6, language: lang }),
-      editorial: catalog.editorialPlaylists(),
-      suggested_artists: catalog.artistsByIds(suggested.slice(0, 6)),
+      language: lang, recommended, recent, made_for_you: madeForYou, popular,
+      new_releases: newReleases, editorial, suggested_artists: suggestedArtists,
     });
   }));
 
@@ -127,42 +170,45 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
     return LANGUAGES.includes(query.get('lang')) ? query.get('lang') : user.language;
   }
 
-  function mixCard(m) {
-    const tracks = catalog.tracksByIds(m.ids.slice(0, 16));
+  const onRepeatMix = (ids) => ({ kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids });
+
+  async function mixCard(m, tracks = null) {
+    tracks = tracks || (await catalog.tracksByIds(m.ids.slice(0, 16)));
     return { kind: m.kind, title: m.title, description: m.description, covers: [...new Set(tracks.map((t) => t.album.cover))].slice(0, 4), track_count: m.ids.length };
   }
 
-  function onRepeatIds(userId) {
-    return db.prepare('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? AND ended_at > ? GROUP BY track_id HAVING n >= 2 ORDER BY n DESC LIMIT 20')
-      .all(userId, Date.now() - 30 * 86400000).map((x) => x.track_id);
+  async function onRepeatIds(userId) {
+    const rows = await store.all('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? AND ended_at > ? GROUP BY track_id HAVING COUNT(*) >= 2 ORDER BY n DESC, track_id LIMIT 20',
+      [userId, Date.now() - 30 * 86400000]);
+    return rows.map((x) => x.track_id);
   }
 
-  function recentTracks(userId, limit) {
-    const rows = db.prepare(`SELECT track_id, MAX(ts) AS ts FROM (
+  async function recentTracks(userId, limit) {
+    const rows = await store.all(`SELECT track_id, MAX(ts) AS ts FROM (
         SELECT track_id, server_ts AS ts FROM events WHERE user_id = ? AND type = 'play_start' AND track_id IS NOT NULL
-        UNION ALL SELECT track_id, ended_at AS ts FROM streams WHERE user_id = ?)
-      GROUP BY track_id ORDER BY ts DESC LIMIT ?`).all(userId, userId, limit);
-    const tracks = catalog.tracksByIds(rows.map((x) => x.track_id));
-    return tracks.map((t, i) => ({ ...t, played_at: rows[i].ts }));
+        UNION ALL SELECT track_id, ended_at AS ts FROM streams WHERE user_id = ?) recent
+      GROUP BY track_id ORDER BY ts DESC LIMIT ?`, [userId, userId, limit]);
+    const playedAt = new Map(rows.map((x) => [x.track_id, x.ts]));
+    return (await catalog.tracksByIds(rows.map((x) => x.track_id))).map((t) => ({ ...t, played_at: playedAt.get(t.id) }));
   }
 
-  r.get('/api/made-for-you/:kind', auth(({ res, user, params, query }) => {
+  r.get('/api/made-for-you/:kind', auth(async ({ res, user, params, query }) => {
     const lang = requestLang(query, user);
     let mix;
-    if (params.kind === 'discover-weekly') mix = recommender.discoverWeekly(user.id, 12, { language: lang });
-    else if (params.kind === 'on-repeat') mix = { kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids: onRepeatIds(user.id) };
-    else if (/^daily-mix-\d$/.test(params.kind)) mix = recommender.dailyMixes(user.id, 3, { language: lang }).find((m) => m.kind === params.kind);
+    if (params.kind === 'discover-weekly') mix = await recommender.discoverWeekly(user.id, 12, { language: lang });
+    else if (params.kind === 'on-repeat') mix = onRepeatMix(await onRepeatIds(user.id));
+    else if (/^daily-mix-\d$/.test(params.kind)) mix = (await recommender.dailyMixes(user.id, 3, { language: lang })).find((m) => m.kind === params.kind);
     if (!mix) throw new HttpError(404, 'Mix not found');
-    const tracks = catalog.tracksByIds(mix.ids);
-    sendJson(res, 200, { ...mixCard(mix), uri: toUri('mix', mix.kind), period: mix.period || null, tracks });
+    const tracks = await catalog.tracksByIds(mix.ids);
+    sendJson(res, 200, { ...(await mixCard(mix, tracks.slice(0, 16))), uri: toUri('mix', mix.kind), period: mix.period || null, tracks });
   }));
 
-  r.get('/api/radio/:id', auth(({ res, params, query, user }) => {
+  r.get('/api/radio/:id', auth(async ({ res, params, query, user }) => {
     const lang = requestLang(query, user);
-    const seed = catalog.track(params.id);
+    const seed = await catalog.track(params.id);
     if (!seed) throw new HttpError(404, 'Track not found');
-    const scored = recommender.similarTracks(params.id, 19, { language: lang });
-    const tracks = catalog.tracksByIds([params.id, ...scored.map((s) => s.id)]);
+    const scored = await recommender.similarTracks(params.id, 19, { language: lang });
+    const tracks = await catalog.tracksByIds([params.id, ...scored.map((s) => s.id)]);
     // Pair scores by id: tracksByIds drops unknown ids, so indexes may not line up.
     const simById = new Map(scored.map((s) => [s.id, s.similarity]));
     sendJson(res, 200, {
@@ -172,30 +218,35 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
     });
   }));
 
-  r.get('/api/search', auth(({ res, query }) => {
+  r.get('/api/search', auth(async ({ res, query }) => {
     const q = (query.get('q') || '').slice(0, 100);
-    sendJson(res, 200, catalog.search(q));
+    sendJson(res, 200, await catalog.search(q));
   }));
 
-  r.get('/api/browse/genres', auth(({ res }) => sendJson(res, 200, { genres: catalog.genres(), playlists: catalog.editorialPlaylists() })));
-  r.get('/api/genres/:name', auth(({ res, params }) => sendJson(res, 200, catalog.genre(params.name))));
+  r.get('/api/browse/genres', auth(async ({ res }) => {
+    const [genres, playlists] = await Promise.all([catalog.genres(), catalog.editorialPlaylists()]);
+    sendJson(res, 200, { genres, playlists });
+  }));
+  r.get('/api/genres/:name', auth(async ({ res, params }) => sendJson(res, 200, await catalog.genre(params.name))));
 
-  r.get('/api/tracks', auth(({ res, query }) => {
+  r.get('/api/tracks', auth(async ({ res, query }) => {
     const ids = (query.get('ids') || '').split(',').filter(Boolean).slice(0, 100);
-    sendJson(res, 200, { tracks: catalog.tracksByIds(ids) });
+    sendJson(res, 200, { tracks: await catalog.tracksByIds(ids) });
   }));
-  r.get('/api/tracks/:id', auth(({ res, params }) => {
-    const t = catalog.track(params.id);
+  r.get('/api/tracks/:id', auth(async ({ res, params }) => {
+    const t = await catalog.track(params.id);
     if (!t) throw new HttpError(404, 'Track not found');
     sendJson(res, 200, t);
   }));
 
   // Manifest: which file to fetch, signed CDN-style URLs, seek info and the
   // loudness normalization gain. The client never builds media URLs itself.
-  r.get('/api/tracks/:id/manifest', auth(({ res, params, query }) => {
-    const t = db.prepare('SELECT id, duration_ms, loudness_lufs, peak_db FROM tracks WHERE id = ?').get(params.id);
+  r.get('/api/tracks/:id/manifest', auth(async ({ res, params, query }) => {
+    const [t, files] = await Promise.all([
+      store.get('SELECT id, duration_ms, loudness_lufs, peak_db FROM tracks WHERE id = ?', [params.id]),
+      store.all('SELECT * FROM track_files WHERE track_id = ? ORDER BY quality', [params.id]),
+    ]);
     if (!t) throw new HttpError(404, 'Track not found');
-    const files = db.prepare('SELECT * FROM track_files WHERE track_id = ?').all(t.id);
     const quality = QUALITIES.includes(query.get('quality')) ? query.get('quality') : 'high';
     const f = files.find((x) => x.quality === quality) || files.find((x) => x.quality === 'high') || files[0];
     if (!f) throw new HttpError(404, 'No audio for this track');
@@ -212,194 +263,219 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
     });
   }));
 
-  r.get('/api/albums/:id', auth(({ res, params }) => {
-    const a = catalog.album(params.id);
+  r.get('/api/albums/:id', auth(async ({ res, params }) => {
+    const a = await catalog.album(params.id);
     if (!a) throw new HttpError(404, 'Album not found');
     sendJson(res, 200, a);
   }));
 
-  r.get('/api/artists/:id', auth(({ res, params, user }) => {
-    const a = catalog.artist(params.id);
+  r.get('/api/artists/:id', auth(async ({ res, params, user }) => {
+    const a = await catalog.artist(params.id);
     if (!a) throw new HttpError(404, 'Artist not found');
-    const related = catalog.artistsByIds(recommender.relatedArtists(params.id, 5).map((x) => x.id));
-    const following = !!db.prepare('SELECT 1 FROM followed_artists WHERE user_id = ? AND artist_id = ?').get(user.id, params.id);
-    sendJson(res, 200, { ...a, related, following });
+    const [related, following] = await Promise.all([
+      recommender.relatedArtists(params.id, 5).then((rel) => catalog.artistsByIds(rel.map((x) => x.id))),
+      store.get('SELECT 1 AS x FROM followed_artists WHERE user_id = ? AND artist_id = ?', [user.id, params.id]),
+    ]);
+    sendJson(res, 200, { ...a, related, following: !!following });
   }));
 
-  r.get('/api/playlists/:id', auth(({ res, params, user }) => {
-    const p = catalog.playlist(params.id);
+  r.get('/api/playlists/:id', auth(async ({ res, params, user }) => {
+    const p = await catalog.playlist(params.id);
     if (!p || (!p.is_public && p.owner.id !== user.id)) throw new HttpError(404, 'Playlist not found');
     sendJson(res, 200, { ...p, is_owner: p.owner.id === user.id });
   }));
 
   // ---------------- library ----------------
-  r.get('/api/me/library', auth(({ res, user }) => {
-    const liked = db.prepare('SELECT COUNT(*) AS n FROM liked_tracks WHERE user_id = ?').get(user.id).n;
-    const artists = catalog.artistsByIds(db.prepare('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY added_at DESC').all(user.id).map((x) => x.artist_id));
-    sendJson(res, 200, { liked_count: liked, playlists: catalog.userPlaylists(user.id), artists });
+  r.get('/api/me/library', auth(async ({ res, user }) => {
+    const [liked, followRows, playlists] = await Promise.all([
+      store.get('SELECT COUNT(*) AS n FROM liked_tracks WHERE user_id = ?', [user.id]),
+      store.all('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY added_at DESC', [user.id]),
+      catalog.userPlaylists(user.id),
+    ]);
+    sendJson(res, 200, { liked_count: liked.n, playlists, artists: await catalog.artistsByIds(followRows.map((x) => x.artist_id)) });
   }));
 
-  r.get('/api/me/liked', auth(({ res, user }) => {
-    const rows = db.prepare('SELECT track_id, added_at FROM liked_tracks WHERE user_id = ? ORDER BY added_at DESC').all(user.id);
-    const tracks = catalog.tracksByIds(rows.map((x) => x.track_id));
-    sendJson(res, 200, { tracks: tracks.map((t, i) => ({ ...t, added_at: rows[i].added_at })) });
+  r.get('/api/me/liked', auth(async ({ res, user }) => {
+    const rows = await store.all('SELECT track_id, added_at FROM liked_tracks WHERE user_id = ? ORDER BY added_at DESC, track_id', [user.id]);
+    const addedAt = new Map(rows.map((x) => [x.track_id, x.added_at]));
+    sendJson(res, 200, { tracks: (await catalog.tracksByIds(rows.map((x) => x.track_id))).map((t) => ({ ...t, added_at: addedAt.get(t.id) })) });
   }));
-  r.get('/api/me/liked/ids', auth(({ res, user }) => {
-    sendJson(res, 200, { ids: db.prepare('SELECT track_id FROM liked_tracks WHERE user_id = ?').all(user.id).map((x) => x.track_id) });
+  r.get('/api/me/liked/ids', auth(async ({ res, user }) => {
+    sendJson(res, 200, { ids: (await store.all('SELECT track_id FROM liked_tracks WHERE user_id = ?', [user.id])).map((x) => x.track_id) });
   }));
-  r.put('/api/me/liked/:id', auth(({ res, user, params }) => {
-    if (!catalog.track(params.id)) throw new HttpError(404, 'Track not found');
-    db.prepare('INSERT OR IGNORE INTO liked_tracks (user_id, track_id, added_at) VALUES (?, ?, ?)').run(user.id, params.id, Date.now());
+  r.put('/api/me/liked/:id', auth(async ({ res, user, params }) => {
+    if (!(await store.get('SELECT 1 AS x FROM tracks WHERE id = ?', [params.id]))) throw new HttpError(404, 'Track not found');
+    await store.run('INSERT INTO liked_tracks (user_id, track_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', [user.id, params.id, Date.now()]);
     sendJson(res, 200, { ok: true });
   }));
-  r.delete('/api/me/liked/:id', auth(({ res, user, params }) => {
-    db.prepare('DELETE FROM liked_tracks WHERE user_id = ? AND track_id = ?').run(user.id, params.id);
-    sendJson(res, 200, { ok: true });
-  }));
-
-  r.put('/api/me/following/:id', auth(({ res, user, params }) => {
-    if (!db.prepare('SELECT 1 FROM artists WHERE id = ?').get(params.id)) throw new HttpError(404, 'Artist not found');
-    db.prepare('INSERT OR IGNORE INTO followed_artists (user_id, artist_id, added_at) VALUES (?, ?, ?)').run(user.id, params.id, Date.now());
-    sendJson(res, 200, { ok: true });
-  }));
-  r.delete('/api/me/following/:id', auth(({ res, user, params }) => {
-    db.prepare('DELETE FROM followed_artists WHERE user_id = ? AND artist_id = ?').run(user.id, params.id);
+  r.delete('/api/me/liked/:id', auth(async ({ res, user, params }) => {
+    await store.run('DELETE FROM liked_tracks WHERE user_id = ? AND track_id = ?', [user.id, params.id]);
     sendJson(res, 200, { ok: true });
   }));
 
-  r.get('/api/me/recent', auth(({ res, user }) => sendJson(res, 200, { tracks: recentTracks(user.id, 30) })));
+  r.put('/api/me/following/:id', auth(async ({ res, user, params }) => {
+    if (!(await store.get('SELECT 1 AS x FROM artists WHERE id = ?', [params.id]))) throw new HttpError(404, 'Artist not found');
+    await store.run('INSERT INTO followed_artists (user_id, artist_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', [user.id, params.id, Date.now()]);
+    sendJson(res, 200, { ok: true });
+  }));
+  r.delete('/api/me/following/:id', auth(async ({ res, user, params }) => {
+    await store.run('DELETE FROM followed_artists WHERE user_id = ? AND artist_id = ?', [user.id, params.id]);
+    sendJson(res, 200, { ok: true });
+  }));
 
-  r.get('/api/me/stats', auth(({ res, user }) => {
+  r.get('/api/me/recent', auth(async ({ res, user }) => sendJson(res, 200, { tracks: await recentTracks(user.id, 30) })));
+
+  r.get('/api/me/stats', auth(async ({ res, user }) => {
     const since = Date.now() - 365 * 86400000;
-    const totals = db.prepare('SELECT COUNT(*) AS streams, COALESCE(SUM(ms_played), 0) AS ms FROM streams WHERE user_id = ? AND ended_at > ?').get(user.id, since);
-    const topTracks = db.prepare('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? AND ended_at > ? GROUP BY track_id ORDER BY n DESC LIMIT 5').all(user.id, since);
-    const topArtists = db.prepare('SELECT t.artist_id, COUNT(*) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE s.user_id = ? AND s.ended_at > ? GROUP BY t.artist_id ORDER BY n DESC LIMIT 5').all(user.id, since);
-    const genres = db.prepare('SELECT t.genre, COUNT(*) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE s.user_id = ? AND s.ended_at > ? GROUP BY t.genre ORDER BY n DESC').all(user.id, since);
+    const args = [user.id, since];
+    const [totals, topTracks, topArtists, genres, times, skips] = await Promise.all([
+      store.get('SELECT COUNT(*) AS streams, COALESCE(SUM(ms_played), 0) AS ms FROM streams WHERE user_id = ? AND ended_at > ?', args),
+      store.all('SELECT track_id, COUNT(*) AS n FROM streams WHERE user_id = ? AND ended_at > ? GROUP BY track_id ORDER BY n DESC, track_id LIMIT 5', args),
+      store.all('SELECT t.artist_id, COUNT(*) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE s.user_id = ? AND s.ended_at > ? GROUP BY t.artist_id ORDER BY n DESC, t.artist_id LIMIT 5', args),
+      store.all('SELECT t.genre, COUNT(*) AS n FROM streams s JOIN tracks t ON t.id = s.track_id WHERE s.user_id = ? AND s.ended_at > ? GROUP BY t.genre ORDER BY n DESC, t.genre', args),
+      store.all('SELECT ended_at FROM streams WHERE user_id = ? AND ended_at > ?', args),
+      store.get("SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND type = 'play_end' AND ms_played < ?", [user.id, STREAM_THRESHOLD_MS]),
+    ]);
     const hours = new Array(24).fill(0);
-    for (const row of db.prepare('SELECT ended_at FROM streams WHERE user_id = ? AND ended_at > ?').all(user.id, since)) hours[new Date(row.ended_at).getHours()]++;
-    const skips = db.prepare("SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND type = 'play_end' AND ms_played < ?").get(user.id, STREAM_THRESHOLD_MS).n;
-    const tt = catalog.tracksByIds(topTracks.map((x) => x.track_id));
-    const ta = catalog.artistsByIds(topArtists.map((x) => x.artist_id));
+    for (const row of times) hours[new Date(row.ended_at).getHours()]++;
+    const trackPlays = new Map(topTracks.map((x) => [x.track_id, x.n]));
+    const artistPlays = new Map(topArtists.map((x) => [x.artist_id, x.n]));
+    const [tt, ta] = await Promise.all([catalog.tracksByIds([...trackPlays.keys()]), catalog.artistsByIds([...artistPlays.keys()])]);
     sendJson(res, 200, {
-      streams: totals.streams, minutes: Math.round(totals.ms / 60000), short_plays: skips,
-      top_tracks: tt.map((t, i) => ({ ...t, plays: topTracks[i].n })),
-      top_artists: ta.map((a, i) => ({ ...a, plays: topArtists[i].n })),
+      streams: totals.streams, minutes: Math.round(totals.ms / 60000), short_plays: skips.n,
+      top_tracks: tt.map((t) => ({ ...t, plays: trackPlays.get(t.id) })),
+      top_artists: ta.map((a) => ({ ...a, plays: artistPlays.get(a.id) })),
       genres, hours,
     });
   }));
 
   // ---------------- playlists ----------------
-  const ownPlaylist = (user, id) => {
-    const p = db.prepare('SELECT * FROM playlists WHERE id = ?').get(id);
+  const ownPlaylist = async (user, id) => {
+    const p = await store.get('SELECT * FROM playlists WHERE id = ?', [id]);
     if (!p) throw new HttpError(404, 'Playlist not found');
     if (p.owner_id !== user.id) throw new HttpError(403, 'Not your playlist');
     return p;
   };
-  const touch = (id) => db.prepare('UPDATE playlists SET updated_at = ? WHERE id = ?').run(Date.now(), id);
+  const touch = (s, id) => s.run('UPDATE playlists SET updated_at = ? WHERE id = ?', [Date.now(), id]);
   const cleanName = (s, max) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f]/g, '').trim().slice(0, max) : '');
 
   r.post('/api/playlists', auth(async ({ req, res, user }) => {
     const body = await readJson(req);
-    const count = db.prepare('SELECT COUNT(*) AS n FROM playlists WHERE owner_id = ?').get(user.id).n;
+    const count = (await store.get('SELECT COUNT(*) AS n FROM playlists WHERE owner_id = ?', [user.id])).n;
     const name = cleanName(body.name, 100) || `My Playlist #${count + 1}`;
     const id = randomId();
     const colors = ['#3d5a80', '#7b2d8b', '#2a7f62', '#b5543c', '#5b4bdb', '#8a6d1f'];
     const now = Date.now();
-    tx(db, () => {
-      db.prepare('INSERT INTO playlists (id, owner_id, name, description, color, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(id, user.id, name, cleanName(body.description, 300), colors[count % colors.length], body.is_public ? 1 : 0, now, now);
-      if (Array.isArray(body.track_ids)) addTracks(id, body.track_ids);
-      syncPlaylistSearch(id); // a playlist created public must be searchable right away
+    await store.tx(async (t) => {
+      await t.run('INSERT INTO playlists (id, owner_id, name, description, color, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, user.id, name, cleanName(body.description, 300), colors[count % colors.length], body.is_public ? 1 : 0, now, now]);
+      if (Array.isArray(body.track_ids)) await addTracks(t, id, body.track_ids);
+      await syncPlaylistSearch(t, id); // a playlist created public must be searchable right away
     });
-    sendJson(res, 201, catalog.playlist(id));
+    sendJson(res, 201, await catalog.playlist(id));
   }));
 
   r.patch('/api/playlists/:id', auth(async ({ req, res, user, params }) => {
-    ownPlaylist(user, params.id);
+    await ownPlaylist(user, params.id);
     const body = await readJson(req);
+    const sets = [], vals = [];
     if (body.name !== undefined) {
       const name = cleanName(body.name, 100);
       if (!name) throw new HttpError(400, 'Name cannot be empty');
-      db.prepare('UPDATE playlists SET name = ? WHERE id = ?').run(name, params.id);
+      sets.push('name = ?'); vals.push(name);
     }
-    if (body.description !== undefined) db.prepare('UPDATE playlists SET description = ? WHERE id = ?').run(cleanName(body.description, 300), params.id);
-    if (body.is_public !== undefined) db.prepare('UPDATE playlists SET is_public = ? WHERE id = ?').run(body.is_public ? 1 : 0, params.id);
-    touch(params.id);
-    syncPlaylistSearch(params.id);
-    sendJson(res, 200, catalog.playlist(params.id));
+    if (body.description !== undefined) { sets.push('description = ?'); vals.push(cleanName(body.description, 300)); }
+    if (body.is_public !== undefined) { sets.push('is_public = ?'); vals.push(body.is_public ? 1 : 0); }
+    sets.push('updated_at = ?'); vals.push(Date.now());
+    await store.tx(async (t) => {
+      await t.run(`UPDATE playlists SET ${sets.join(', ')} WHERE id = ?`, [...vals, params.id]);
+      await syncPlaylistSearch(t, params.id);
+    });
+    sendJson(res, 200, await catalog.playlist(params.id));
   }));
 
-  r.delete('/api/playlists/:id', auth(({ res, user, params }) => {
-    ownPlaylist(user, params.id);
-    tx(db, () => {
-      db.prepare('DELETE FROM search_fts WHERE kind = ? AND ref_id = ?').run('playlist', params.id);
-      db.prepare('DELETE FROM playlists WHERE id = ?').run(params.id);
+  r.delete('/api/playlists/:id', auth(async ({ res, user, params }) => {
+    await ownPlaylist(user, params.id);
+    await store.tx(async (t) => {
+      await t.run('DELETE FROM search_index WHERE kind = ? AND ref_id = ?', ['playlist', params.id]);
+      await t.run('DELETE FROM playlists WHERE id = ?', [params.id]);
     });
     sendJson(res, 200, { ok: true });
   }));
 
-  function addTracks(playlistId, ids) {
-    const exists = db.prepare('SELECT 1 FROM tracks WHERE id = ?');
-    const valid = ids.filter((x) => typeof x === 'string').slice(0, 200).filter((id) => exists.get(id));
-    let pos = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM playlist_tracks WHERE playlist_id = ?').get(playlistId).p;
-    const ins = db.prepare('INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES (?, ?, ?, ?)');
-    for (const id of valid) ins.run(playlistId, id, pos++, Date.now());
+  async function addTracks(t, playlistId, ids) {
+    const wanted = ids.filter((x) => typeof x === 'string').slice(0, 200);
+    if (!wanted.length) return 0;
+    const exists = new Set((await t.all(`SELECT id FROM tracks WHERE id IN (${inList([...new Set(wanted)])})`, [...new Set(wanted)])).map((x) => x.id));
+    const valid = wanted.filter((id) => exists.has(id));
+    if (!valid.length) return 0;
+    const start = (await t.get('SELECT COALESCE(MAX(position) + 1, 0) AS p FROM playlist_tracks WHERE playlist_id = ?', [playlistId])).p;
+    const now = Date.now();
+    await t.run(`INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES ${valid.map(() => '(?, ?, ?, ?)').join(', ')}`,
+      valid.flatMap((id, i) => [playlistId, id, start + i, now]));
     return valid.length;
   }
 
-  function renumber(playlistId) {
-    const rows = db.prepare('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id').all(playlistId);
-    const upd = db.prepare('UPDATE playlist_tracks SET position = ? WHERE id = ?');
-    rows.forEach((row, i) => upd.run(i, row.id));
+  /** Give rows (playlist_tracks ids, in order) positions 0..n-1 in one statement. */
+  async function setPositions(t, playlistId, rowIds) {
+    if (!rowIds.length) return;
+    await t.run(`UPDATE playlist_tracks SET position = CASE id ${rowIds.map(() => 'WHEN ? THEN ?').join(' ')} ELSE position END WHERE playlist_id = ?`,
+      [...rowIds.flatMap((id, i) => [id, i]), playlistId]);
   }
 
-  function syncPlaylistSearch(id) {
-    const p = db.prepare('SELECT * FROM playlists WHERE id = ?').get(id);
-    db.prepare('DELETE FROM search_fts WHERE kind = ? AND ref_id = ?').run('playlist', id);
-    if (p && p.is_public) db.prepare('INSERT INTO search_fts (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)').run('playlist', id, p.name, p.description);
+  async function syncPlaylistSearch(t, id) {
+    const p = await t.get('SELECT * FROM playlists WHERE id = ?', [id]);
+    await t.run('DELETE FROM search_index WHERE kind = ? AND ref_id = ?', ['playlist', id]);
+    if (p && p.is_public) await t.run('INSERT INTO search_index (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)', ['playlist', id, p.name, p.description]);
   }
 
   r.post('/api/playlists/:id/tracks', auth(async ({ req, res, user, params }) => {
-    ownPlaylist(user, params.id);
+    await ownPlaylist(user, params.id);
     const { track_ids } = await readJson(req);
     if (!Array.isArray(track_ids) || !track_ids.length) throw new HttpError(400, 'track_ids required');
-    const added = tx(db, () => addTracks(params.id, track_ids));
-    touch(params.id);
+    const added = await store.tx(async (t) => {
+      const n = await addTracks(t, params.id, track_ids);
+      await touch(t, params.id);
+      return n;
+    });
     sendJson(res, 200, { added });
   }));
 
-  r.delete('/api/playlists/:id/tracks/:position', auth(({ res, user, params }) => {
-    ownPlaylist(user, params.id);
+  r.delete('/api/playlists/:id/tracks/:position', auth(async ({ res, user, params }) => {
+    await ownPlaylist(user, params.id);
     const pos = Number(params.position);
-    tx(db, () => {
-      db.prepare('DELETE FROM playlist_tracks WHERE playlist_id = ? AND position = ?').run(params.id, pos);
-      renumber(params.id);
+    await store.tx(async (t) => {
+      await t.run('DELETE FROM playlist_tracks WHERE playlist_id = ? AND position = ?', [params.id, pos]);
+      const rows = await t.all('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id', [params.id]);
+      await setPositions(t, params.id, rows.map((x) => x.id));
+      await touch(t, params.id);
     });
-    touch(params.id);
     sendJson(res, 200, { ok: true });
   }));
 
   r.post('/api/playlists/:id/move', auth(async ({ req, res, user, params }) => {
-    ownPlaylist(user, params.id);
+    await ownPlaylist(user, params.id);
     const { from, to } = await readJson(req);
-    const rows = db.prepare('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position').all(params.id);
-    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= rows.length || to >= rows.length) throw new HttpError(400, 'Bad positions');
-    const [moved] = rows.splice(from, 1);
-    rows.splice(to, 0, moved);
-    tx(db, () => {
-      const upd = db.prepare('UPDATE playlist_tracks SET position = ? WHERE id = ?');
-      rows.forEach((row, i) => upd.run(i, row.id));
+    await store.tx(async (t) => {
+      const rows = (await t.all('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id', [params.id])).map((x) => x.id);
+      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= rows.length || to >= rows.length) throw new HttpError(400, 'Bad positions');
+      const [moved] = rows.splice(from, 1);
+      rows.splice(to, 0, moved);
+      await setPositions(t, params.id, rows);
+      await touch(t, params.id);
     });
-    touch(params.id);
-    sendJson(res, 200, catalog.playlist(params.id));
+    sendJson(res, 200, await catalog.playlist(params.id));
   }));
 
   // ---------------- events ----------------
   r.post('/api/events', auth(async ({ req, res, user }) => {
-    sendJson(res, 200, events.ingest(user, await readJson(req, 512 * 1024)));
+    sendJson(res, 200, await events.ingest(user, await readJson(req, 512 * 1024)));
   }));
 
   // ---------------- connect ----------------
+  // Connect keeps devices in this process's memory. On a serverless host each
+  // instance has its own hub, so devices only see each other when their
+  // requests land on the same instance.
   r.get('/api/connect/dealer', auth(({ req, res, user, query }) => {
     hub.open(user.id, req, res, { id: query.get('device_id'), name: query.get('name'), type: query.get('type') });
     return 'stream';
@@ -419,25 +495,33 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
   }));
 
   // ---------------- internals ("under the hood") ----------------
-  r.get('/api/internals', auth(({ res }) => {
-    const counts = db.prepare(`SELECT (SELECT COUNT(*) FROM tracks) AS tracks, (SELECT COUNT(*) FROM albums) AS albums, (SELECT COUNT(*) FROM artists) AS artists,
-      (SELECT COUNT(*) FROM users WHERE is_simulated = 0) AS users, (SELECT COUNT(*) FROM users WHERE is_simulated = 1) AS simulated_users,
-      (SELECT COUNT(*) FROM streams) AS streams, (SELECT COUNT(*) FROM playlists) AS playlists`).get();
-    const media = db.prepare('SELECT quality, COUNT(*) AS files, SUM(bytes) AS bytes, MAX(bitrate_kbps) AS kbps FROM track_files GROUP BY quality').all();
-    const loud = db.prepare('SELECT MIN(loudness_lufs) AS min, MAX(loudness_lufs) AS max, AVG(loudness_lufs) AS avg FROM tracks').get();
+  r.get('/api/internals', auth(async ({ res }) => {
+    const [counts, media, loud, eventStats] = await Promise.all([
+      store.get(`SELECT (SELECT COUNT(*) FROM tracks) AS tracks, (SELECT COUNT(*) FROM albums) AS albums, (SELECT COUNT(*) FROM artists) AS artists,
+        (SELECT COUNT(*) FROM users WHERE is_simulated = 0) AS users, (SELECT COUNT(*) FROM users WHERE is_simulated = 1) AS simulated_users,
+        (SELECT COUNT(*) FROM streams) AS streams, (SELECT COUNT(*) FROM playlists) AS playlists`),
+      store.all('SELECT quality, COUNT(*) AS files, SUM(bytes) AS bytes, MAX(bitrate_kbps) AS kbps FROM track_files GROUP BY quality ORDER BY quality'),
+      store.get('SELECT MIN(loudness_lufs) AS min, MAX(loudness_lufs) AS max, AVG(loudness_lufs) AS avg FROM tracks'),
+      events.stats(),
+    ]);
+    await recommender.ready();
     sendJson(res, 200, {
-      server: { uptime_s: Math.round((Date.now() - metrics.started_at) / 1000), node: process.version, requests: metrics.requests },
+      server: { uptime_s: Math.round((Date.now() - metrics.started_at) / 1000), node: process.version, requests: metrics.requests, database: store.kind },
       catalog: counts, media, loudness: { ...loud, target: TARGET_LUFS },
       streaming: { range_requests: metrics.media_range_requests, full_requests: metrics.media_full_requests, bytes_requested: metrics.media_bytes_requested },
       recommender: { ...recommender.stats, trained_at: recommender.trainedAt },
-      events: events.stats(), connect: hub.stats(),
+      events: eventStats, connect: hub.stats(),
     });
   }));
 
-  r.post('/api/internals/retrain', auth(({ res }) => sendJson(res, 200, recommender.train())));
+  // A full retrain is CPU-heavy, so it is rate-limited across all users.
+  r.post('/api/internals/retrain', auth(async ({ res }) => {
+    if (!retrainLimiter('global')) throw new HttpError(429, 'The recommender was just retrained, try again in a minute');
+    sendJson(res, 200, await recommender.train());
+  }));
 
   // ---------------- request handling ----------------
-  async function handle(req, res) {
+  async function route(req, res) {
     metrics.requests++;
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     const url = new URL(req.url, 'http://localhost');
@@ -491,35 +575,43 @@ export function createApp({ dataDir = path.join(ROOT, 'data'), publicDir = path.
     throw new HttpError(404, 'Not found');
   }
 
-  const server = http.createServer((req, res) => {
-    handle(req, res).catch((err) => {
+  /** Node-style (req, res) handler: used by the HTTP server here and by serverless hosts. */
+  function handler(req, res) {
+    return route(req, res).catch((err) => {
       if (res.headersSent) { try { res.end(); } catch { /* ignore */ } return; }
       const status = err instanceof HttpError ? err.status : 500;
       if (status >= 500) log('[error]', req.method, req.url, err);
       sendJson(res, status, { error: { status, message: status >= 500 ? 'Internal server error' : err.message, code: err.code } });
     });
-  });
+  }
+
+  const server = http.createServer(handler);
   server.keepAliveTimeout = 65_000;
 
   function close() {
     hub.close();
     recommender.stop();
+    clearInterval(housekeepingTimer);
     server.closeAllConnections?.();
-    return new Promise((resolve) => server.close(() => { db.close(); resolve(); }));
+    return new Promise((resolve) => {
+      const done = () => store.close().then(resolve, resolve);
+      if (server.listening) server.close(done);
+      else done();
+    });
   }
 
-  return { server, db, recommender, hub, events, close };
+  return { server, handler, store, recommender, hub, events, close };
 }
 
 function isSecure(req) {
-  return !!req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+  return !!req.socket?.encrypted || req.headers['x-forwarded-proto'] === 'https';
 }
 
 function sameOrigin(req) {
   const origin = req.headers.origin;
   if (!origin) return true; // same-origin fetches from older browsers / curl / sendBeacon may omit it
   try {
-    return new URL(origin).host === req.headers.host;
+    return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host);
   } catch {
     return false;
   }

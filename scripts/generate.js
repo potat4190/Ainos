@@ -11,7 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDb, tx } from '../server/db.js';
-import { hashPassword } from '../server/auth.js';
+import { hashPasswordSync as hashPassword } from '../server/auth.js';
 import { integratedLoudness, samplePeakDb } from '../server/loudness.js';
 import { mulberry32, seededId, hashSeed, clamp } from '../server/util.js';
 import { renderTrack, master, downsample2, encodeWav16 } from './synth.js';
@@ -105,7 +105,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   const insTrack = db.prepare(`INSERT INTO tracks (id, album_id, artist_id, title, track_no, duration_ms, genre, language, loudness_lufs, peak_db,
     tempo, key, mode, energy, valence, danceability, acousticness, instrumentalness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insFile = db.prepare('INSERT INTO track_files (track_id, quality, file, mime, bytes, sample_rate, bitrate_kbps, header_bytes) VALUES (?,?,?,?,?,?,?,?)');
-  const insFts = db.prepare('INSERT INTO search_fts (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)');
+  const insFts = db.prepare('INSERT INTO search_index (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)');
 
   const tracks = [];
   let totalBytes = 0;
