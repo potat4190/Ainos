@@ -3,7 +3,9 @@
 //     art are the same on every build.
 //  2. With DATABASE_URL set: check the Postgres schema (and apply it first when
 //     DATABASE_MIGRATION_URL is set), then seed it on the first deploy, or
-//     check that the ids already there match the generated files.
+//     sync the generated catalog into it (scripts/seed-postgres.js). Preview
+//     builds of a branch older than the preview database's catalog skip the
+//     sync with a warning; production builds refuse.
 //  3. Assemble dist/: the app shell, the docs, the audio and the artwork.
 //     Vercel serves these as static files; middleware.js checks the signature
 //     on every /media/ request.
@@ -22,7 +24,10 @@ console.log('Generating catalog...');
 await generateCatalog({ dataDir: work, quiet: true });
 
 if (process.env.DATABASE_URL) {
-  await seedPostgres({ sqliteFile: path.join(work, 'ainos.db'), databaseUrl: process.env.DATABASE_URL, migrationUrl: process.env.DATABASE_MIGRATION_URL });
+  await seedPostgres({
+    sqliteFile: path.join(work, 'ainos.db'), databaseUrl: process.env.DATABASE_URL, migrationUrl: process.env.DATABASE_MIGRATION_URL,
+    lostTracks: process.env.VERCEL_ENV === 'preview' ? 'warn' : 'refuse',
+  });
 } else {
   console.log('DATABASE_URL is not set; skipping the database step.');
 }

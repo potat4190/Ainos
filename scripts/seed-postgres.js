@@ -14,8 +14,10 @@
 // every existing track id must still be generated (audio and art files are
 // named after those ids, so a lost id would mean a song 404s); new catalog
 // rows, such as appended hymns, are added and display fields (names, lyrics)
-// refreshed. Measured values (loudness, audio features), existing playlist
-// contents and all user data are never touched.
+// refreshed. Measured values (loudness, audio features) stay as first seeded,
+// except for hymns, whose audio is rendered from scripts/hymns.js and follows
+// it. User data, church (org) rows and user playlists are never touched;
+// removing an existing track is a manual data migration.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,23 +36,42 @@ const TABLES = [
 ];
 
 // The rows the generator owns, in foreign-key order: what a catalog sync may
-// insert, and which columns it may refresh on rows that already exist. Only
-// display fields are refreshed; tracks keep the loudness and features
-// measured when they were first seeded. `where` picks the generated rows
-// (the generator also writes a demo user and its private playlist).
+// insert, and which columns it may refresh on rows that already exist.
+// `where` picks the generated rows from the generated catalog (it also holds
+// a demo user and its private playlist); `target` guards the row in Postgres,
+// so a user's playlist or a church's song can never be overwritten. Only
+// display fields are refreshed, except for `regenerated` rows: hymn tracks,
+// whose audio follows their melody data, so the stored measurements must too.
+const HYMNS = "genre = 'Hymn'"; // HYMN_GENRE in server/demo.js
+const GLOBAL_SONG = 'song_id IN (SELECT id FROM songs WHERE org_id IS NULL)';
 export const CATALOG_SYNC = [
   { table: 'artists', key: ['id'], update: ['name', 'genre', 'language', 'bio', 'image', 'color'] },
   { table: 'albums', key: ['id'], update: ['title', 'year', 'type', 'cover', 'color'] },
   { table: 'tracks', key: ['id'], update: ['title'] },
+  { table: 'tracks', key: ['id'], where: HYMNS, target: `tracks.${HYMNS}`, regenerated: true,
+    update: ['duration_ms', 'loudness_lufs', 'peak_db', 'tempo', 'key', 'mode', 'energy', 'valence', 'danceability', 'acousticness'] },
   { table: 'track_files', key: ['track_id', 'quality'], update: [] },
-  { table: 'playlists', key: ['id'], where: 'owner_id IS NULL', update: ['name', 'description', 'color'] },
-  { table: 'search_index', key: ['kind', 'ref_id'], where: "kind <> 'playlist' OR ref_id IN (SELECT id FROM playlists WHERE owner_id IS NULL)", update: ['title', 'subtitle', 'folded'] },
-  { table: 'songs', key: ['id'], where: 'org_id IS NULL', update: ['title', 'artist', 'language', 'ccli_number', 'public_domain', 'updated_at'] },
-  { table: 'song_aliases', key: ['song_id', 'folded'], where: 'song_id IN (SELECT id FROM songs WHERE org_id IS NULL)', update: ['alias'] },
-  { table: 'song_themes', key: ['song_id', 'theme'], where: 'song_id IN (SELECT id FROM songs WHERE org_id IS NULL)', update: [] },
-  { table: 'song_sources', key: ['id'], where: 'song_id IN (SELECT id FROM songs WHERE org_id IS NULL)', update: ['kind'] },
-  { table: 'song_sections', key: ['id'], where: 'org_id IS NULL', update: ['lines', 'folded'] },
-  { table: 'song_arrangements', key: ['id'], where: 'org_id IS NULL', update: ['name', 'section_order'] },
+  { table: 'track_files', key: ['track_id', 'quality'], where: `track_id IN (SELECT id FROM tracks WHERE ${HYMNS})`,
+    target: `track_files.track_id IN (SELECT id FROM tracks WHERE ${HYMNS})`, regenerated: true, update: ['bytes'] },
+  { table: 'playlists', key: ['id'], where: 'owner_id IS NULL', target: 'playlists.owner_id IS NULL', update: ['name', 'description', 'color'] },
+  { table: 'search_index', key: ['kind', 'ref_id'], where: "kind <> 'playlist' OR ref_id IN (SELECT id FROM playlists WHERE owner_id IS NULL)",
+    target: "search_index.kind <> 'playlist' OR search_index.ref_id IN (SELECT id FROM playlists WHERE owner_id IS NULL)", update: ['title', 'subtitle', 'folded'] },
+  { table: 'songs', key: ['id'], where: 'org_id IS NULL', target: 'songs.org_id IS NULL', update: ['title', 'artist', 'language', 'ccli_number', 'public_domain', 'updated_at'] },
+  { table: 'song_aliases', key: ['song_id', 'folded'], where: GLOBAL_SONG, target: `song_aliases.${GLOBAL_SONG}`, update: ['alias'] },
+  { table: 'song_themes', key: ['song_id', 'theme'], where: GLOBAL_SONG, update: [] },
+  { table: 'song_sources', key: ['id'], where: GLOBAL_SONG, target: `song_sources.${GLOBAL_SONG}`, update: ['kind'] },
+  { table: 'song_sections', key: ['id'], where: 'org_id IS NULL', target: 'song_sections.org_id IS NULL', update: ['lines', 'folded'] },
+  { table: 'song_arrangements', key: ['id'], where: 'org_id IS NULL', target: 'song_arrangements.org_id IS NULL', update: ['name', 'section_order'] },
+];
+
+// Lyrics, arrangements and themes of the generator's own songs follow its
+// data: rows it no longer writes (a stanza dropped after review) are removed.
+// Church rows, and the sources and aliases later phases add to these songs,
+// are left alone. `id` is an expression valid in SQLite and Postgres alike.
+export const CATALOG_PRUNE = [
+  { table: 'song_sections', id: 'id', scope: 'org_id IS NULL' },
+  { table: 'song_arrangements', id: 'id', scope: 'org_id IS NULL' },
+  { table: 'song_themes', id: "song_id || '/' || theme" },
 ];
 
 /**
@@ -68,21 +89,49 @@ export function planCatalog(generatedIds, existingIds) {
 }
 
 /**
- * INSERT for one batch of rows. With a key it becomes an upsert: existing
- * rows get the `update` columns, and only when one of them actually changed
- * (no rewrite on every deploy). RETURNING tells inserted rows (xmax = 0)
- * from updated ones.
+ * The step a build takes. A preview build whose branch lacks tracks the
+ * (shared preview) database already has, e.g. a hotfix branch made before
+ * the hymns, skips the sync with a warning instead of failing; production
+ * always refuses.
  */
-export function upsertSql(table, cols, key, update, rowCount) {
+export function catalogAction(plan, { lostTracks = 'refuse' } = {}) {
+  return plan.action === 'refuse' && lostTracks === 'warn' ? 'skip' : plan.action;
+}
+
+/**
+ * INSERT for one batch of rows. With a key it becomes an upsert: existing
+ * rows get the `update` columns, only when `target` allows it and one of them
+ * actually changed (no rewrite on every deploy). RETURNING tells inserted
+ * rows (xmax = 0) from updated ones.
+ */
+export function upsertSql(table, cols, key, update, rowCount, target) {
   let n = 0;
   const values = Array.from({ length: rowCount }, () => `(${cols.map(() => `$${++n}`).join(', ')})`).join(', ');
   let conflict = '';
   if (key.length) {
+    const changed = update.map((c) => `${table}.${c} IS DISTINCT FROM excluded.${c}`).join(' OR ');
     conflict = update.length
-      ? ` ON CONFLICT (${key.join(', ')}) DO UPDATE SET ${update.map((c) => `${c} = excluded.${c}`).join(', ')} WHERE ${update.map((c) => `${table}.${c} IS DISTINCT FROM excluded.${c}`).join(' OR ')}`
+      ? ` ON CONFLICT (${key.join(', ')}) DO UPDATE SET ${update.map((c) => `${c} = excluded.${c}`).join(', ')} WHERE ${target ? `(${target}) AND (${changed})` : changed}`
       : ` ON CONFLICT (${key.join(', ')}) DO NOTHING`;
   }
   return `INSERT INTO ${table} (${cols.join(', ')}) VALUES ${values}${conflict} RETURNING (xmax = 0) AS inserted`;
+}
+
+/** DELETE the rows of the given songs that are not in `keep` ($1: song ids, $2: kept ids). */
+export function pruneSql({ table, id, scope }) {
+  return `DELETE FROM ${table} WHERE song_id = ANY($1::text[])${scope ? ` AND ${scope}` : ''} AND NOT ((${id}) = ANY($2::text[]))`;
+}
+
+/**
+ * Tracks to append to an existing editorial playlist so it holds what the
+ * generator now puts in it, or [] when the playlist has anything the
+ * generator doesn't (then it isn't the generator's to change).
+ */
+export function appendToPlaylist(existingTrackIds, generatedTrackIds) {
+  const generated = new Set(generatedTrackIds);
+  if (existingTrackIds.some((id) => !generated.has(id))) return [];
+  const existing = new Set(existingTrackIds);
+  return generatedTrackIds.filter((id) => !existing.has(id));
 }
 
 /** Run a statement per batch of rows, under Postgres' 65535-parameter limit. */
@@ -96,30 +145,45 @@ async function inBatches(client, rows, cols, sql) {
   return results;
 }
 
-/** Add new catalog rows and refresh display fields; see CATALOG_SYNC. */
+/** Add new catalog rows, refresh what the generator owns and prune its stale lyrics; see CATALOG_SYNC. */
 async function syncCatalog(client, src, log) {
-  const before = new Set((await client.query('SELECT id FROM playlists WHERE owner_id IS NULL')).rows.map((r) => r.id));
-  const totals = { inserted: 0, updated: 0 };
-  for (const { table, key, update, where } of CATALOG_SYNC) {
+  const totals = { inserted: 0, updated: 0, deleted: 0 };
+  for (const { table, key, update, where, target } of CATALOG_SYNC) {
     const rows = src.prepare(`SELECT * FROM ${table}${where ? ` WHERE ${where}` : ''}`).all();
     if (!rows.length) continue;
     const cols = Object.keys(rows[0]);
-    const result = await inBatches(client, rows, cols, (count) => upsertSql(table, cols, key, update, count));
+    const result = await inBatches(client, rows, cols, (count) => upsertSql(table, cols, key, update, count, target));
     const inserted = result.filter((r) => r.inserted).length;
     totals.inserted += inserted;
     totals.updated += result.length - inserted;
     if (result.length) log(`  ${table}: ${inserted} added, ${result.length - inserted} updated`);
   }
-  // A new editorial playlist (e.g. Hymns) gets its tracks; existing playlists
-  // keep theirs. Row ids come from the identity sequence, not the generator.
+
+  const songIds = src.prepare('SELECT id FROM songs WHERE org_id IS NULL').all().map((r) => r.id);
+  for (const p of CATALOG_PRUNE) {
+    const keep = src.prepare(`SELECT ${p.id} AS k FROM ${p.table} WHERE song_id IN (SELECT id FROM songs WHERE org_id IS NULL)${p.scope ? ` AND ${p.scope}` : ''}`).all().map((r) => r.k);
+    const { rowCount } = await client.query(pruneSql(p), [songIds, keep]);
+    totals.deleted += rowCount;
+    if (rowCount) log(`  ${p.table}: ${rowCount} removed (no longer generated)`);
+  }
+
+  // Editorial playlists: a new one (e.g. Hymns) gets its tracks, an existing
+  // one gains tracks the generator now adds to it. Row ids come from the
+  // identity sequence, not the generator.
   const cols = ['playlist_id', 'track_id', 'position', 'added_at'];
   for (const { id } of src.prepare('SELECT id FROM playlists WHERE owner_id IS NULL').all()) {
-    if (before.has(id)) continue;
-    const items = src.prepare('SELECT playlist_id, track_id, position, added_at FROM playlist_tracks WHERE playlist_id = ? ORDER BY position').all(id);
-    if (!items.length) continue;
+    const owner = (await client.query('SELECT owner_id FROM playlists WHERE id = $1', [id])).rows[0];
+    if (!owner || owner.owner_id !== null) continue; // not an editorial playlist in this database
+    const existing = (await client.query('SELECT track_id, position FROM playlist_tracks WHERE playlist_id = $1 ORDER BY position', [id])).rows;
+    const generated = src.prepare('SELECT track_id, added_at FROM playlist_tracks WHERE playlist_id = ? ORDER BY position').all(id);
+    const add = appendToPlaylist(existing.map((r) => r.track_id), generated.map((r) => r.track_id));
+    if (!add.length) continue;
+    const start = existing.length ? Math.max(...existing.map((r) => r.position)) + 1 : 0;
+    const addedAt = generated[0]?.added_at ?? Date.now();
+    const items = add.map((trackId, i) => ({ playlist_id: id, track_id: trackId, position: start + i, added_at: addedAt }));
     await inBatches(client, items, cols, (count) => upsertSql('playlist_tracks', cols, [], [], count));
     totals.inserted += items.length;
-    log(`  playlist_tracks: ${items.length} added to new playlist ${id}`);
+    log(`  playlist_tracks: ${items.length} added to editorial playlist ${id}`);
   }
   return totals;
 }
@@ -185,7 +249,7 @@ async function checkSchema(client) {
   }
 }
 
-export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, log = console.log }) {
+export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, lostTracks = 'refuse', log = console.log }) {
   const { default: pg } = await import('pg');
   if (migrationUrl) {
     await applySchema(pg, migrationUrl);
@@ -202,6 +266,10 @@ export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, log 
     const generatedIds = src.prepare('SELECT id FROM tracks').all().map((r) => r.id).sort();
     const existing = (await client.query('SELECT id FROM tracks')).rows.map((r) => r.id).sort();
     const plan = planCatalog(generatedIds, existing);
+    if (catalogAction(plan, { lostTracks }) === 'skip') {
+      log(`! Postgres has ${plan.lost.length} track(s) this build doesn't generate (a branch older than the database's catalog); skipping the catalog sync.`);
+      return { seeded: false, skipped: true, lost: plan.lost.length };
+    }
     if (plan.action === 'refuse') {
       throw new Error(`Postgres has ${plan.lost.length} track(s) the generated catalog no longer has (${plan.lost.slice(0, 5).join(', ')}). Their audio would 404; refusing to continue.`);
     }
@@ -212,7 +280,7 @@ export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, log 
       await client.query("SET LOCAL lock_timeout = '10s'");
       const totals = await syncCatalog(client, src, log);
       await client.query('COMMIT');
-      log(`✓ Catalog synced (${totals.inserted} rows added, ${totals.updated} updated)`);
+      log(`✓ Catalog synced (${totals.inserted} rows added, ${totals.updated} updated, ${totals.deleted} removed)`);
       return { seeded: false, synced: totals, added: plan.added.length };
     }
 
