@@ -27,6 +27,9 @@ test('header check: passes good headers, names each problem', () => {
   assert.match(problems({ 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-eval'" }).join(), /unsafe code/);
   assert.deepEqual(problems({ 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'" }), [], 'only script-src is checked for unsafe-inline');
   assert.match(problems({ 'content-security-policy': "default-src 'self'" }).join(), /no script-src/);
+  for (const d of ["script-src-elem 'self' 'unsafe-inline'", "script-src-attr 'unsafe-inline'", "default-src 'self' 'unsafe-eval'"]) {
+    assert.match(problems({ 'content-security-policy': `${good['content-security-policy']}; ${d}` }).join(), /unsafe code/, d);
+  }
   assert.match(problems({ 'referrer-policy': 'same-origin' }).join(), /Referrer-Policy is same-origin/);
   assert.match(problems({ 'x-content-type-options': null }).join(), /X-Content-Type-Options is missing/);
   assert.match(problems({ 'cross-origin-opener-policy': null }).join(), /Cross-Origin-Opener-Policy is missing/);

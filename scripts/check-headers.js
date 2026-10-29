@@ -16,9 +16,11 @@ export function headerProblems(headers, { https = false } = {}) {
   const policies = tokens(headers, 'content-security-policy').map((p) => p.split(';').map((d) => d.trim()).filter(Boolean));
   if (!policies.length) problems.push('Content-Security-Policy is missing');
   for (const directives of policies) {
-    const scriptSrc = directives.find((d) => /^script-src\s/i.test(d));
-    if (!scriptSrc) problems.push('CSP has no script-src');
-    else if (/'unsafe-inline'|'unsafe-eval'/i.test(scriptSrc)) problems.push(`CSP script-src allows unsafe code: ${scriptSrc}`);
+    if (!directives.some((d) => /^script-src\s/i.test(d))) problems.push('CSP has no script-src');
+    // script-src-elem/-attr override script-src for their cases; default-src covers anything left unset.
+    for (const d of directives.filter((x) => /^(script-src(-elem|-attr)?|default-src)\s/i.test(x))) {
+      if (/'unsafe-inline'|'unsafe-eval'/i.test(d)) problems.push(`CSP allows unsafe code: ${d}`);
+    }
   }
   if (policies.length && !policies.some((ds) => ds.some((d) => /^frame-ancestors\s+'none'$/i.test(d)))) problems.push("CSP lacks frame-ancestors 'none' (clickjacking)");
   const expect = (name, label, value) => {
