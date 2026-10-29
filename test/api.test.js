@@ -372,6 +372,9 @@ test('demo guard: both shared demo accounts are refused with demo_not_allowed; o
     assert.equal(isDemo({ username }), true);
   }
   assert.equal(await action({ user: { id: 2, username: 'grace' } }), 'done by grace');
+  // Wrapped in the wrong order (no user yet), it refuses rather than letting anyone through.
+  await assert.rejects(action({}), /no signed-in user/);
+  await assert.rejects(action({ user: {} }), /no signed-in user/);
   assert.equal(isDemo({ username: 'demo2' }), false);
   assert.equal(isChurchDemo({ username: 'church-demo' }), true);
   assert.equal(isChurchDemo({ username: 'demo' }), false);

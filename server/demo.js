@@ -23,6 +23,9 @@ export const isChurchDemo = (user) => user?.username?.toLowerCase() === CHURCH_D
 
 /** Throws 403 for a shared demo account; for actions that would reach other people or outlive the demo. */
 export function assertNotDemo(user) {
+  // Fail closed: without a user (e.g. noDemo placed outside auth()) the guard
+  // could not tell, so it must not let the action through.
+  if (!user?.username) throw new Error('assertNotDemo: no signed-in user (wrap routes as auth(noDemo(handler)))');
   if (isDemo(user)) throw new HttpError(403, 'The shared demo can’t do this. Sign up to use it.', 'demo_not_allowed');
 }
 
