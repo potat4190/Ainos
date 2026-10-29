@@ -71,7 +71,10 @@ test('media supports byte ranges and rejects bad or missing signatures', async (
 
   const path = url.split('?')[0];
   assert.equal((await fetch(srv.base + path)).status, 403);
-  assert.equal((await fetch(srv.base + url.replace(/sig=./, 'sig=A'))).status, 403);
+  // Change the signature's first character (to a different one: a fixed 'A' left 1 in 64 signatures unchanged).
+  const tampered = url.replace(/sig=(.)/, (_, c) => 'sig=' + (c === 'A' ? 'B' : 'A'));
+  assert.notEqual(tampered, url);
+  assert.equal((await fetch(srv.base + tampered)).status, 403);
   const expired = url.replace(/exp=\d+/, 'exp=1000');
   assert.equal((await fetch(srv.base + expired)).status, 403);
 });
