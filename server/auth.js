@@ -108,7 +108,11 @@ const LONGEST_WINDOW_MS = 25 * 3600 * 1000;
  * and a per-day limit.
  */
 export async function rateLimit(store, key, { limit, windowSec, message = 'Too many requests, try again later', now = Date.now() }) {
+  // A typo or a missing setting must fail loudly, not silently allow everything.
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`rateLimit: limit must be a positive integer, got ${limit}`);
+  if (!Number.isInteger(windowSec) || windowSec < 1) throw new Error(`rateLimit: windowSec must be a positive integer, got ${windowSec}`);
   if (windowSec * 1000 > LONGEST_WINDOW_MS) throw new Error('rate-limit windows longer than a day would be purged early');
+  if (typeof key !== 'string' || !key) throw new Error('rateLimit: key required');
   const windowMs = windowSec * 1000;
   const { hits, windowStart } = await hit(store, `${key}/${windowSec}s`, windowMs, now);
   if (hits > limit) {
@@ -117,9 +121,14 @@ export async function rateLimit(store, key, { limit, windowSec, message = 'Too m
   }
 }
 
-/** Delete rate-limit windows that ended long ago (older than any window in use). */
-export function purgeRateLimits(store, olderThanMs = LONGEST_WINDOW_MS) {
-  return store.run('DELETE FROM rate_limits WHERE window_start < ?', [Date.now() - olderThanMs]);
+/**
+ * Delete rate-limit windows that ended long ago. rateLimit() keys end in
+ * "/<seconds>s" and may run up to a day; the older per-minute limiters'
+ * keys have no "/", so theirs go after an hour, as before.
+ */
+export async function purgeRateLimits(store, now = Date.now()) {
+  await store.run("DELETE FROM rate_limits WHERE window_start < ? AND key NOT LIKE '%/%s'", [now - 3600 * 1000]);
+  await store.run('DELETE FROM rate_limits WHERE window_start < ?', [now - LONGEST_WINDOW_MS]);
 }
 
 /** HMAC-signed, expiring media URLs (like a CDN's signed URLs). */

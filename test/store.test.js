@@ -68,6 +68,22 @@ test('rateLimit throws 429 with Retry-After, keeps per-minute and per-day window
     assert.ok(await store.get('SELECT 1 AS x FROM rate_limits WHERE key = ?', ['user:7:scripture/86400s']), 'not purged early');
 
     await assert.rejects(rateLimit(store, 'x', { limit: 1, windowSec: 2 * 86_400 }), /purged early/, 'windows longer than a day are refused');
+    // Misconfiguration fails loudly instead of letting every request through.
+    for (const opts of [{ windowSec: 60 }, { limit: 1 }, { limit: 0, windowSec: 60 }, { limit: 1, windowSec: -60 }, { limit: 1, windowSec: 0 },
+      { limit: 1.5, windowSec: 60 }, { limit: NaN, windowSec: 60 }, { limit: '5', windowSec: 60 }, { limit: 1, windowSecs: 60 }]) {
+      await assert.rejects(rateLimit(store, 'k', opts), /rateLimit: /, JSON.stringify(opts));
+    }
+    await assert.rejects(rateLimit(store, '', perMinute), /key required/);
+
+    // Housekeeping: the per-minute limiters' rows (no "/" in the key) go after
+    // an hour, rateLimit() rows after a day.
+    const now = Date.now();
+    await store.run('DELETE FROM rate_limits');
+    for (const [key, age] of [['auth:203.0.113.7', 2 * 3600_000], ['auth:203.0.113.8', 30 * 60_000], ['user:9:x/86400s', 2 * 3600_000], ['user:9:y/60s', 26 * 3600_000]]) {
+      await store.run('INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)', [key, now - age]);
+    }
+    await purgeRateLimits(store, now);
+    assert.deepEqual((await store.all('SELECT key FROM rate_limits ORDER BY key')).map((r) => r.key), ['auth:203.0.113.8', 'user:9:x/86400s']);
   } finally {
     await store.close();
     fs.rmSync(dir, { recursive: true, force: true });
