@@ -358,10 +358,19 @@ test('session cookies are HttpOnly and SameSite=Lax, and Secure over HTTPS', asy
   assert.match(plain, /; HttpOnly/);
   assert.match(plain, /; SameSite=Lax/);
   assert.doesNotMatch(plain, /Secure/, 'plain HTTP (local dev) cannot use Secure cookies');
-  const tls = await signin({ 'X-Forwarded-Proto': 'https' });
-  assert.match(tls.headers.get('set-cookie'), /; Secure/);
-  const out = await fetch(srv.base + '/api/auth/logout', { method: 'POST', headers: { Cookie: tls.headers.get('set-cookie').split(';')[0], 'X-Forwarded-Proto': 'https' } });
-  assert.match(out.headers.get('set-cookie'), /Max-Age=0.*; Secure|; Secure.*Max-Age=0/, 'the clearing cookie matches the one it replaces');
+  const forged = await signin({ 'X-Forwarded-Proto': 'https' });
+  assert.doesNotMatch(forged.headers.get('set-cookie'), /Secure/, 'X-Forwarded-Proto means nothing without a proxy in front');
+
+  // Behind the proxy (Vercel, or TRUST_PROXY=1), HTTPS cookies are Secure, and so is the one that clears them.
+  const { isSecure } = await import('../server/app.js');
+  const { sessionCookie, clearCookie } = await import('../server/auth.js');
+  const viaProxy = { headers: { 'x-forwarded-proto': 'https' }, socket: {} };
+  assert.equal(isSecure(viaProxy, { trustProxy: true }), true);
+  assert.equal(isSecure(viaProxy), false);
+  assert.equal(isSecure({ headers: {}, socket: { encrypted: true } }), true, 'direct TLS');
+  assert.match(sessionCookie('t', { secure: true }), /^ainos_session=t; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+; Secure$/);
+  assert.match(clearCookie({ secure: true }), /HttpOnly; SameSite=Lax; Max-Age=0; Secure$/);
+  assert.doesNotMatch(clearCookie(), /Secure/);
 });
 
 test('demo guard: both shared demo accounts are refused with demo_not_allowed; others pass', async () => {

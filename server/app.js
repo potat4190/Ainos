@@ -105,7 +105,7 @@ export async function createApp({
       throw err;
     }
     const token = await createSession(store, Number(row.id));
-    sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+    sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }) }) });
   });
 
   r.post('/api/auth/login', async ({ req, res }) => {
@@ -114,7 +114,7 @@ export async function createApp({
     const row = typeof username === 'string' ? await store.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?) AND is_simulated = 0', [username]) : null;
     if (!row || typeof password !== 'string' || !(await verifyPassword(password, row.password_hash))) throw new HttpError(401, 'Wrong username or password', 'bad_credentials');
     const token = await createSession(store, row.id);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }) }) });
   });
 
   // "Try the demo": no password on the client. Resets the shared demo account
@@ -126,13 +126,13 @@ export async function createApp({
     // One day, not 30: every click makes a session for the shared account, and
     // expired ones are purged by housekeeping.
     const token = await createSession(store, userId, { ttlMs: DEMO_SESSION_TTL_MS });
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req), maxAgeMs: DEMO_SESSION_TTL_MS }) });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }), maxAgeMs: DEMO_SESSION_TTL_MS }) });
   });
 
   r.post('/api/auth/logout', async ({ req, res }) => {
     const user = await userFromRequest(store, req);
     if (user) await destroySession(store, user.token);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: isSecure(req) }) });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: isSecure(req, { trustProxy }) }) });
   });
 
   r.get('/api/me', auth(({ res, user }) => {
@@ -653,8 +653,9 @@ function hourIn(tz) {
   return (ms) => Number(fmt.formatToParts(ms).find((p) => p.type === 'hour').value) % 24;
 }
 
-function isSecure(req) {
-  return !!req.socket?.encrypted || req.headers['x-forwarded-proto'] === 'https';
+/** Whether the browser reached us over HTTPS (behind the proxy, it says so in X-Forwarded-Proto). */
+export function isSecure(req, { trustProxy = false } = {}) {
+  return !!req.socket?.encrypted || (trustProxy && req.headers['x-forwarded-proto'] === 'https');
 }
 
 /**
@@ -672,7 +673,7 @@ export function sameOrigin(req, { trustProxy = false } = {}) {
   }
   const host = (trustProxy && req.headers['x-forwarded-host']) || req.headers.host;
   if (!host) return false;
-  const scheme = req.socket?.encrypted || (trustProxy && req.headers['x-forwarded-proto'] === 'https') ? 'https' : 'http';
+  const scheme = isSecure(req, { trustProxy }) ? 'https' : 'http';
   try {
     return new URL(origin).origin === new URL(`${scheme}://${host}`).origin; // "null" (sandboxed frames) throws → refused
   } catch {

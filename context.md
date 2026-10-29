@@ -78,6 +78,7 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 | Variable | Where | Meaning |
 |---|---|---|
 | `PORT`, `HOST` | local | Default `127.0.0.1:4321`; `HOST=0.0.0.0` to test Connect from a phone |
+| `TRUST_PROXY` | local (optional) | `1` when running behind a TLS-terminating proxy or tunnel (nginx, Caddy, ngrok) that sets `X-Forwarded-*`; Vercel sets this up itself. Without it, HTTPS logins behind such a proxy are refused as cross-origin |
 | `DATABASE_URL` | prod (optional locally) | Supabase transaction pooler URL (port 6543); switches the store to Postgres |
 | `DATABASE_CA_CERT` | prod | Supabase CA certificate (PEM) for TLS verification |
 | `AINOS_SECRET` | prod | Long random string for media URL signatures |
