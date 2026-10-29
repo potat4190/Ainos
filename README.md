@@ -12,7 +12,7 @@ A Christian faith-based music streaming app dedicated to Christian worship, prai
 
 ## Run it
 
-Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Running locally needs no `npm install`: the two packages in `package.json` (`pg`, `@vercel/functions`) are only used by the hosted deployment.
+Requires **Node.js 22.13 or newer, up to 24** (it uses the built-in `node:sqlite`; the range is pinned so Vercel builds the audio on the Node version the catalog snapshot was taken with). Running locally needs no `npm install`: the two packages in `package.json` (`pg`, `@vercel/functions`) are only used by the hosted deployment.
 
 ```bash
 npm start          # first run generates the catalog (~15 s), then serves http://127.0.0.1:4321

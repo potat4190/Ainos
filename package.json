@@ -5,7 +5,7 @@
   "description": "Ainos: a Christian faith-based worship & praise music streaming app with multi-language recommendations (English, Hindi, Nepali, Chinese, Japanese, Spanish) and unified all-access features. Runs locally with zero dependencies; deploys to Vercel + Supabase.",
   "type": "module",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.13 <25"
   },
   "scripts": {
     "setup": "node --disable-warning=ExperimentalWarning scripts/generate.js",
