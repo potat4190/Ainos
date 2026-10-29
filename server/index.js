@@ -45,7 +45,7 @@ app.server.listen(PORT, HOST, () => {
       for (const a of addrs || []) if (a.family === 'IPv4' && !a.internal) console.log(`  on your network:  http://${a.address}:${PORT}`);
     }
   }
-  console.log('Demo login: demo / ainos-demo');
+  console.log('Click "Try the demo" to sign in to the shared demo account (or log in as demo / ainos-demo).');
 });
 
 const shutdown = () => app.close().then(() => process.exit(0));

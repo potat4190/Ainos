@@ -2,8 +2,9 @@
 //
 //   node scripts/smoke.js https://your-app.vercel.app
 //
-// Logs in as the demo account, walks every API route, plays with a temporary
-// playlist (deleted at the end) and fetches a signed audio range.
+// Signs in with "Try the demo" (which resets the shared demo account to its
+// snapshot), walks every API route, plays with a temporary playlist (deleted
+// at the end) and fetches a signed audio range.
 const base = (process.argv[2] || 'http://127.0.0.1:4321').replace(/\/$/, '');
 let cookie = '';
 let failures = 0;
@@ -30,9 +31,13 @@ const check = (cond, label) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${label}
 
 await call('GET', '/', undefined);
 await call('GET', '/api/home', undefined, { expect: 401 });
-await call('POST', '/api/auth/login', { username: 'demo', password: 'ainos-demo' });
+await call('POST', '/api/auth/demo', {});
 const me = (await call('GET', '/api/me')).json;
-check(me?.username === 'demo', 'logged in as demo');
+check(me?.username === 'demo' && me?.is_demo === true, 'signed in to the demo');
+const lib = (await call('GET', '/api/me/library')).json;
+check(lib?.playlists?.length >= 2 && lib?.liked_count > 0 && lib?.artists?.length > 0, 'the demo account has playlists, likes and follows');
+const recentAtStart = (await call('GET', '/api/me/recent')).json;
+check(recentAtStart?.tracks?.length > 0, 'the demo account has listening history');
 
 const home = (await call('GET', '/api/home')).json;
 check(home?.recommended?.length > 0 && home?.popular?.length > 0 && home?.made_for_you?.length > 0, 'home has recommendations, popular and mixes');
@@ -85,13 +90,17 @@ const moved = (await call('POST', `/api/playlists/${p.id}/move`, { from: 0, to: 
 check(moved?.tracks?.map((t) => t.position).join() === '0,1,2,3', 'playlist positions stay contiguous after a move');
 await call('DELETE', `/api/playlists/${p.id}/tracks/0`);
 await call('PATCH', `/api/playlists/${p.id}`, { name: 'Smoke Test Renamed' });
+// Everyone shares the demo account, so its playlists never become public or searchable.
+check(p?.is_public === false, 'demo playlists are created private');
+await call('PATCH', `/api/playlists/${p.id}`, { is_public: true }, { expect: 403 });
 const found = (await call('GET', '/api/search?q=smoke%20test%20renamed')).json;
-check(found?.playlists?.some((x) => x.id === p.id), 'renamed public playlist is searchable');
+check(found && !found.playlists?.some((x) => x.id === p.id), 'demo playlists stay out of search');
 await call('DELETE', `/api/playlists/${p.id}`);
-await call('POST', '/api/events', { events: [{ type: 'play_start', track_id: track.id, ts: Date.now() }, { type: 'play_end', track_id: track.id, ms_played: 1000, reason: 'fwdbtn', ts: Date.now() }] });
+const ev = (await call('POST', '/api/events', { events: [{ type: 'pause', device_id: 'smoke-test', ts: Date.now() }] })).json;
+check(ev?.accepted === 1 && ev?.streams_counted === 0, 'event accepted');
 if (!likedBefore) await call('DELETE', `/api/me/liked/${track.id}`);
 if (!followedBefore) await call('DELETE', `/api/me/following/${track.artist.id}`);
-await call('POST', '/api/me/language', { language: 'en' });
+await call('POST', '/api/me/language', { language: me.language }); // the endpoint works; the saved language stays as it was
 await call('POST', '/api/playlists', { name: 'evil' }, { expect: 403, headers: { Origin: 'https://evil.example' } });
 await call('POST', '/api/auth/logout', {});
 await call('GET', '/api/me', undefined, { expect: 401 });

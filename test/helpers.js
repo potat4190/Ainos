@@ -6,10 +6,10 @@ import { generateCatalog } from '../scripts/generate.js';
 import { createApp } from '../server/app.js';
 
 /** Fresh catalog (short tracks) + running server on a random port. */
-export async function startTestServer() {
+export async function startTestServer(options = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-test-'));
   await generateCatalog({ dataDir, quick: true, quiet: true });
-  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000 });
+  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000, ...options });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {

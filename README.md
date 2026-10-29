@@ -18,7 +18,13 @@ Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Runnin
 npm start          # first run generates the catalog (~15 s), then serves http://127.0.0.1:4321
 ```
 
-Log in with **demo / ainos-demo**, or sign up for a new account.
+Click **Try the demo**, or sign up for a new account.
+
+### Try the demo
+
+The button signs you in to one shared account, `demo`, through `POST /api/auth/demo` (the password never reaches the browser). Each demo sign-in first resets that account to a fixed snapshot (`server/demo.js`): two playlists, six liked songs, three followed artists and about three weeks of listening, so Home, Made For You and Your Stats have something to show. Demo sign-ins are rate-limited per visitor and overall.
+
+Because the account is shared, visitors can see each other's changes until the next reset, and a new visitor's reset changes what an earlier visitor sees mid-session. Nothing a visitor does reaches other accounts: demo playlists always stay private, so they never appear in search. The app shows a banner in the demo explaining this, with a link to sign up. (The account can still be reached with `demo` / `ainos-demo`, which does not reset it; the tests use that.)
 
 | Command | What it does |
 |---|---|
@@ -47,7 +53,7 @@ Environment variables on Vercel:
 | `AINOS_SECRET` | A long random string; signs media URLs |
 | `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
 
-`node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy. It leaves the demo account's likes, follows, language and listening history as it found them.
+`node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy. It signs in with *Try the demo*, so it resets the demo account.
 
 Running `npm start` with `DATABASE_URL` set uses that database instead of SQLite (it prints which host), while audio and art still come from `data/`.
 

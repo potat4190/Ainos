@@ -1,8 +1,8 @@
 import { api, rememberTracks } from './api.js';
-import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog } from './ui.js';
+import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog, safely } from './ui.js';
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
-import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre } from './i18n.js';
+import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
 
@@ -22,11 +22,11 @@ export function trackList(app, tracks, ctx, opts = {}) {
     const play = () => app.player.playContext(ctx, i);
     const likeBtn = h('button', { class: `icon-btn${app.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': app.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(app.isLiked(tr.id) ? 'heart-fill' : 'heart'));
     likeBtn.addEventListener('click', (e) => { e.stopPropagation(); app.toggleLike(tr); });
-    const moreBtn = h('button', { class: 'icon-btn', 'aria-label': `More options for ${tr.title}` }, icon('more'));
+    const moreBtn = h('button', { class: 'icon-btn', 'aria-label': t('moreOptionsFor', { title: tr.title }) }, icon('more'));
     moreBtn.addEventListener('click', (e) => { e.stopPropagation(); app.trackMenu(tr, e, { playlist, position: tr.position }); });
 
     const row = h('div', { class: 'tl-row', role: 'row', tabindex: '0', dataset: { trackId: tr.id, ctx: ctx.uri || '' } },
-      h('div', { class: 'tl-num' }, h('span', { class: 'n' }, String(i + 1)), h('button', { class: 'play-small', 'aria-label': `Play ${tr.title}`, onclick: (e) => { e.stopPropagation(); play(); } }, icon('play'))),
+      h('div', { class: 'tl-num' }, h('span', { class: 'n' }, String(i + 1)), h('button', { class: 'play-small', 'aria-label': t('playTitle', { title: tr.title }), onclick: (e) => { e.stopPropagation(); play(); } }, icon('play'))),
       h('div', { class: 'tl-main' },
         showCover ? img(tr.album.cover, 'art') : null,
         h('div', { class: 'tl-title' },
@@ -45,14 +45,15 @@ export function trackList(app, tracks, ctx, opts = {}) {
       row.addEventListener('dragstart', (e) => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; });
       row.addEventListener('dragover', (e) => { if (dragFrom !== null) { e.preventDefault(); row.classList.add('dragover'); } });
       row.addEventListener('dragleave', () => row.classList.remove('dragover'));
-      row.addEventListener('drop', async (e) => {
+      row.addEventListener('drop', safely(async (e) => {
         e.preventDefault();
         row.classList.remove('dragover');
         if (dragFrom === null || dragFrom === i) return;
         const from = dragFrom; dragFrom = null;
         await api.post(`/api/playlists/${playlist.id}/move`, { from, to: i });
         app.refresh();
-      });
+      }));
+      row.addEventListener('dragend', () => { dragFrom = null; });
     }
     root.append(row);
   });
@@ -64,8 +65,8 @@ function card(app, { art, title, sub, href, onPlay, round = false }) {
   const c = h('a', { class: 'card', href }, art, h('div', { class: 'title' }, title), h('div', { class: 'sub' }, sub || ''));
   if (round) c.querySelector('.art')?.classList.add('round');
   if (onPlay) {
-    const fab = h('button', { class: 'fab', 'aria-label': `Play ${title}` }, icon('play'));
-    fab.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onPlay(); });
+    const fab = h('button', { class: 'fab', 'aria-label': t('playTitle', { title }) }, icon('play'));
+    fab.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); safely(onPlay)(e); });
     c.append(fab);
   }
   return c;
@@ -96,14 +97,14 @@ function actionBar(app, color, ...items) {
   return h('div', { class: 'actionbar', style: { '--hero': color || '#3a3550' } }, items);
 }
 
-function playFab(app, getCtx, label = 'Play') {
+function playFab(app, getCtx, label = t('play')) {
   const b = h('button', { class: 'fab', 'aria-label': label }, icon('play'));
-  b.addEventListener('click', async () => {
+  b.addEventListener('click', safely(async () => {
     const ctx = await getCtx();
     const v = app.player.view();
     if (v.contextUri && v.contextUri === ctx.uri && v.track) return app.player.toggle();
     app.player.playContext(ctx, app.player.shuffle ? -1 : 0);
-  });
+  }));
   const c = getCtx();
   if (c && typeof c.then !== 'function' && c.uri) b.dataset.ctxUri = c.uri;
   return b;
@@ -111,28 +112,29 @@ function playFab(app, getCtx, label = 'Play') {
 
 function downloadBtn(app, tracks) {
   const all = () => tracks.length && tracks.every((t) => app.player.downloads[t.id]);
-  const b = h('button', { class: `icon-btn${all() ? ' liked' : ''}`, 'aria-label': all() ? 'Remove download' : 'Download for offline' }, icon(all() ? 'check' : 'download'));
+  const b = h('button', { class: `icon-btn${all() ? ' liked' : ''}`, 'aria-label': all() ? t('removeDownload') : t('download') }, icon(all() ? 'check' : 'download'));
   b.addEventListener('click', async () => {
     try {
       if (all()) {
         for (const t of tracks) await app.player.removeDownload(t.id);
-        toast('Removed from downloads');
+        toast(t('downloadRemovedToast'));
       } else {
-        toast(`Downloading ${tracks.length} track${tracks.length === 1 ? '' : 's'}…`);
+        toast(t('downloadingToast', { n: tracks.length }));
         const n = await app.player.download(tracks);
-        toast(`Downloaded ${n} track${n === 1 ? '' : 's'} for offline listening`);
+        toast(t('downloadedNToast', { n }));
       }
       clear(b).append(icon(all() ? 'check' : 'download'));
       b.classList.toggle('liked', all());
+      b.setAttribute('aria-label', all() ? t('removeDownload') : t('download'));
     } catch (err) {
-      toast(err.message, { error: true });
+      toast(errorText(err), { error: true });
     }
   });
   return b;
 }
 
 function moreBtn(onClick) {
-  const b = h('button', { class: 'icon-btn', 'aria-label': 'More options' }, icon('more'));
+  const b = h('button', { class: 'icon-btn', 'aria-label': t('moreOptions') }, icon('more'));
   b.addEventListener('click', onClick);
   return b;
 }
@@ -161,8 +163,8 @@ export async function home(el, _p, app) {
   // Shortcuts (2x4 grid at the top of home)
   const shortcuts = [];
   const sc = (art, label, href, getCtx) => {
-    const fab = h('button', { class: 'fab', 'aria-label': `Play ${label}` }, icon('play'));
-    fab.addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); const ctx = await getCtx(); app.player.playContext(ctx, 0); });
+    const fab = h('button', { class: 'fab', 'aria-label': t('playTitle', { title: label }) }, icon('play'));
+    fab.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); safely(async () => app.player.playContext(await getCtx(), 0))(e); });
     return h('a', { class: 'shortcut', href }, art, h('span', {}, label), fab);
   };
   shortcuts.push(sc(likedArt('art'), t('likedSongs'), '#/liked', () => loadCtx('liked')));
@@ -258,17 +260,17 @@ export async function search(el, params, app) {
     const name = k === 'playlist' ? translateEditorial(top).name : top.name || top.title;
     const sub = k === 'artist' ? t('artist') : k === 'album' ? `${t('album')} · ${top.artist.name}` : k === 'playlist' ? t('playlist') : `${t('song')} · ${top.artist.name}`;
     const href = k === 'track' ? `#/album/${top.album.id}` : `#/${k}/${top.id}`;
-    const fab = h('button', { class: 'fab', 'aria-label': `Play ${name}` }, icon('play'));
-    fab.addEventListener('click', async (e) => {
+    const fab = h('button', { class: 'fab', 'aria-label': t('playTitle', { title: name }) }, icon('play'));
+    fab.addEventListener('click', (e) => {
       e.preventDefault();
-      if (k === 'track') return app.player.playContext({ uri: 'ainos:search:' + q, title: `Search “${q}”`, tracks: r.tracks }, 0);
-      app.player.playContext(await loadCtx(k, top.id), 0);
+      if (k === 'track') return app.player.playContext({ uri: 'ainos:search:' + q, title: t('searchContext', { q }), tracks: r.tracks }, 0);
+      safely(async () => app.player.playContext(await loadCtx(k, top.id), 0))(e);
     });
     return h('a', { class: 'top-result', href }, art, h('div', { class: 'name' }, name), h('div', { class: 'muted' }, sub), fab);
   })() : h('div');
   results.append(h('div', { class: 'search-top section' },
     h('div', {}, h('h2', { style: { 'margin-bottom': '12px' } }, t('topResult')), topEl),
-    h('div', {}, h('h2', { style: { 'margin-bottom': '12px' } }, t('songs')), songs.length ? trackList(app, songs, { uri: 'ainos:search:' + q, title: `Search “${q}”`, tracks: songs }, { showAlbum: false }) : h('p', { class: 'muted' }, t('noSongs')))));
+    h('div', {}, h('h2', { style: { 'margin-bottom': '12px' } }, t('songs')), songs.length ? trackList(app, songs, { uri: 'ainos:search:' + q, title: t('searchContext', { q }), tracks: songs }, { showAlbum: false }) : h('p', { class: 'muted' }, t('noSongs')))));
   if (r.artists.length) results.append(section(t('artists'), grid(r.artists.map((a) => card(app, { art: img(a.image), title: a.name, sub: t('artist'), href: `#/artist/${a.id}`, round: true })))));
   if (r.albums.length) results.append(section(t('albums'), grid(r.albums.map((a) => card(app, { art: img(a.cover), title: a.title, sub: `${a.year} · ${a.artist.name}`, href: `#/album/${a.id}`, onPlay: async () => app.player.playContext(await loadCtx('album', a.id), 0) })))));
   if (r.playlists.length) results.append(section(t('filterPlaylists'), grid(r.playlists.map(translateEditorial).map((p) => card(app, { art: mosaic(p.covers), title: p.name, sub: t('byOwner', { name: p.owner.name }), href: `#/playlist/${p.id}` })))));
@@ -288,7 +290,7 @@ export async function library(el, params, app) {
   }
   if (filter !== 'playlists') for (const a of lib.artists) items.push(card(app, { art: img(a.image), title: a.name, sub: t('artist'), href: `#/artist/${a.id}`, round: true }));
   const create = h('button', { class: 'btn btn-primary btn-sm' }, icon('plus'), t('createPlaylist'));
-  create.addEventListener('click', () => app.createPlaylist());
+  create.addEventListener('click', safely(() => app.createPlaylist()));
   el.append(grid(items), h('div', { style: { 'margin-top': '20px' } }, create));
 }
 
@@ -314,14 +316,17 @@ export async function artist(el, { id }, app) {
   const ctx = { uri: a.uri, title: a.name, tracks: a.top_tracks };
   el.append(pageHead({ art: img(a.image, 'art round'), kind: t('artist'), title: a.name, color: a.color, facts: facts(t('monthlyListeners', { n: fmtNumber(a.monthly_listeners) }), translateGenre(a.genre)) }));
   const follow = h('button', { class: 'btn btn-ghost btn-sm' }, a.following ? t('following') : t('follow'));
-  follow.addEventListener('click', async () => {
+  const showFollow = () => { follow.textContent = a.following ? t('following') : t('follow'); follow.setAttribute('aria-pressed', String(!!a.following)); };
+  showFollow();
+  // Optimistic: flip at once, flip back if the request fails.
+  follow.addEventListener('click', safely(async () => {
     a.following = !a.following;
+    showFollow();
     await (a.following ? api.put(`/api/me/following/${id}`) : api.del(`/api/me/following/${id}`));
-    follow.textContent = a.following ? t('following') : t('follow');
     app.refreshLibrary();
-  });
-  const radio = h('a', { class: 'icon-btn', href: `#/radio/${a.top_tracks[0]?.id}`, 'aria-label': t('startRadio'), title: t('startRadio') }, icon('radio'));
-  el.append(actionBar(app, a.color, playFab(app, () => ctx), follow, radio));
+  }, { onError: () => { a.following = !a.following; showFollow(); } }));
+  const radio = a.top_tracks[0] ? h('a', { class: 'icon-btn', href: `#/radio/${a.top_tracks[0].id}`, 'aria-label': t('startRadio'), title: t('startRadio') }, icon('radio')) : null;
+  el.append(actionBar(app, a.color, a.top_tracks.length ? playFab(app, () => ctx) : null, follow, radio));
   el.append(section(t('popular'), trackList(app, a.top_tracks, ctx, { extra: { header: t('plays'), cell: (tr) => fmtNumber(tr.plays) } })));
   el.append(section(t('discography'), grid(a.albums.map((al) => card(app, { art: img(al.cover), title: al.title, sub: `${al.year} · ${al.type === 'single' ? t('single') : t('album')}`, href: `#/album/${al.id}`, onPlay: async () => app.player.playContext(await loadCtx('album', al.id), 0) })))));
   el.append(section(t('about'), h('div', { class: 'box', style: { 'max-width': '720px' } }, h('p', { style: { margin: 0 } }, a.bio))));
@@ -332,13 +337,13 @@ export async function playlist(el, { id }, app) {
   const raw = await api.get(`/api/playlists/${id}`);
   const p = raw.editorial ? translateEditorial(raw) : raw;
   const ctx = { uri: p.uri, title: p.name, tracks: p.tracks };
-  const edit = async () => {
+  const edit = safely(async () => {
     const res = await promptDialog({ title: t('editDetails'), submitLabel: t('save'), fields: [{ name: 'name', label: t('nameField'), value: p.name, required: true }, { name: 'description', label: t('descField'), value: p.description, type: 'textarea' }] });
     if (!res) return;
     await api.patch(`/api/playlists/${id}`, res);
     app.refreshLibrary();
     app.refresh();
-  };
+  });
   const title = h('span', {}, p.name);
   if (p.is_owner) { title.style.cursor = 'pointer'; title.addEventListener('click', edit); }
   el.append(pageHead({
@@ -350,8 +355,9 @@ export async function playlist(el, { id }, app) {
   ];
   if (p.is_owner) {
     menu.push({ label: t('editDetails'), onClick: edit });
-    menu.push({ label: p.is_public ? t('makePrivate') : t('makePublic'), onClick: async () => { await api.patch(`/api/playlists/${id}`, { is_public: !p.is_public }); app.refresh(); } });
-    menu.push('sep', { label: t('deletePlaylist'), onClick: async () => { await api.del(`/api/playlists/${id}`); toast(t('removedFromLibraryToast')); app.refreshLibrary(); location.hash = '#/library'; } });
+    // The shared demo account cannot publish playlists (server/demo.js).
+    if (!app.me.is_demo || p.is_public) menu.push({ label: p.is_public ? t('makePrivate') : t('makePublic'), onClick: safely(async () => { await api.patch(`/api/playlists/${id}`, { is_public: !p.is_public }); app.refresh(); }) });
+    menu.push('sep', { label: t('deletePlaylist'), onClick: safely(async () => { await api.del(`/api/playlists/${id}`); toast(t('removedFromLibraryToast')); app.refreshLibrary(); location.hash = '#/library'; }) });
   }
   el.append(actionBar(app, p.color, p.tracks.length ? playFab(app, () => ctx) : null, p.tracks.length ? downloadBtn(app, p.tracks) : null, moreBtn((e) => showMenu(e, menu))));
   if (p.tracks.length) el.append(trackList(app, p.tracks, ctx, { playlist: p }));
@@ -361,15 +367,16 @@ export async function playlist(el, { id }, app) {
     const recSection = h('div');
     el.append(recSection);
     const seed = p.tracks[0]?.id || app.player.track?.id;
-    if (seed) {
-      const radio = await api.get(`/api/radio/${seed}?lang=${encodeURIComponent(getLang())}`);
+    // Suggestions are extra: if they fail to load, the playlist still shows.
+    const radio = seed ? await api.get(`/api/radio/${seed}?lang=${encodeURIComponent(getLang())}`).catch(() => null) : null;
+    if (radio) {
       const have = new Set(p.tracks.map((tr) => tr.id));
       const recs = radio.tracks.filter((tr) => !have.has(tr.id)).slice(0, 5);
       if (recs.length) {
         const list = h('div');
         for (const tr of recs) {
           const add = h('button', { class: 'btn btn-ghost btn-sm' }, t('addBtn'));
-          add.addEventListener('click', async () => { await api.post(`/api/playlists/${id}/tracks`, { track_ids: [tr.id] }); toast(t('addedToPlaylistToast', { name: p.name })); app.refresh(); app.refreshLibrary(); });
+          add.addEventListener('click', safely(async () => { await api.post(`/api/playlists/${id}/tracks`, { track_ids: [tr.id] }); toast(t('addedToPlaylistToast', { name: p.name })); app.refresh(); app.refreshLibrary(); }));
           list.append(h('div', { class: 'queue-item' }, img(tr.album.cover), h('div', { class: 'meta' }, h('div', { class: 't' }, tr.title), h('div', { class: 's' }, tr.artist.name)), add));
         }
         recSection.append(section(t('recommended'), list, { sub: t('recommendedSub') }));
@@ -540,7 +547,7 @@ export async function internals(el, _p, app) {
     if (!srv) return;
     const rec = srv.recommender;
     const retrain = h('button', { class: 'btn btn-ghost btn-sm', style: { 'margin-top': '12px' } }, 'Retrain now');
-    retrain.addEventListener('click', async () => { retrain.disabled = true; const r = await api.post('/api/internals/retrain'); toast(`Retrained in ${r.ms} ms`); await loadServer(); renderServer(); });
+    retrain.addEventListener('click', safely(async () => { const r = await api.post('/api/internals/retrain'); toast(`Retrained in ${r.ms} ms`); await loadServer(); renderServer(); }));
     clear(server).append(
       h('div', { class: 'box' }, h('h3', {}, 'Streaming'), h('p', { class: 'lede' }, 'Media is only served with a valid HMAC signature and expiry.'),
         kv([['Range requests', fmtNumber(srv.streaming.range_requests)], ['Full-file requests', fmtNumber(srv.streaming.full_requests)], ['Bytes requested', fmtBytes(srv.streaming.bytes_requested)],
@@ -613,11 +620,11 @@ export async function settings(el, _p, app) {
 
   el.append(h('h2', { class: 'section', style: { 'font-size': '18px', 'margin-bottom': '10px' } }, t('devicesStorageSection')));
   const nameInput = h('input', { class: 'chip', style: { border: '0', width: '220px' }, maxlength: '40', value: app.connect.identity.name, 'aria-label': t('deviceNameTitle') });
-  nameInput.addEventListener('change', () => { try { localStorage.setItem('ainos.device_name', nameInput.value.trim()); } catch { /* ignore */ } toast('Device name saved — reload to apply'); });
+  nameInput.addEventListener('change', () => { try { localStorage.setItem('ainos.device_name', nameInput.value.trim()); } catch { /* ignore */ } toast(t('deviceNameSaved')); });
   el.append(row(t('deviceNameTitle'), t('deviceNameDesc'), nameInput));
   const stats = await app.player.cacheStats();
   const clearBtn = h('button', { class: 'btn btn-ghost btn-sm' }, t('clearCache'));
-  clearBtn.addEventListener('click', async () => { await app.player.clearCache(); toast('Cache cleared'); app.refresh(); });
+  clearBtn.addEventListener('click', safely(async () => { await app.player.clearCache(); toast(t('cacheCleared')); app.refresh(); }));
   el.append(row(t('streamingCacheTitle'), t('streamingCacheDesc', { files: stats.lru.files, bytes: fmtBytes(stats.lru.bytes), offline: stats.offline.files }), clearBtn));
   const out = h('button', { class: 'btn btn-ghost btn-sm' }, t('logoutTitle'));
   out.addEventListener('click', () => app.logout());

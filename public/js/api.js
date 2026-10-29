@@ -9,24 +9,31 @@ export class ApiError extends Error {
 const listeners = new Set();
 export const onUnauthorized = (fn) => listeners.add(fn);
 
+// Give up on a request after this long, so a stalled connection ends in a message instead of a spinner forever.
+const TIMEOUT_MS = 20_000;
+
 async function request(method, url, body) {
-  const opts = { method, headers: {}, credentials: 'same-origin' };
+  const opts = { method, headers: {}, credentials: 'same-origin', signal: AbortSignal.timeout(TIMEOUT_MS) };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  let res;
+  let res, text;
   try {
     res = await fetch(url, opts);
-  } catch {
-    throw new ApiError(0, navigator.onLine ? 'Could not reach the server' : 'You are offline', 'network');
+    text = await res.text();
+  } catch (err) {
+    if (err?.name === 'TimeoutError') throw new ApiError(0, 'The server took too long to answer', 'timeout');
+    throw new ApiError(0, navigator.onLine ? 'Could not reach the server' : 'You are offline', navigator.onLine ? 'network' : 'offline');
   }
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // A proxy or the host can answer with an HTML error page instead of our JSON.
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
   if (!res.ok) {
     if (res.status === 401) for (const fn of listeners) fn();
-    throw new ApiError(res.status, data?.error?.message || res.statusText, data?.error?.code);
+    throw new ApiError(res.status, data?.error?.message || res.statusText || `Error ${res.status}`, data?.error?.code || (res.status >= 500 ? 'server' : undefined));
   }
+  if (text && data === null) throw new ApiError(res.status, 'The server sent a response Ainos could not read', 'server');
   return data;
 }
 

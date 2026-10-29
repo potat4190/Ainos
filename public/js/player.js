@@ -14,6 +14,7 @@
 //    the current track first, and repeat off / context / track.
 
 import { api, tracksByIds, rememberTracks } from './api.js';
+import { t } from './i18n.js';
 
 export const LOUDNESS_TARGETS = { loud: -11, normal: -14, quiet: -19 };
 const PREFETCH_WINDOW_MS = 30_000;
@@ -224,7 +225,7 @@ export class Player extends EventTarget {
         // A newer startTrack may finish first; this one must not then overwrite its src.
         await this.#load(this.deck, track, () => token === this.loadToken);
       } catch (err) {
-        if (token === this.loadToken) this.#emit('error', { message: `Can’t play “${track.title}”: ${err.message}` });
+        if (token === this.loadToken) this.#emit('error', { message: t('cantPlay', { title: track.title }), cause: err });
         return;
       }
       if (token !== this.loadToken) return;
@@ -250,7 +251,7 @@ export class Player extends EventTarget {
       await this.deck.audio.play();
     } catch (err) {
       if (err.name === 'NotAllowedError') this.#emit('error', { message: 'Press play to start audio on this device.' });
-      else if (err.name !== 'AbortError') this.#emit('error', { message: `Playback failed: ${err.message}` });
+      else if (err.name !== 'AbortError') this.#emit('error', { message: t('playbackFailed'), cause: err });
       this.isPlaying = false;
       this.#changed();
     }
@@ -312,7 +313,7 @@ export class Player extends EventTarget {
   }
 
   #onError(err) {
-    this.#emit('error', { message: `Playback error${err?.message ? `: ${err.message}` : ''}. Skipping.` });
+    this.#emit('error', { message: t('playbackSkipping'), cause: err });
     this.#endSession('trackerror');
     this.manifests.delete(this.track?.id);
     const token = this.loadToken;

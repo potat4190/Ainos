@@ -13,6 +13,7 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
+import { resetDemo, isDemo } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,6 +42,7 @@ export async function createApp({
   trustProxy = !!process.env.VERCEL,
   log = console.log,
   authAttemptsPerMinute = 10,
+  demoSignInsPerMinute = 6,
 } = {}) {
   let store;
   if (databaseUrl) {
@@ -58,6 +60,10 @@ export async function createApp({
   const hub = new ConnectHub();
   const loginLimiter = rateLimiter(store, { name: 'auth', limit: authAttemptsPerMinute, windowMs: 60_000 });
   const retrainLimiter = rateLimiter(store, { name: 'retrain', limit: 2, windowMs: 60_000 });
+  // Each demo sign-in rewrites the demo account, so it is limited per visitor
+  // and, so a crowd of addresses cannot keep it busy, overall.
+  const demoLimiter = rateLimiter(store, { name: 'demo', limit: demoSignInsPerMinute, windowMs: 60_000 });
+  const demoLimiterAll = rateLimiter(store, { name: 'demo-all', limit: demoSignInsPerMinute * 10, windowMs: 60_000 });
   const metrics = { started_at: Date.now(), requests: 0, media_range_requests: 0, media_full_requests: 0, media_bytes_requested: 0 };
 
   // Housekeeping: expired sessions, old mix snapshots and old rate-limit windows
@@ -108,6 +114,17 @@ export async function createApp({
     sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
   });
 
+  // "Try the demo": no password on the client. Resets the shared demo account
+  // to its snapshot (server/demo.js), then signs in as it.
+  r.post('/api/auth/demo', async ({ req, res }) => {
+    if (!(await demoLimiter(clientIp(req))) || !(await demoLimiterAll('all'))) throw new HttpError(429, 'Too many demo sign-ins, wait a minute', 'rate_limited');
+    const { language } = await readJson(req);
+    const userId = await resetDemo(store, { language: LANGUAGES.includes(language) ? language : 'en' });
+    recommender.noteNewStreams(5); // the snapshot replaced its history; retrain soon
+    const token = await createSession(store, userId);
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+  });
+
   r.post('/api/auth/logout', async ({ req, res }) => {
     const user = await userFromRequest(store, req);
     if (user) await destroySession(store, user.token);
@@ -117,7 +134,7 @@ export async function createApp({
   r.get('/api/me', auth(({ res, user }) => {
     sendJson(res, 200, {
       id: user.id, username: user.username, display_name: user.display_name, language: user.language,
-      stream_threshold_ms: STREAM_THRESHOLD_MS,
+      is_demo: isDemo(user), stream_threshold_ms: STREAM_THRESHOLD_MS,
     });
   }));
 
@@ -376,7 +393,7 @@ export async function createApp({
     const now = Date.now();
     await store.tx(async (t) => {
       await t.run('INSERT INTO playlists (id, owner_id, name, description, color, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, user.id, name, cleanName(body.description, 300), colors[count % colors.length], body.is_public ? 1 : 0, now, now]);
+        [id, user.id, name, cleanName(body.description, 300), colors[count % colors.length], body.is_public && !isDemo(user) ? 1 : 0, now, now]);
       if (Array.isArray(body.track_ids)) await addTracks(t, id, body.track_ids);
       await syncPlaylistSearch(t, id); // a playlist created public must be searchable right away
     });
@@ -393,7 +410,11 @@ export async function createApp({
       sets.push('name = ?'); vals.push(name);
     }
     if (body.description !== undefined) { sets.push('description = ?'); vals.push(cleanName(body.description, 300)); }
-    if (body.is_public !== undefined) { sets.push('is_public = ?'); vals.push(body.is_public ? 1 : 0); }
+    if (body.is_public !== undefined) {
+      // Everyone shares the demo account, so its playlists stay out of search.
+      if (body.is_public && isDemo(user)) throw new HttpError(403, 'Demo playlists stay private. Sign up to share a playlist.', 'demo_private');
+      sets.push('is_public = ?'); vals.push(body.is_public ? 1 : 0);
+    }
     sets.push('updated_at = ?'); vals.push(Date.now());
     await store.tx(async (t) => {
       await t.run(`UPDATE playlists SET ${sets.join(', ')} WHERE id = ?`, [...vals, params.id]);

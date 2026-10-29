@@ -331,3 +331,102 @@ test('unknown routes 404, wrong methods 405, bad JSON 400', async () => {
   assert.equal(bad.status, 400);
 });
 
+// ---------------------------------------------------------------- try the demo
+// Its own server: these tests reset the demo account, which the tests above rely on.
+const DEMO_LIMIT = 6;
+let demoSrv;
+const tryDemo = async (body = {}) => {
+  const c = client(demoSrv.base);
+  const r = await c.post('/api/auth/demo', body);
+  return { c, r };
+};
+const demoState = async (c) => {
+  const [lib, liked, recent, stats] = await Promise.all(['/api/me/library', '/api/me/liked/ids', '/api/me/recent', '/api/me/stats'].map((u) => c.get(u)));
+  return {
+    playlists: lib.json.playlists.map((p) => [p.name, p.track_count]).sort(),
+    artists: lib.json.artists.map((a) => a.id).sort(),
+    liked: liked.json.ids.slice().sort(),
+    recent: recent.json.tracks.length,
+    streams: stats.json.streams,
+    short_plays: stats.json.short_plays,
+  };
+};
+
+test('try the demo: one request signs in, with no password on the client', async () => {
+  demoSrv = await startTestServer({ demoSignInsPerMinute: DEMO_LIMIT });
+  const { c, r } = await tryDemo({ language: 'es' });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('set-cookie'), /HttpOnly/);
+  const me = (await c.get('/api/me')).json;
+  assert.equal(me.username, 'demo');
+  assert.equal(me.is_demo, true);
+  assert.equal(me.language, 'es', 'the language picked on the sign-in screen');
+  const html = await (await fetch(demoSrv.base + '/js/app.js')).text();
+  assert.doesNotMatch(html, /ainos-demo/, 'the demo password is not in the client code');
+});
+
+test('the demo account looks lived-in: library, likes, history and mixes', async () => {
+  const { c } = await tryDemo();
+  const s = await demoState(c);
+  assert.deepEqual(s.playlists.map(([n]) => n), ['Quiet Time Devotion', 'Sunday Morning Worship']);
+  assert.ok(s.playlists.every(([, n]) => n >= 4), 'playlists have songs');
+  assert.ok(s.liked.length >= 5 && s.artists.length >= 2);
+  assert.ok(s.recent >= 8 && s.streams >= 40 && s.short_plays >= 3);
+  const home = (await c.get('/api/home')).json;
+  assert.ok(home.recent.length > 0, 'recently played');
+  assert.ok(home.made_for_you.some((m) => m.kind === 'discover-weekly') && home.made_for_you.some((m) => m.kind.startsWith('daily-mix')));
+  assert.ok(home.recommended.length > 0);
+  const dw = (await c.get('/api/made-for-you/discover-weekly')).json;
+  assert.ok(dw.tracks.length >= 5);
+});
+
+test('each demo sign-in puts back the same snapshot, whatever the last visitor did', async () => {
+  const { c: first } = await tryDemo();
+  const before = await demoState(first);
+  // A visitor tidies everything away and adds their own things.
+  const lib = (await first.get('/api/me/library')).json;
+  for (const p of lib.playlists) await first.del(`/api/playlists/${p.id}`);
+  for (const id of before.liked) await first.del(`/api/me/liked/${id}`);
+  for (const id of before.artists) await first.del(`/api/me/following/${id}`);
+  const track = (await first.get('/api/home')).json.popular.at(-1);
+  await first.post('/api/playlists', { name: 'Mine now', track_ids: [track.id] });
+  await first.post('/api/me/language', { language: 'ja' });
+  await first.post('/api/events', { events: [{ type: 'play_end', track_id: track.id, device_id: 'x', ms_played: 40_000, reason: 'trackdone' }] });
+  const { c: next } = await tryDemo();
+  assert.deepEqual(await demoState(next), before);
+  assert.equal((await next.get('/api/me')).json.language, 'en');
+  // The trade-off of one shared account: the first visitor is still signed in and sees the reset too.
+  assert.equal((await first.get('/api/me')).status, 200);
+  assert.deepEqual(await demoState(first), before);
+});
+
+test('demo playlists stay private, so visitors cannot put text in everyone’s search', async () => {
+  const { c } = await tryDemo();
+  const p = (await c.post('/api/playlists', { name: 'Zzyzx demo graffiti', is_public: true })).json;
+  assert.equal(p.is_public, false);
+  const r = await c.patch(`/api/playlists/${p.id}`, { is_public: true });
+  assert.equal(r.status, 403);
+  assert.equal(r.json.error.code, 'demo_private');
+  const other = await signup(demoSrv.base, 'searcher');
+  assert.equal((await other.get('/api/search?q=zzyzx')).json.playlists.length, 0);
+  // Other accounts can still share playlists.
+  const mine = (await other.post('/api/playlists', { name: 'Zzyzx shared', is_public: true })).json;
+  assert.equal(mine.is_public, true);
+});
+
+test('the demo password still works, and does not reset the account', async () => {
+  const { c } = await tryDemo();
+  const extra = (await c.get('/api/home')).json.popular.at(-1);
+  await c.post('/api/playlists', { name: 'Kept', track_ids: [extra.id] });
+  const pw = await login(demoSrv.base);
+  assert.ok((await pw.get('/api/me/library')).json.playlists.some((p) => p.name === 'Kept'));
+});
+
+test('demo sign-ins are rate-limited', async () => {
+  // Earlier tests used some of this minute's allowance.
+  let status = 200;
+  for (let i = 0; i < DEMO_LIMIT + 1 && status === 200; i++) status = (await tryDemo()).r.status;
+  assert.equal(status, 429);
+  assert.equal((await login(demoSrv.base)).cookie ? 200 : 0, 200, 'password sign-in has its own limit');
+  await demoSrv.close();
+});

@@ -1,5 +1,5 @@
 // DOM helpers. Everything user-provided goes in via text nodes, never innerHTML.
-import { t } from './i18n.js';
+import { t, errorText } from './i18n.js';
 
 export function h(tag, attrs = {}, ...children) {
   const el = tag === 'svg' || tag === 'use' ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
@@ -59,11 +59,32 @@ export function fmtBytes(b) {
 
 export function timeAgo(ts) {
   const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
+  if (s < 60) return t('justNow');
+  if (s < 3600) return t('minutesAgo', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('hoursAgo', { n: Math.floor(s / 3600) });
   const days = Math.floor(s / 86400);
-  return days === 1 ? 'yesterday' : `${days} days ago`;
+  return days === 1 ? t('yesterday') : t('daysAgo', { n: days });
+}
+
+/**
+ * Wrap an async event handler: while it runs, the button that fired it is
+ * disabled (no double submits); if it fails, the user gets a toast instead of
+ * a silent no-op. onError can undo an optimistic change.
+ */
+export function safely(fn, { onError } = {}) {
+  return async (e) => {
+    const btn = e?.currentTarget instanceof HTMLButtonElement ? e.currentTarget : null;
+    if (btn?.disabled) return;
+    if (btn) btn.disabled = true;
+    try {
+      await fn(e);
+    } catch (err) {
+      onError?.(err);
+      toast(errorText(err), { error: true });
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
 }
 
 export function img(src, cls = 'art', alt = '') {

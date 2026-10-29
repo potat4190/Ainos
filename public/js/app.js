@@ -1,8 +1,8 @@
 import { api, onUnauthorized } from './api.js';
-import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider } from './ui.js';
+import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider, safely } from './ui.js';
 import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
-import { getLang, setLang, t, langDisplayName, translateGenre } from './i18n.js';
+import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
 import * as views from './views.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,7 +31,9 @@ class App {
       await this.loadMe();
     } catch (err) {
       if (err.status === 401) return this.showLogin();
-      document.body.append(h('div', { class: 'empty' }, h('h2', {}, t('cantReachAinos')), h('p', {}, err.message)));
+      const retry = h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
+      retry.addEventListener('click', () => location.reload());
+      document.body.append(h('div', { class: 'empty boot-error', role: 'alert' }, h('h2', {}, t('cantReachAinos')), h('p', {}, errorText(err)), retry));
       return;
     }
     this.start();
@@ -56,6 +58,7 @@ class App {
     $('user-menu-btn').textContent = (this.me.display_name || '?')[0].toUpperCase();
     $('user-menu-btn').title = this.me.display_name;
     this.applyI18n();
+    if (this.started) this.renderDemoBanner();
     // The 2-minute refresh can pick up a language changed on another device: re-render, don't leave a mixed-language UI.
     if (this.started && this.player && getLang() !== prevLang) {
       this.renderLibrary();
@@ -75,7 +78,7 @@ class App {
       try {
         await this.saveLanguage(lang);
       } catch (err) {
-        toast(err.message, { error: true });
+        toast(errorText(err), { error: true });
       }
     }
     this.applyI18n();
@@ -99,6 +102,8 @@ class App {
     setTxt('lbl-displayname', 'displayName');
     setTxt('lbl-password', 'password');
     setTxt('demo-login', 'demoBtn');
+    setTxt('demo-hint', 'demoHint');
+    setTxt('login-or', 'orDivider');
     setTxt('nav-home-text', 'navHome');
     setTxt('nav-search-text', 'navSearch');
     setTxt('nav-library-text', 'navLibrary');
@@ -145,26 +150,30 @@ class App {
       $('login-error').textContent = '';
     };
     $('login-switch').addEventListener('click', () => setMode(mode === 'login' ? 'signup' : 'login'));
+    const busy = (on) => { for (const b of form.querySelectorAll('button')) b.disabled = on; form.setAttribute('aria-busy', String(on)); };
     const submit = async (body, m) => {
       $('login-error').textContent = '';
       this.loggingIn = true;
+      busy(true);
       try {
-        await api.post(m === 'login' ? '/api/auth/login' : '/api/auth/signup', { ...body, language: getLang() });
+        const url = { login: '/api/auth/login', signup: '/api/auth/signup', demo: '/api/auth/demo' }[m];
+        await api.post(url, { ...body, language: getLang() });
         if (this.started) return location.reload();
         await this.loadMe();
         this.start();
       } catch (err) {
-        $('login-error').textContent = err.message;
+        $('login-error').textContent = errorText(err);
       } finally {
         this.loggingIn = false;
+        busy(false);
       }
     };
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       submit({ username: form.username.value.trim(), password: form.password.value, display_name: form.display_name.value.trim() }, mode);
     });
-    $('demo-login').addEventListener('click', () => submit({ username: 'demo', password: 'ainos-demo' }, 'login'));
-    setMode('login');
+    $('demo-login').addEventListener('click', () => submit({}, 'demo'));
+    setMode(new URLSearchParams(location.hash.split('?')[1] || '').get('signup') ? 'signup' : 'login');
     form.username.focus();
   }
 
@@ -187,6 +196,7 @@ class App {
     this.connect.addEventListener('error', (e) => toast(e.detail.message || t('remoteCommandFailed'), { error: true }));
 
     this.bindChrome();
+    this.renderDemoBanner();
     await Promise.all([this.refreshLibrary(), this.loadLiked()]);
     addEventListener('hashchange', () => this.route());
     addEventListener('offline', () => toast(t('offlineToast')));
@@ -196,6 +206,17 @@ class App {
     this.renderPlayerBar();
     this.renderRight();
     this.tick();
+  }
+
+  /** Shared demo account: say that changes are temporary, and how to keep them. */
+  renderDemoBanner() {
+    const bar = $('demo-banner');
+    if (!bar) return;
+    bar.hidden = !this.me?.is_demo;
+    if (bar.hidden) return;
+    const signup = h('button', { type: 'button', class: 'link' }, t('demoBannerAction'));
+    signup.addEventListener('click', () => this.logout({ signup: true }));
+    clear(bar).append(icon('sparkle'), h('span', {}, t('demoBanner')), signup);
   }
 
   // --------------------------------------------------------------- router
@@ -233,7 +254,10 @@ class App {
     } catch (err) {
       clearTimeout(slow);
       if (seq !== this.renderSeq) return;
-      clear(container).append(h('div', { class: 'empty' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.message), h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome'))));
+      const retry = err.status === 404 ? null : h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
+      retry?.addEventListener('click', () => this.route());
+      clear(container).append(h('div', { class: 'empty', role: 'alert' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.status === 404 ? err.message : errorText(err)),
+        h('div', { class: 'empty-actions' }, retry, h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome')))));
     }
   }
 
@@ -286,7 +310,7 @@ class App {
     } catch (err) {
       on ? this.liked.delete(track.id) : this.liked.add(track.id);
       this.syncLikeButtons(track.id);
-      toast(err.message, { error: true });
+      toast(errorText(err), { error: true });
     }
   }
 
@@ -335,22 +359,22 @@ class App {
       'sep',
       {
         label: t('addToPlaylist'), icon: 'plus', submenu: [
-          { label: t('newPlaylist'), icon: 'plus', onClick: () => this.createPlaylist([track.id]) },
+          { label: t('newPlaylist'), icon: 'plus', onClick: safely(() => this.createPlaylist([track.id])) },
           ...(this.library.playlists.length ? ['sep'] : []),
           ...this.library.playlists.map((pl) => ({
             label: pl.name,
-            onClick: async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(t('addedToPlaylistToast', { name: pl.name })); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); },
+            onClick: safely(async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(t('addedToPlaylistToast', { name: pl.name })); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); }),
           })),
         ],
       },
       { label: this.isLiked(track.id) ? t('removeFromLiked') : t('saveToLiked'), icon: this.isLiked(track.id) ? 'heart-fill' : 'heart', onClick: () => this.toggleLike(track) },
     ];
     if (playlist?.is_owner && Number.isInteger(position)) {
-      items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); } });
+      items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: safely(async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); }) });
     }
     items.push(p.downloads[track.id]
       ? { label: t('removeDownload'), icon: 'download', onClick: () => p.removeDownload(track.id).then(() => toast(t('downloadRemovedToast'))) }
-      : { label: t('download'), icon: 'download', onClick: () => p.download([track]).then(() => toast(t('downloadedToast'))).catch((err) => toast(err.message, { error: true })) });
+      : { label: t('download'), icon: 'download', onClick: () => p.download([track]).then(() => toast(t('downloadedToast'))).catch((err) => toast(errorText(err), { error: true })) });
     showMenu(e, items);
   }
 
@@ -368,7 +392,7 @@ class App {
     $('btn-devices').addEventListener('click', () => this.setRight(this.rightMode === 'devices' ? null : 'devices'));
     $('nav-back').addEventListener('click', () => history.back());
     $('nav-fwd').addEventListener('click', () => history.forward());
-    $('new-playlist').addEventListener('click', () => this.createPlaylist());
+    $('new-playlist').addEventListener('click', safely(() => this.createPlaylist()));
     $('lang-select')?.addEventListener('change', (e) => this.changeLanguage(e.target.value));
     $('user-menu-btn').addEventListener('click', (e) => showMenu(e, [
       { label: t('yourStats'), icon: 'sparkle', onClick: () => (location.hash = '#/stats') },
@@ -522,7 +546,7 @@ class App {
           h('div', {}, d.id === me ? t('thisBrowser') : d.name, h('small', {}, active ? (v.isPlaying ? t('playing') : t('active')) : d.id === me ? d.name : t('tapToPlay'))));
         b.addEventListener('click', async () => {
           if (active) return;
-          try { await this.connect.transfer(d.id); } catch (err) { toast(err.message, { error: true }); }
+          try { await this.connect.transfer(d.id); } catch (err) { toast(errorText(err), { error: true }); }
         });
         content.append(b);
       }
@@ -608,10 +632,10 @@ class App {
     return row;
   }
 
-  async logout() {
+  async logout({ signup = false } = {}) {
     await this.player?.flush();
     await api.post('/api/auth/logout').catch(() => {});
-    location.hash = '#/';
+    location.hash = signup ? '#/?signup=1' : '#/';
     location.reload();
   }
 }
