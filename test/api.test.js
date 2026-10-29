@@ -302,6 +302,64 @@ test('cross-origin writes are refused', async () => {
   assert.equal(r.status, 403);
 });
 
+// A logged-in browser visiting another site must not be able to change
+// anything here: every state-changing method checks where the request came from.
+test('CSRF: writes from another origin are refused for every method; same-origin writes work', async () => {
+  const send = (method, url, headers = {}) => fetch(srv.base + url, {
+    method, headers: { 'Content-Type': 'application/json', Cookie: demo.cookie, ...headers }, body: method === 'DELETE' ? undefined : '{}',
+  });
+  const own = new URL(srv.base);
+  const refused = [
+    { Origin: 'http://evil.example' },
+    { Origin: 'null' }, // sandboxed iframes and some redirects
+    { Origin: `https://${own.host}` }, // right host, wrong scheme
+    { Origin: `http://${own.hostname}:1` }, // right host name, wrong port
+    // Forwarded headers mean nothing without a proxy in front.
+    { Origin: 'http://evil.example', 'X-Forwarded-Host': 'evil.example' },
+    // No Origin, but the browser says the request came from another site.
+    { 'Sec-Fetch-Site': 'cross-site' },
+    { 'Sec-Fetch-Site': 'same-site' },
+  ];
+  for (const [method, url] of [['POST', '/api/me/language'], ['PUT', '/api/me/liked/x'], ['PATCH', '/api/playlists/x'], ['DELETE', '/api/me/liked/x']]) {
+    for (const headers of refused) {
+      const r = await send(method, url, headers);
+      assert.equal(r.status, 403, `${method} ${url} ${JSON.stringify(headers)}`);
+    }
+  }
+  const lang = (headers) => fetch(srv.base + '/api/me/language', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: demo.cookie, ...headers }, body: JSON.stringify({ language: 'en' }),
+  });
+  assert.equal((await lang({ Origin: srv.base })).status, 200, 'same origin');
+  assert.equal((await lang({ 'Sec-Fetch-Site': 'same-origin' })).status, 200, 'no Origin, same-origin fetch');
+  assert.equal((await lang({})).status, 200, 'no Origin at all (curl, older browsers)');
+});
+
+test('CSRF: behind the proxy, the forwarded host and scheme are the app origin', async () => {
+  const { sameOrigin } = await import('../server/app.js');
+  const req = (headers, encrypted = false) => ({ headers, socket: { encrypted } });
+  const vercel = { host: 'internal:3000', 'x-forwarded-host': 'ainos.example', 'x-forwarded-proto': 'https' };
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://ainos.example' }), { trustProxy: true }), true);
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'http://ainos.example' }), { trustProxy: true }), false, 'scheme must match');
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://evil.example' }), { trustProxy: true }), false);
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://ainos.example' })), false, 'forwarded headers ignored without trustProxy');
+  assert.equal(sameOrigin(req({ host: 'ainos.example', origin: 'https://ainos.example:443' }, true)), true, 'default port');
+  assert.equal(sameOrigin(req({ origin: 'https://ainos.example' })), false, 'no Host header');
+});
+
+test('session cookies are HttpOnly and SameSite=Lax, and Secure over HTTPS', async () => {
+  const signin = (headers = {}) => fetch(srv.base + '/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ username: 'demo', password: 'ainos-demo' }),
+  });
+  const plain = (await signin()).headers.get('set-cookie');
+  assert.match(plain, /; HttpOnly/);
+  assert.match(plain, /; SameSite=Lax/);
+  assert.doesNotMatch(plain, /Secure/, 'plain HTTP (local dev) cannot use Secure cookies');
+  const tls = await signin({ 'X-Forwarded-Proto': 'https' });
+  assert.match(tls.headers.get('set-cookie'), /; Secure/);
+  const out = await fetch(srv.base + '/api/auth/logout', { method: 'POST', headers: { Cookie: tls.headers.get('set-cookie').split(';')[0], 'X-Forwarded-Proto': 'https' } });
+  assert.match(out.headers.get('set-cookie'), /Max-Age=0.*; Secure|; Secure.*Max-Age=0/, 'the clearing cookie matches the one it replaces');
+});
+
 test('static files cannot escape their folders', async () => {
   for (const p of ['/art/..%2Fsecret.key', '/art/../secret.key', '/docs/..%2F..%2Fpackage.json', '/..%2Fdata%2Fsecret.key']) {
     const r = await fetch(srv.base + p);

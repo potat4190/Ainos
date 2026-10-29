@@ -63,7 +63,7 @@ export function sessionCookie(token, { secure = false, maxAgeMs = SESSION_TTL_MS
   return parts.join('; ');
 }
 
-export const clearCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+export const clearCookie = ({ secure = false } = {}) => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
 
 export async function userFromRequest(store, req) {
   const token = parseCookies(req)[SESSION_COOKIE];

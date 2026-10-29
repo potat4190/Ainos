@@ -129,7 +129,7 @@ export async function createApp({
   r.post('/api/auth/logout', async ({ req, res }) => {
     const user = await userFromRequest(store, req);
     if (user) await destroySession(store, user.token);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: isSecure(req) }) });
   });
 
   r.get('/api/me', auth(({ res, user }) => {
@@ -564,7 +564,7 @@ export async function createApp({
     const pathname = url.pathname;
 
     if (pathname.startsWith('/api/')) {
-      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) throw new HttpError(403, 'Cross-origin request refused');
+      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, { trustProxy })) throw new HttpError(403, 'Cross-origin request refused');
       const m = r.match(req.method, pathname);
       if (!m) throw new HttpError(404, 'Not found');
       if (m.methodNotAllowed) throw new HttpError(405, 'Method not allowed');
@@ -654,11 +654,24 @@ function isSecure(req) {
   return !!req.socket?.encrypted || req.headers['x-forwarded-proto'] === 'https';
 }
 
-function sameOrigin(req) {
+/**
+ * CSRF check for state-changing requests: the browser's Origin header must be
+ * this app's own origin (scheme and host). Forwarded headers count only behind
+ * the proxy (trustProxy); anyone can send them to a bare server.
+ */
+export function sameOrigin(req, { trustProxy = false } = {}) {
   const origin = req.headers.origin;
-  if (!origin) return true; // same-origin fetches from older browsers / curl / sendBeacon may omit it
+  if (!origin) {
+    // Older browsers, curl and the tests omit Origin. Browsers that send
+    // Sec-Fetch-Site still say where the request came from.
+    const site = req.headers['sec-fetch-site'];
+    return !site || site === 'same-origin' || site === 'none';
+  }
+  const host = (trustProxy && req.headers['x-forwarded-host']) || req.headers.host;
+  if (!host) return false;
+  const scheme = req.socket?.encrypted || (trustProxy && req.headers['x-forwarded-proto'] === 'https') ? 'https' : 'http';
   try {
-    return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host);
+    return new URL(origin).origin === new URL(`${scheme}://${host}`).origin; // "null" (sandboxed frames) throws → refused
   } catch {
     return false;
   }
