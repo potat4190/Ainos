@@ -44,7 +44,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Q1 `.claude/launch.json` untracked: gitignore `.claude/`? → yes (default), done
 - Q2 Spec "uncommitted work": already committed in 8b708bf, mark closed? → waiting
 - Q3 Push `phase-N-*` branches to GitHub for Vercel previews + PR per phase (never `main`)? → (2026-10-29) Yes: push each phase branch and open a PR to `main`. Never push or merge to `main`; the owner merges every PR after review. Branch protection is on for `main`.
-- Q4 Is `DATABASE_MIGRATION_URL` set for Preview builds? Separate Preview database possible? → (2026-10-29) Owner created a separate Supabase project, "ainos-preview", for previews; Claude finishes its setup (Vercel Preview variables via stdin, schema + seed, verify RLS). Status under "Blocked / skipped".
+- Q4 Is `DATABASE_MIGRATION_URL` set for Preview builds? Separate Preview database possible? → (2026-10-29) Owner created a separate Supabase project, "ainos-preview", for previews; Claude finishes its setup (Vercel Preview variables via stdin, schema + seed, verify RLS). Follow-up answers (2026-10-29): create `ainos_app` in ainos-preview with a generated password piped straight into Vercel; `DATABASE_URL` = transaction pooler as `ainos_app`, `DATABASE_MIGRATION_URL` = session pooler as `postgres`; replace Preview `DATABASE_URL` and `AINOS_SECRET`; leave the shared `DATABASE_CA_CERT` (confirm the connection with the local `prod-ca-2021.crt`); add Preview `DATABASE_MIGRATION_URL`. No SQL for production's `ainos_app` exists (none in the repo or its history either): use the proposed grants and report them; never connect to production to inspect it. Status under "Blocked / skipped".
 - Q5 Preview protection: may I read `VERCEL_AUTOMATION_BYPASS_SECRET` from `.env.vercel.local`? → (2026-10-29) Previews are protected. Never read any `.env*` file; read `VERCEL_AUTOMATION_BYPASS_SECRET` from the environment (ask if missing). Run smoke tests only against previews, never production without asking.
 - Q6 HSTS: rely on Vercel's platform header (smoke checks it) or add our own? → waiting
 - Q7 GitHub Actions CI (`npm test` + `npm audit`)? → waiting
@@ -69,10 +69,11 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Q26 Phase 7 stays off until approved → noted
 
 ## Blocked / skipped
+- SECURITY (2026-10-29): a repo-wide grep by Claude Code did not exclude `.env*` files and printed the production `DATABASE_URL` line (with the `ainos_app` password) from `.env.vercel.local` into the session transcript. Not written to any file, commit or service. Owner action: rotate production `ainos_app`'s password, update Vercel Production `DATABASE_URL`, redeploy. Separately, a password-like string was quoted in chat earlier; the owner reset the preview database password.
 - P0.14 CI workflow — waiting on Q7
 - Phase 0 preview deploy + smoke run — waiting on the preview database setup (below). Do not push a phase branch until Preview's `DATABASE_URL` points at "ainos-preview", or the preview build would connect to production.
 - Preview database "ainos-preview" setup (2026-10-29), step (a) findings reported to the owner, waiting:
-  - Inputs missing: the transaction and session pooler URLs (the message still had placeholders); `PREVIEW_DB_PASSWORD` is not visible to this session (needs Claude Code restarted from a terminal where it is exported). CA file found: `Downloads/prod-ca-2021.crt` (Supabase's shared CA).
+  - Inputs: `PREVIEW_DB_PASSWORD` is now visible to the session. CA file: `Downloads/prod-ca-2021.crt` (confirmed). Still missing: the transaction and session pooler URLs (both answers arrived with the placeholder text instead of the URLs).
   - Vercel Preview today: `DATABASE_URL` (Preview only, 7 days old, presumably the shared production DB), `AINOS_SECRET` (Preview only), `DATABASE_CA_CERT` (one entry shared by Preview and Production). No `DATABASE_MIGRATION_URL`. Replacing the two Preview-only ones needs the owner's OK.
   - Differs from the owner's plan: production's app connects as the restricted role `ainos_app`, with only `DATABASE_MIGRATION_URL` as the owner. Proposed: create `ainos_app` in ainos-preview with a generated password and the same grants, `DATABASE_URL` = transaction pooler as `ainos_app`, `DATABASE_MIGRATION_URL` = session pooler as `postgres`. Keep `DATABASE_CA_CERT` as is (same Supabase CA). Seed from a freshly generated catalog, not `data/ainos.db` (local accounts).
 - Before merging Phase 0 to `main` (owner):
@@ -91,6 +92,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - `str()` NFC also maps CJK compatibility ideographs to unified forms (standard trade-off).
 
 ## Notes for the next session
+- Secrets (owner rule, 2026-10-29): never read `.env*` files, and exclude them from every search (`--exclude='.env*'`, or the Grep tool with a glob). Never echo, quote or reconstruct a secret in chat, even as an example; use placeholders like [YOUR-PASSWORD]. Secrets go to Vercel only through stdin.
 - Every new UI string: add it to all six languages in `public/js/i18n.js` AND a row per language in `docs/i18n-review.md` (Q13).
 - New "Hymns" editorial playlist (Q12): its id must come from its own seed (like the hymn tracks), not the global `rnd`, so existing editorial ids stay unchanged (snapshot test).
 - Baseline before any spec work: `npm test` = 57 tests, all pass (Node 24.22). After Phase 0 tasks: 86.
