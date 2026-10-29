@@ -2,6 +2,9 @@
 Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · review fix: docs (sync, separate preview DB, generator-owned songs), Acoustic genre label, Holy Holy Holy note, hymn count · commit 7ac4a2b
+- 2026-10-29 Phase 1 · review fix: sync refreshes hymn measurements, prunes dropped lyrics, appends editorial tracks, guards owned rows, previews warn on older branches; verified on preview Postgres · commit 8c5e86a
+- 2026-10-29 Phase 1 · reviews round 1 (fresh subagents): correctness found no defects in the invariants, 3 medium operational issues; security nothing high/medium, 5 lows; fixed or recorded below
 - 2026-10-29 Phase 1 · P1.7 wiring: generate.js uses picked display names (none picked yet → catalog byte-identical); tests hold for any picks · commit 1651db9
 - 2026-10-29 Phase 1 · catalog sync verified on the preview Postgres with the hymns: 143 rows added, 0 updated; second run 0/0 (idempotent)
 - 2026-10-29 Phase 1 · P1.5 hymn album, songs, lyrics, arrangements, Hymns playlist appended (snapshot: additions only); translations + review rows · commit 59dc01c
@@ -87,6 +90,12 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Q26 Phase 7 stays off until approved → noted
 
 ## Blocked / skipped
+- Before merging Phase 1 to `main` (owner):
+  1. Listen to the 8 hymns on the Phase 1 preview (owner Q10). Changes are fine before or after merging: the sync refreshes hymn measurements and lyrics; only removing a hymn after it reaches production is a manual data migration.
+  2. Apply `server/schema.pg.sql` to production (Supabase SQL editor; safe to re-run; it adds the six song tables), or set `DATABASE_MIGRATION_URL` for Production builds. Otherwise the build's schema check fails on `songs`.
+  3. Check that production's `ainos_app` may write the catalog tables, since every deploy now syncs the catalog as that role (read-only check): `SELECT t, has_table_privilege('ainos_app', t, 'SELECT,INSERT,UPDATE') FROM unnest(ARRAY['artists','albums','tracks','track_files','playlists','playlist_tracks','search_index']) AS t;` and `has_table_privilege('ainos_app', 'song_sections', 'DELETE')` after step 2. If any is false, grant it (or say so and Claude adds the grants to schema.pg.sql).
+  4. Production `ainos_app` password rotation (Phase 0 incident) if not done yet.
+- After Phase 1 is in production, a git revert of it would fail production builds (Postgres would have hymn tracks the build no longer generates); use Vercel's instant rollback instead, which doesn't rebuild.
 - SECURITY (2026-10-29): a repo-wide grep by Claude Code did not exclude `.env*` files and printed the production `DATABASE_URL` line (with the `ainos_app` password) from `.env.vercel.local` into the session transcript. Not written to any file, commit or service. Owner action: rotate production `ainos_app`'s password, update Vercel Production `DATABASE_URL`, redeploy. Separately, a password-like string was quoted in chat earlier; the owner reset the preview database password.
 - P0.14 CI workflow — waiting on Q7
 - Preview database "ainos-preview": set up 2026-10-29 (done):
@@ -100,6 +109,13 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
   2. Check no real user already has the name `church-demo` (read-only: `SELECT id FROM users WHERE lower(username) = 'church-demo'`); this branch treats that name as a demo account (Q20).
 
 ## Review follow-ups deliberately left for later
+- Phase 3: `song_sources_youtube` is unique across all songs; before churches add YouTube sources, decide whether one video row is shared or uniqueness is per song (and avoid leaking "someone already has it").
+- Phase 3: search folds keep ’ and ' distinct; harmless today (search terms split on letters only) but normalize if lyric/alias search starts matching across apostrophes. `songs.artist` is "Ainos Hymnal", so searching a hymn writer's name needs the author in an alias or search text.
+- Phase 3/4: the generator owns its hymns' lyrics, themes and arrangements (refreshed and pruned on every deploy); admin edits to them must go to scripts/hymns.js, not the database.
+- Phase 5: new song rows by churches must never reuse a generator id (ids are deterministic and public); the sync's target guards already skip church rows.
+- After the owner approves the hymn audio: add full-length hymn WAV hashes to the catalog snapshot (today only the 6-second test renders are hashed).
+- Optional hardening: revoke Supabase's default anon/authenticated privileges on public tables (RLS already blocks them; same as every existing table); run the sync over DATABASE_MIGRATION_URL when set, so ainos_app could be read-only on catalog tables.
+- docs/i18n-review.md is served publicly at /docs/i18n-review.md (nothing sensitive); move it if the owner prefers.
 - `audit_log` keeps DELETE in its grant: the spec's church-demo reset (5.7) deletes the demo org's audit rows. Revisit in Phase 5 (e.g. column grants) if that changes.
 - `errRateLimited` says "wait a minute", and the client ignores `Retry-After`; fix when Phase 2 adds per-day limits.
 - Per-IP limits treat each IPv6 address separately (a /64 gives many); consider keying IPv6 by /64 when per-IP limits matter (Phase 3 path B, Phase 5 invites).
