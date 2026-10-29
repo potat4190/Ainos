@@ -1,9 +1,11 @@
 # Progress
-Last updated: 2026-10-29 · Current phase: 0 done (PR #2 awaiting owner review) · Branch: phase-0-baseline
+Last updated: 2026-10-29 · Current phase: 0 done (PR #2 awaiting owner review) / 1 (names draft only) · Branch: phase-1-catalog (from phase-0-baseline)
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · P1.7 (draft only) `scripts/catalog-names.js`: 2 Scripture-based options per artist/album/track for owner approval; nothing uses it until picked; `test/catalog-names.test.js` · commit a6c3d46
 - 2026-10-29 Phase 0 · DONE: pushed `phase-0-baseline`, PR #2 to `main`; preview build (commit 5ceb4b2) migrated the preview database (build log: schema applied, schema up to date, already seeded with 33 tracks); `scripts/smoke.js` against the preview: all checks passed, security headers included (HSTS comes from Vercel, which settles Q6)
 - 2026-10-29 Preview database "ainos-preview" set up and Vercel Preview variables replaced (details under "Blocked / skipped") · commit 5ceb4b2
+- 2026-10-29 Owner answers Q9–Q13 recorded; `docs/i18n-review.md` started · commit 896d061 (on phase-0-baseline)
 - 2026-10-29 Phase 0 · final-review fix: forwarded addresses with ports; strict audit user ids; whole-second limiter windows · commit 49b86bf
 - 2026-10-29 Phase 0 · final-review fix: `str()` keeps Hebrew CGJ, emoji flag tags, Mongolian/braille separators; non-empty text must show something · commit 1e14afb
 - 2026-10-29 Phase 0 · review round 3 (one fresh reviewer, correctness + security, on the round-2 fixes): nothing medium or higher; lows fixed above
