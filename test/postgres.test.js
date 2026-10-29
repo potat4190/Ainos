@@ -34,10 +34,31 @@ function pgClient(db) {
   };
 }
 
-async function newDatabase() {
+const SCHEMA = fs.readFileSync(path.join(ROOT, 'server', 'schema.pg.sql'), 'utf8');
+// Tables that only schema.pg.sql's own GRANT block gives ainos_app.
+const BLOCK_GRANTED = /GRANT SELECT, INSERT, UPDATE, DELETE ON ([^;]*?) TO ainos_app/.exec(SCHEMA)[1].split(/,\s*/);
+
+/**
+ * A database set up like Supabase: the owner applies the schema, the app and
+ * the deploy-time sync connect as ainos_app (BYPASSRLS, row-level grants). As
+ * in production, ainos_app was granted the tables that existed when the role
+ * was made (here: all but BLOCK_GRANTED) and relies on schema.pg.sql for the rest.
+ * connectTo('owner') and connectTo('app') switch roles on the one PGlite session.
+ */
+async function newDatabase({ schema = true } = {}) {
   const db = new PGlite();
-  await db.exec('CREATE ROLE ainos_app'); // so schema.pg.sql's grants run, as on Supabase
-  return { db, connectTo: async () => pgClient(db) };
+  await db.exec('CREATE ROLE ainos_app BYPASSRLS; GRANT USAGE ON SCHEMA public TO ainos_app');
+  if (schema) {
+    await db.exec(SCHEMA);
+    await db.exec(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ainos_app;
+      GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ainos_app;
+      REVOKE ALL ON ${BLOCK_GRANTED.join(', ')} FROM ainos_app`);
+  }
+  const connectTo = async (url) => {
+    await db.exec(url === 'owner' ? 'RESET ROLE' : 'SET ROLE ainos_app');
+    return pgClient(db);
+  };
+  return { db, connectTo };
 }
 const quiet = () => {};
 const seed = (pg, sqliteFile, opts = {}) => seedPostgres({ sqliteFile, databaseUrl: 'app', migrationUrl: 'owner', log: quiet, connectTo: pg.connectTo, ...opts });
@@ -91,8 +112,8 @@ function editedCatalog(name, edit) {
 }
 
 test('schema.pg.sql applies, re-applies, and every table has row-level security and the app grant', { skip: SKIP }, async () => {
-  const pg = await newDatabase();
-  const sql = fs.readFileSync(path.join(ROOT, 'server', 'schema.pg.sql'), 'utf8');
+  const pg = await newDatabase({ schema: false });
+  const sql = SCHEMA;
   await pg.db.exec(sql);
   await pg.db.exec(sql); // every statement must be safe to re-run
   const have = new Set((await rows(pg, "SELECT table_name || '.' || column_name AS k FROM information_schema.columns WHERE table_schema = 'public'")).map((r) => r.k));
@@ -246,4 +267,7 @@ test('production code never imports PGlite', () => {
   assert.deepEqual(offenders, []);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.ok(!pkg.dependencies?.['@electric-sql/pglite'] && /^\d+\.\d+\.\d+$/.test(pkg.devDependencies['@electric-sql/pglite']), 'a dev dependency at an exact version');
+  // Vercel builds hold the database credentials: they install production dependencies only, exactly as locked.
+  const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  assert.equal(vercel.installCommand, 'npm ci --omit=dev');
 });

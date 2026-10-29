@@ -55,7 +55,7 @@ test('no two tracks, albums or artists could end up with the same name', () => {
   for (const [kind, table] of Object.entries(tables)) {
     const seen = new Map();
     for (const [key, e] of Object.entries(table)) {
-      for (const [name] of [e.a, e.b]) {
+      for (const [name] of [e.a, e.b, e.custom ? [e.custom] : null].filter(Boolean)) {
         const other = seen.get(name.toLowerCase());
         // A single shares its name with its only track, so album and track tables are checked separately.
         assert.ok(!other || other === key, `${kind} "${name}" is offered for both ${other} and ${key}`);
@@ -111,7 +111,7 @@ test('the display name is the owner’s custom name, else the picked option, els
     }
   }
   assert.equal(displayName('track', 'nope/nope', 'Fallback'), 'Fallback');
-  // A pick or a custom name takes over (checked on a copy, so the draft stays untouched).
+  // A pick or a custom name takes over (on the real entry, restored afterwards).
   const entry = TRACKS['Lumen Drift/First Glow'];
   const saved = { ...entry };
   try {
