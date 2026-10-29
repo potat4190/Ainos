@@ -90,6 +90,16 @@ check(art.status === 200 && /svg/.test(art.headers.get('content-type') || ''), `
 const doc = await get('/docs/HOW-SPOTIFY-WORKS.md');
 check(doc.status === 200, `evidence report -> ${doc.status}`);
 
+// Phase 1: the public-domain hymns are in the catalog and play.
+check(home.editorial?.some((p) => p.name === 'Hymns'), 'home lists the Hymns playlist');
+const hymn = (await call('GET', '/api/search?q=amazing%20grace')).json?.tracks?.find((t) => t.title === 'Amazing Grace');
+check(hymn?.genre === 'Hymn', 'search finds the Amazing Grace hymn');
+if (hymn) {
+  const hm = (await call('GET', `/api/tracks/${hymn.id}/manifest`)).json;
+  const audio = await get(hm.file.url, { Range: 'bytes=0-1023' });
+  check(audio.status === 206 && (await audio.arrayBuffer()).byteLength === 1024, `hymn audio streams -> ${audio.status}`);
+}
+
 // Writes: like/unlike, follow/unfollow, a temporary playlist, an event, the language.
 // Only undo what this script changed, so the demo account keeps its own likes,
 // follows and language. The one event sent is a pause with no track, which
