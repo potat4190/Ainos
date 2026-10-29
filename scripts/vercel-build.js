@@ -1,8 +1,9 @@
 // Build step for Vercel (see vercel.json).
 //  1. Generate the catalog. It is deterministic, so the track ids, audio and
 //     art are the same on every build.
-//  2. With DATABASE_URL set: seed Postgres on the first deploy, or check that
-//     the ids already there match the generated files.
+//  2. With DATABASE_URL set: check the Postgres schema (and apply it first when
+//     DATABASE_MIGRATION_URL is set), then seed it on the first deploy, or
+//     check that the ids already there match the generated files.
 //  3. Assemble dist/: the app shell, the docs, the audio and the artwork.
 //     Vercel serves these as static files; middleware.js checks the signature
 //     on every /media/ request.
@@ -21,7 +22,7 @@ console.log('Generating catalog...');
 await generateCatalog({ dataDir: work, quiet: true });
 
 if (process.env.DATABASE_URL) {
-  await seedPostgres({ sqliteFile: path.join(work, 'ainos.db'), databaseUrl: process.env.DATABASE_URL });
+  await seedPostgres({ sqliteFile: path.join(work, 'ainos.db'), databaseUrl: process.env.DATABASE_URL, migrationUrl: process.env.DATABASE_MIGRATION_URL });
 } else {
   console.log('DATABASE_URL is not set; skipping the database step.');
 }

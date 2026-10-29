@@ -1,8 +1,8 @@
 import { api, onUnauthorized } from './api.js';
-import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider } from './ui.js';
+import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider, safely } from './ui.js';
 import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
-import { getLang, setLang, t, langDisplayName, translateGenre } from './i18n.js';
+import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
 import * as views from './views.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,13 +25,18 @@ class App {
 
   // ----------------------------------------------------------------- boot
   async boot() {
+    // The router owns the hash, so the skip link moves focus instead of navigating to "#main".
+    $('skip-link').addEventListener('click', (e) => { e.preventDefault(); $('main').focus(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('[ainos] SW registration failed', e));
     onUnauthorized(() => { if (!this.loggingIn) this.showLogin(); });
     try {
       await this.loadMe();
     } catch (err) {
       if (err.status === 401) return this.showLogin();
-      document.body.append(h('div', { class: 'empty' }, h('h2', {}, t('cantReachAinos')), h('p', {}, err.message)));
+      $('boot').hidden = true;
+      const retry = h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
+      retry.addEventListener('click', () => location.reload());
+      document.body.append(h('div', { class: 'empty boot-error', role: 'alert' }, h('h2', {}, t('cantReachAinos')), h('p', {}, errorText(err)), retry));
       return;
     }
     this.start();
@@ -56,6 +61,7 @@ class App {
     $('user-menu-btn').textContent = (this.me.display_name || '?')[0].toUpperCase();
     $('user-menu-btn').title = this.me.display_name;
     this.applyI18n();
+    if (this.started) this.renderDemoBanner();
     // The 2-minute refresh can pick up a language changed on another device: re-render, don't leave a mixed-language UI.
     if (this.started && this.player && getLang() !== prevLang) {
       this.renderLibrary();
@@ -75,7 +81,7 @@ class App {
       try {
         await this.saveLanguage(lang);
       } catch (err) {
-        toast(err.message, { error: true });
+        toast(errorText(err), { error: true });
       }
     }
     this.applyI18n();
@@ -99,6 +105,10 @@ class App {
     setTxt('lbl-displayname', 'displayName');
     setTxt('lbl-password', 'password');
     setTxt('demo-login', 'demoBtn');
+    setTxt('skip-link', 'skipToContent');
+    setTxt('boot-text', 'loadingApp');
+    setTxt('demo-hint', 'demoHint');
+    setTxt('login-or', 'orDivider');
     setTxt('nav-home-text', 'navHome');
     setTxt('nav-search-text', 'navSearch');
     setTxt('nav-library-text', 'navLibrary');
@@ -127,6 +137,7 @@ class App {
   }
 
   showLogin() {
+    $('boot').hidden = true;
     this.applyI18n();
     $('app').hidden = true;
     $('login').hidden = false;
@@ -145,31 +156,36 @@ class App {
       $('login-error').textContent = '';
     };
     $('login-switch').addEventListener('click', () => setMode(mode === 'login' ? 'signup' : 'login'));
+    const busy = (on) => { for (const b of form.querySelectorAll('button')) b.disabled = on; form.setAttribute('aria-busy', String(on)); };
     const submit = async (body, m) => {
       $('login-error').textContent = '';
       this.loggingIn = true;
+      busy(true);
       try {
-        await api.post(m === 'login' ? '/api/auth/login' : '/api/auth/signup', { ...body, language: getLang() });
+        const url = { login: '/api/auth/login', signup: '/api/auth/signup', demo: '/api/auth/demo' }[m];
+        await api.post(url, { ...body, language: getLang() });
         if (this.started) return location.reload();
         await this.loadMe();
         this.start();
       } catch (err) {
-        $('login-error').textContent = err.message;
+        $('login-error').textContent = errorText(err);
       } finally {
         this.loggingIn = false;
+        busy(false);
       }
     };
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       submit({ username: form.username.value.trim(), password: form.password.value, display_name: form.display_name.value.trim() }, mode);
     });
-    $('demo-login').addEventListener('click', () => submit({ username: 'demo', password: 'ainos-demo' }, 'login'));
-    setMode('login');
+    $('demo-login').addEventListener('click', () => submit({}, 'demo'));
+    setMode(new URLSearchParams(location.hash.split('?')[1] || '').get('signup') ? 'signup' : 'login');
     form.username.focus();
   }
 
   async start() {
     this.started = true;
+    $('boot').hidden = true;
     $('login').hidden = true;
     $('app').hidden = false;
     const identity = deviceIdentity();
@@ -187,8 +203,9 @@ class App {
     this.connect.addEventListener('error', (e) => toast(e.detail.message || t('remoteCommandFailed'), { error: true }));
 
     this.bindChrome();
+    this.renderDemoBanner();
     await Promise.all([this.refreshLibrary(), this.loadLiked()]);
-    addEventListener('hashchange', () => this.route());
+    addEventListener('hashchange', () => this.route({ focus: true }));
     addEventListener('offline', () => toast(t('offlineToast')));
     addEventListener('online', () => toast(t('onlineToast')));
     setInterval(() => this.loadMe().catch(() => {}), 120_000);
@@ -196,6 +213,25 @@ class App {
     this.renderPlayerBar();
     this.renderRight();
     this.tick();
+  }
+
+  /** Shared demo account: say that changes are temporary, and how to keep them. */
+  renderDemoBanner() {
+    const bar = $('demo-banner');
+    if (!bar) return;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem('ainos.demoBanner') === 'hidden'; } catch { /* storage blocked */ }
+    bar.hidden = !this.me?.is_demo || dismissed;
+    if (bar.hidden) return;
+    const signup = h('button', { type: 'button', class: 'link' }, t('demoBannerAction'));
+    signup.addEventListener('click', () => this.logout({ signup: true }));
+    const close = h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('closePanel') }, icon('close'));
+    close.addEventListener('click', () => {
+      try { sessionStorage.setItem('ainos.demoBanner', 'hidden'); } catch { /* storage blocked */ }
+      bar.hidden = true;
+      $('main').focus({ preventScroll: true });
+    });
+    clear(bar).append(icon('sparkle'), h('div', { class: 'demo-banner-text' }, h('span', {}, t('demoBanner')), ' ', signup), close);
   }
 
   // --------------------------------------------------------------- router
@@ -206,7 +242,7 @@ class App {
     return { name: parts[0] || 'home', id: parts[1] ? decodeURIComponent(parts.slice(1).join('/')) : undefined, params: Object.fromEntries(new URLSearchParams(qs || '')) };
   }
 
-  async route({ keepScroll = false } = {}) {
+  async route({ keepScroll = false, focus = false } = {}) {
     const seq = ++this.renderSeq;
     this.cleanup?.();
     this.cleanup = null;
@@ -230,10 +266,15 @@ class App {
       main.scrollTop = keepScroll ? scroll : 0;
       document.title = this.titleFor(name, container);
       this.highlightPlaying();
+      // Not while typing in search: that also changes the hash.
+      if (focus && document.activeElement?.id !== 'search-input') main.focus({ preventScroll: true });
     } catch (err) {
       clearTimeout(slow);
       if (seq !== this.renderSeq) return;
-      clear(container).append(h('div', { class: 'empty' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.message), h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome'))));
+      const retry = err.status === 404 ? null : h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
+      retry?.addEventListener('click', () => this.route({ focus: true }));
+      clear(container).append(h('div', { class: 'empty', role: 'alert' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.status === 404 ? err.message : errorText(err)),
+        h('div', { class: 'empty-actions' }, retry, h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome')))));
     }
   }
 
@@ -286,7 +327,7 @@ class App {
     } catch (err) {
       on ? this.liked.delete(track.id) : this.liked.add(track.id);
       this.syncLikeButtons(track.id);
-      toast(err.message, { error: true });
+      toast(errorText(err), { error: true });
     }
   }
 
@@ -325,7 +366,7 @@ class App {
     return p;
   }
 
-  trackMenu(track, e, { playlist, position } = {}) {
+  trackMenu(track, e, { playlist, position, count = 0 } = {}) {
     const p = this.player;
     const items = [
       { label: t('addToQueue'), icon: 'queue', onClick: () => { p.addToQueue(track); toast(t('addedToQueueToast')); } },
@@ -335,22 +376,25 @@ class App {
       'sep',
       {
         label: t('addToPlaylist'), icon: 'plus', submenu: [
-          { label: t('newPlaylist'), icon: 'plus', onClick: () => this.createPlaylist([track.id]) },
+          { label: t('newPlaylist'), icon: 'plus', onClick: safely(() => this.createPlaylist([track.id])) },
           ...(this.library.playlists.length ? ['sep'] : []),
           ...this.library.playlists.map((pl) => ({
             label: pl.name,
-            onClick: async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(t('addedToPlaylistToast', { name: pl.name })); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); },
+            onClick: safely(async () => { await api.post(`/api/playlists/${pl.id}/tracks`, { track_ids: [track.id] }); toast(t('addedToPlaylistToast', { name: pl.name })); this.refreshLibrary(); if (location.hash === `#/playlist/${pl.id}`) this.refresh(); }),
           })),
         ],
       },
       { label: this.isLiked(track.id) ? t('removeFromLiked') : t('saveToLiked'), icon: this.isLiked(track.id) ? 'heart-fill' : 'heart', onClick: () => this.toggleLike(track) },
     ];
     if (playlist?.is_owner && Number.isInteger(position)) {
-      items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); } });
+      const move = (to) => safely(async () => { await api.post(`/api/playlists/${playlist.id}/move`, { from: position, to }); this.refresh(); });
+      if (position > 0) items.push({ label: t('moveUp'), onClick: move(position - 1) });
+      if (position < count - 1) items.push({ label: t('moveDown'), onClick: move(position + 1) });
+      items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: safely(async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); }) });
     }
     items.push(p.downloads[track.id]
       ? { label: t('removeDownload'), icon: 'download', onClick: () => p.removeDownload(track.id).then(() => toast(t('downloadRemovedToast'))) }
-      : { label: t('download'), icon: 'download', onClick: () => p.download([track]).then(() => toast(t('downloadedToast'))).catch((err) => toast(err.message, { error: true })) });
+      : { label: t('download'), icon: 'download', onClick: () => p.download([track]).then(() => toast(t('downloadedToast'))).catch((err) => toast(errorText(err), { error: true })) });
     showMenu(e, items);
   }
 
@@ -368,7 +412,7 @@ class App {
     $('btn-devices').addEventListener('click', () => this.setRight(this.rightMode === 'devices' ? null : 'devices'));
     $('nav-back').addEventListener('click', () => history.back());
     $('nav-fwd').addEventListener('click', () => history.forward());
-    $('new-playlist').addEventListener('click', () => this.createPlaylist());
+    $('new-playlist').addEventListener('click', safely(() => this.createPlaylist()));
     $('lang-select')?.addEventListener('change', (e) => this.changeLanguage(e.target.value));
     $('user-menu-btn').addEventListener('click', (e) => showMenu(e, [
       { label: t('yourStats'), icon: 'sparkle', onClick: () => (location.hash = '#/stats') },
@@ -421,6 +465,7 @@ class App {
   renderPlayerBar() {
     const v = this.player.view();
     const left = clear($('np-left'));
+    if (!v.track) left.append(h('div', { class: 'np-hint dim small' }, t('pickSongHint')));
     if (v.track) {
       const tr = v.track;
       const like = h('button', { class: `icon-btn${this.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': this.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(this.isLiked(tr.id) ? 'heart-fill' : 'heart'));
@@ -456,12 +501,14 @@ class App {
       const v = this.player.view();
       if (!this.seekSlider.isDragging()) {
         const f = v.durationMs ? v.positionMs / v.durationMs : 0;
-        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f);
-        $('time-cur').textContent = fmtTime(v.positionMs);
+        const cur = fmtTime(v.positionMs), dur = fmtTime(v.durationMs);
+        if (cur + dur !== this.seekText?.key) this.seekText = { key: cur + dur, text: t('timeOf', { cur, dur }) };
+        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f, this.seekText.text);
+        $('time-cur').textContent = cur;
         $('seek-buffer').style.width = `${v.durationMs && v.bufferedMs ? Math.min(100, (v.bufferedMs / v.durationMs) * 100) : 0}%`;
       }
       $('time-dur').textContent = fmtTime(v.durationMs);
-      if (!this.volSlider.isDragging()) setSlider($('volume'), $('volume-fill'), $('volume-thumb'), v.muted ? 0 : v.volume ?? 1);
+      if (!this.volSlider.isDragging()) { const vol = v.muted ? 0 : v.volume ?? 1; setSlider($('volume'), $('volume-fill'), $('volume-thumb'), vol, `${Math.round(vol * 100)}%`); }
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -522,7 +569,7 @@ class App {
           h('div', {}, d.id === me ? t('thisBrowser') : d.name, h('small', {}, active ? (v.isPlaying ? t('playing') : t('active')) : d.id === me ? d.name : t('tapToPlay'))));
         b.addEventListener('click', async () => {
           if (active) return;
-          try { await this.connect.transfer(d.id); } catch (err) { toast(err.message, { error: true }); }
+          try { await this.connect.transfer(d.id); } catch (err) { toast(errorText(err), { error: true }); }
         });
         content.append(b);
       }
@@ -608,10 +655,10 @@ class App {
     return row;
   }
 
-  async logout() {
+  async logout({ signup = false } = {}) {
     await this.player?.flush();
     await api.post('/api/auth/logout').catch(() => {});
-    location.hash = '#/';
+    location.hash = signup ? '#/?signup=1' : '#/';
     location.reload();
   }
 }

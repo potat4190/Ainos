@@ -157,6 +157,21 @@ test('a play counts as a stream only at 30 seconds or more', async () => {
   assert.equal(stats.short_plays, 1);
 });
 
+test('listening hours follow the listener’s time zone', async () => {
+  const c = await signup(srv.base, 'nightowl');
+  const t = await firstTrack(c);
+  const before = Date.now();
+  await c.post('/api/events', { events: [{ type: 'play_end', track_id: t.id, device_id: 'd', ms_played: 40_000, reason: 'trackdone' }] });
+  const after = Date.now();
+  const hourIn = (tz, ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(ms)) % 24;
+  for (const tz of ['UTC', 'Asia/Kathmandu', 'America/New_York']) {
+    const { hours } = (await c.get(`/api/me/stats?tz=${encodeURIComponent(tz)}`)).json;
+    assert.ok(hours[hourIn(tz, before)] === 1 || hours[hourIn(tz, after)] === 1, tz);
+  }
+  const unknown = (await c.get('/api/me/stats?tz=Not%2FA_Zone')).json;
+  assert.equal(unknown.hours.reduce((s, n) => s + n, 0), 1, 'an unknown zone falls back to the server clock');
+});
+
 test('events are also written to hourly NDJSON buckets', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
@@ -202,6 +217,17 @@ test('playlist lifecycle: create, add, reorder, remove, rename, delete', async (
   assert.equal((await other.get(`/api/playlists/${p.id}`)).status, 404, 'private playlists are hidden');
   assert.equal((await c.del(`/api/playlists/${p.id}`)).status, 200);
   assert.equal((await c.get(`/api/playlists/${p.id}`)).status, 404);
+});
+
+test('removing a playlist track checks the position', async () => {
+  const c = await signup(srv.base, 'tidy');
+  const tracks = (await c.get('/api/home')).json.popular.slice(0, 2);
+  const p = (await c.post('/api/playlists', { name: 'Tidy', track_ids: tracks.map((t) => t.id) })).json;
+  for (const bad of ['abc', '1.5', '-1', '99999999999']) assert.equal((await c.del(`/api/playlists/${p.id}/tracks/${bad}`)).status, 400, bad);
+  assert.equal((await c.del(`/api/playlists/${p.id}/tracks/7`)).status, 200, 'a position that is already gone is a no-op');
+  assert.equal((await c.del(`/api/playlists/${p.id}/tracks/0`)).status, 200);
+  const got = (await c.get(`/api/playlists/${p.id}`)).json;
+  assert.deepEqual(got.tracks.map((t) => [t.id, t.position]), [[tracks[1].id, 0]]);
 });
 
 test('likes and follows', async () => {
@@ -256,6 +282,13 @@ test('item similarity follows co-listening: most neighbours share the seed genre
   assert.ok(same / tracks.length >= 1.5, `avg same-genre neighbours ${(same / tracks.length).toFixed(2)}`);
 });
 
+test('retraining is rate-limited across all users', async () => {
+  const other = await signup(srv.base, 'tinkerer');
+  assert.equal((await demo.post('/api/internals/retrain')).status, 200);
+  assert.equal((await other.post('/api/internals/retrain')).status, 200);
+  assert.equal((await demo.post('/api/internals/retrain')).status, 429);
+});
+
 test('home is personalized and includes made-for-you mixes', async () => {
   const h = (await demo.get('/api/home')).json;
   assert.ok(h.made_for_you.some((m) => m.kind === 'discover-weekly'));
@@ -283,9 +316,127 @@ test('security headers are set', async () => {
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
 });
 
+test('vercel.json gives static files the same security headers as the app', async () => {
+  const fs = await import('node:fs');
+  const { SECURITY_HEADERS } = await import('../server/app.js');
+  const config = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const all = config.headers.find((x) => x.source === '/(.*)');
+  assert.deepEqual(Object.fromEntries(all.headers.map((x) => [x.key, x.value])), SECURITY_HEADERS);
+});
+
 test('unknown routes 404, wrong methods 405, bad JSON 400', async () => {
   assert.equal((await demo.get('/api/nope')).status, 404);
   assert.equal((await demo.put('/api/home')).status, 405);
   const bad = await fetch(srv.base + '/api/playlists', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: demo.cookie }, body: '{nope' });
   assert.equal(bad.status, 400);
+});
+
+// ---------------------------------------------------------------- try the demo
+// Its own server: these tests reset the demo account, which the tests above rely on.
+const DEMO_LIMIT = 10;
+let demoSrv;
+after(() => demoSrv?.close());
+const tryDemo = async (body = {}) => {
+  const c = client(demoSrv.base);
+  const r = await c.post('/api/auth/demo', body);
+  return { c, r };
+};
+const demoState = async (c) => {
+  const [lib, liked, recent, stats] = await Promise.all(['/api/me/library', '/api/me/liked/ids', '/api/me/recent', '/api/me/stats'].map((u) => c.get(u)));
+  return {
+    playlists: lib.json.playlists.map((p) => [p.name, p.track_count]).sort(),
+    artists: lib.json.artists.map((a) => a.id).sort(),
+    liked: liked.json.ids.slice().sort(),
+    recent: recent.json.tracks.length,
+    streams: stats.json.streams,
+    short_plays: stats.json.short_plays,
+  };
+};
+
+test('try the demo: one request signs in, with no password on the client', async () => {
+  demoSrv = await startTestServer({ demoSignInsPerMinute: DEMO_LIMIT });
+  const { c, r } = await tryDemo({ language: 'es' });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('set-cookie'), /HttpOnly/);
+  assert.match(r.headers.get('set-cookie'), /Max-Age=86400(;|$)/, 'demo sessions last a day, not 30');
+  const me = (await c.get('/api/me')).json;
+  assert.equal(me.username, 'demo');
+  assert.equal(me.is_demo, true);
+  assert.equal(me.language, 'es', 'the language picked on the sign-in screen');
+  const html = await (await fetch(demoSrv.base + '/js/app.js')).text();
+  assert.doesNotMatch(html, /ainos-demo/, 'the demo password is not in the client code');
+});
+
+test('the demo account looks lived-in: library, likes, history and mixes', async () => {
+  const { c } = await tryDemo();
+  const s = await demoState(c);
+  assert.deepEqual(s.playlists.map(([n]) => n), ['Quiet Time Devotion', 'Sunday Morning Worship']);
+  assert.ok(s.playlists.every(([, n]) => n >= 4), 'playlists have songs');
+  assert.ok(s.liked.length >= 5 && s.artists.length >= 2);
+  assert.ok(s.recent >= 8 && s.streams >= 40 && s.short_plays >= 3);
+  const home = (await c.get('/api/home')).json;
+  assert.ok(home.recent.length > 0, 'recently played');
+  assert.ok(home.made_for_you.some((m) => m.kind === 'discover-weekly') && home.made_for_you.some((m) => m.kind.startsWith('daily-mix')));
+  assert.ok(home.recommended.length > 0);
+  const dw = (await c.get('/api/made-for-you/discover-weekly')).json;
+  assert.ok(dw.tracks.length >= 5);
+});
+
+test('each demo sign-in puts back the same snapshot, whatever the last visitor did', async () => {
+  const { c: first } = await tryDemo();
+  const before = await demoState(first);
+  // A visitor tidies everything away and adds their own things.
+  const lib = (await first.get('/api/me/library')).json;
+  for (const p of lib.playlists) await first.del(`/api/playlists/${p.id}`);
+  for (const id of before.liked) await first.del(`/api/me/liked/${id}`);
+  for (const id of before.artists) await first.del(`/api/me/following/${id}`);
+  const track = (await first.get('/api/home')).json.popular.at(-1);
+  await first.post('/api/playlists', { name: 'Mine now', track_ids: [track.id] });
+  await first.post('/api/me/language', { language: 'ja' });
+  await first.post('/api/events', { events: [{ type: 'play_end', track_id: track.id, device_id: 'x', ms_played: 40_000, reason: 'trackdone' }] });
+  const { c: next } = await tryDemo();
+  assert.deepEqual(await demoState(next), before);
+  assert.equal((await next.get('/api/me')).json.language, 'en');
+  // The trade-off of one shared account: the first visitor is still signed in and sees the reset too.
+  assert.equal((await first.get('/api/me')).status, 200);
+  assert.deepEqual(await demoState(first), before);
+});
+
+test('demo playlists stay private, so visitors cannot put text in everyone’s search', async () => {
+  const { c } = await tryDemo();
+  const p = (await c.post('/api/playlists', { name: 'Zzyzx demo graffiti', is_public: true })).json;
+  assert.equal(p.is_public, false);
+  const r = await c.patch(`/api/playlists/${p.id}`, { is_public: true });
+  assert.equal(r.status, 403);
+  assert.equal(r.json.error.code, 'demo_private');
+  const other = await signup(demoSrv.base, 'searcher');
+  assert.equal((await other.get('/api/search?q=zzyzx')).json.playlists.length, 0);
+  // Other accounts can still share playlists.
+  const mine = (await other.post('/api/playlists', { name: 'Zzyzx shared', is_public: true })).json;
+  assert.equal(mine.is_public, true);
+});
+
+test('the demo password still works, and does not reset the account', async () => {
+  const { c } = await tryDemo();
+  const extra = (await c.get('/api/home')).json.popular.at(-1);
+  await c.post('/api/playlists', { name: 'Kept', track_ids: [extra.id] });
+  const pw = await login(demoSrv.base);
+  assert.ok((await pw.get('/api/me/library')).json.playlists.some((p) => p.name === 'Kept'));
+});
+
+test('the demo account is created on first use, even by two sign-ins at once', async () => {
+  const { store } = demoSrv.app;
+  await store.run("DELETE FROM users WHERE lower(username) = 'demo'");
+  const [a, b] = await Promise.all([tryDemo(), tryDemo()]);
+  assert.deepEqual([a.r.status, b.r.status], [200, 200]);
+  assert.equal((await store.get("SELECT COUNT(*) AS n FROM users WHERE lower(username) = 'demo'")).n, 1);
+  assert.ok((await demoState(b.c)).streams >= 40);
+});
+
+test('demo sign-ins are rate-limited', async () => {
+  // Earlier tests used some of this minute's allowance.
+  let status = 200;
+  for (let i = 0; i < DEMO_LIMIT + 1 && status === 200; i++) status = (await tryDemo()).r.status;
+  assert.equal(status, 429);
+  assert.ok((await signup(demoSrv.base, 'afterdemo')).cookie, 'sign-up has its own limit');
 });

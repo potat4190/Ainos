@@ -78,6 +78,7 @@ export class Recommender {
   constructor(store, opts = {}) {
     this.store = store;
     this.training = null;
+    this.rerun = null;
     this.opts = { ...DEFAULTS, ...opts };
     this.model = null;
     this.trainedAt = 0;
@@ -92,7 +93,7 @@ export class Recommender {
       this.timer = setTimeout(() => {
         this.timer = null;
         this.pending = 0;
-        this.train().catch(() => {}); // keep serving the previous model if a retrain fails
+        this.train({ fresh: true }).catch(() => {}); // keep serving the previous model if a retrain fails
       }, 1500);
       this.timer.unref?.();
     }
@@ -102,8 +103,19 @@ export class Recommender {
     if (this.timer) clearTimeout(this.timer);
   }
 
-  /** Train once; concurrent callers share the same run. */
-  train() {
+  /**
+   * Train once; concurrent callers share the same run. With fresh, the model
+   * must include data written before this call: a run already in progress may
+   * have loaded its data earlier, so one more run follows it (shared too).
+   */
+  train({ fresh = false } = {}) {
+    if (this.training && fresh) {
+      this.rerun ||= this.training.catch(() => {}).then(() => {
+        this.rerun = null;
+        return this.train();
+      });
+      return this.rerun;
+    }
     if (!this.training) this.training = this.#train().finally(() => { this.training = null; });
     return this.training;
   }
@@ -316,11 +328,6 @@ export class Recommender {
         return { title: `Daily Mix ${gi + 1}`, description: `${genre} and more, based on what you play.`, ids, persist: heard.size > 0 };
       }),
     ));
-  }
-
-  /** Radio: seed track first, then its nearest neighbours. */
-  async radio(trackId, n = 20) {
-    return [trackId, ...(await this.similarTracks(trackId, n - 1)).map((s) => s.id)];
   }
 
   async relatedArtists(artistId, n = 6) {

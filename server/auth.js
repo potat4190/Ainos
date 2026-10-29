@@ -41,10 +41,10 @@ export function validateCredentials(username, password) {
   }
 }
 
-export async function createSession(store, userId) {
+export async function createSession(store, userId, { ttlMs = SESSION_TTL_MS } = {}) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
-  await store.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [sha256(token), userId, now, now + SESSION_TTL_MS]);
+  await store.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [sha256(token), userId, now, now + ttlMs]);
   return token;
 }
 
@@ -57,8 +57,8 @@ export function purgeExpiredSessions(store) {
   return store.run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
 }
 
-export function sessionCookie(token, { secure = false } = {}) {
-  const parts = [`${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${SESSION_TTL_MS / 1000}`];
+export function sessionCookie(token, { secure = false, maxAgeMs = SESSION_TTL_MS } = {}) {
+  const parts = [`${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.round(maxAgeMs / 1000)}`];
   if (secure) parts.push('Secure');
   return parts.join('; ');
 }
@@ -78,20 +78,26 @@ export async function userFromRequest(store, req) {
   return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token };
 }
 
-/** Tiny fixed-window rate limiter (per key), e.g. login attempts per IP. */
-export function rateLimiter({ limit, windowMs }) {
-  const hits = new Map();
-  return (key) => {
+/**
+ * Fixed-window rate limiter (per key), e.g. login attempts per IP. Counts live
+ * in the database, so serverless instances share one limit instead of each
+ * allowing `limit` on its own. Resolves to false once the key is over it.
+ */
+export function rateLimiter(store, { name, limit, windowMs }) {
+  return async (key) => {
     const now = Date.now();
-    const h = hits.get(key);
-    if (!h || now - h.start > windowMs) {
-      hits.set(key, { start: now, count: 1 });
-      return true;
-    }
-    h.count++;
-    if (hits.size > 10000) for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k);
-    return h.count <= limit;
+    const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
+      ON CONFLICT (key) DO UPDATE SET
+        hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
+        window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
+      RETURNING hits`, [`${name}:${key}`, now, now - windowMs, now - windowMs]);
+    return row.hits <= limit;
   };
+}
+
+/** Delete rate-limit windows that ended long ago. */
+export function purgeRateLimits(store, olderThanMs = 3600 * 1000) {
+  return store.run('DELETE FROM rate_limits WHERE window_start < ?', [Date.now() - olderThanMs]);
 }
 
 /** HMAC-signed, expiring media URLs (like a CDN's signed URLs). */

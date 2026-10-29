@@ -12,16 +12,20 @@
   <script type="module" src="/js/app.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main" id="skip-link">Skip to content</a>
+  <div id="boot" class="boot" role="status"><span class="spinner" aria-hidden="true"></span><span id="boot-text">Loading Ainos…</span></div>
   <div id="login" class="login" hidden>
     <form class="login-card" id="login-form" autocomplete="on">
       <div class="brand brand-lg"><img src="/img/icon.svg" alt="" width="40" height="40"><div><span>Ainos</span><small class="brand-sub" id="login-brand-sub">Christian Worship &amp; Praise</small></div></div>
+      <button class="btn btn-primary btn-block btn-lg" type="button" id="demo-login">Try the demo</button>
+      <p class="demo-hint" id="demo-hint">No sign-up needed. The demo account is shared and resets each time someone starts it.</p>
+      <div class="divider" aria-hidden="true"><span id="login-or">or</span></div>
       <h1 id="login-title">Log in to Ainos</h1>
       <label><span id="lbl-username">Username</span><input name="username" autocomplete="username" required minlength="3" maxlength="32"></label>
       <label class="signup-only" hidden><span id="lbl-displayname">Display name</span><input name="display_name" maxlength="40" autocomplete="nickname"></label>
       <label><span id="lbl-password">Password</span><input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="form-error" id="login-error" role="alert"></p>
-      <button class="btn btn-primary btn-block" type="submit" id="login-submit">Log in</button>
-      <button class="btn btn-ghost btn-block" type="button" id="demo-login">Use the demo account</button>
+      <button class="btn btn-light btn-block" type="submit" id="login-submit">Log in</button>
       <p class="login-switch"><span id="login-switch-text">Don’t have an account?</span> <button type="button" class="link" id="login-switch">Sign up</button></p>
     </form>
   </div>
@@ -44,6 +48,7 @@
     </nav>
 
     <main class="main panel" id="main" tabindex="-1">
+      <div class="demo-banner" id="demo-banner" role="status" hidden></div>
       <header class="topbar" id="topbar">
         <div class="topbar-nav">
           <button class="round-btn" id="nav-back" aria-label="Go back"><svg class="icon"><use href="#i-chevron-left"/></svg></button>
