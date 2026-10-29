@@ -60,6 +60,17 @@ test('audit() keeps entries small and refuses malformed action names', () => wit
   }
   const clipped = await audit(store, { action: 'lyrics.update', targetType: 't'.repeat(500), targetId: 'i'.repeat(500), orgId: 'o'.repeat(500) });
   assert.deepEqual({ ...(await store.get('SELECT length(target_type) AS a, length(target_id) AS b, length(org_id) AS c FROM audit_log WHERE id = ?', [clipped])) }, { a: 100, b: 100, c: 100 });
+  // Postgres TEXT can't hold NUL; cuts never split a surrogate pair; Dates stay readable; user ids are numbers.
+  const odd = await audit(store, { action: 'lyrics.update', userId: '7', targetId: 'a\u0000b', details: { at: new Date(0), text: '\u{1f64f}'.repeat(300) } });
+  const oddRow = await store.get('SELECT user_id, target_id, details FROM audit_log WHERE id = ?', [odd]);
+  assert.equal(oddRow.user_id, 7);
+  assert.equal(oddRow.target_id, 'ab');
+  const oddDetails = JSON.parse(oddRow.details);
+  assert.equal(oddDetails.at, '1970-01-01T00:00:00.000Z');
+  assert.equal(oddDetails.text, '\u{1f64f}'.repeat(200) + '…');
+  assert.equal(oddDetails.text.isWellFormed(), true);
+  const noUser = await audit(store, { action: 'x', userId: 'not-a-number' });
+  assert.equal((await store.get('SELECT user_id FROM audit_log WHERE id = ?', [noUser])).user_id, null);
   for (const action of ['', 'Setlist.Create', 'setlist create', 'setlist..create', '.x', 'x.', `a${'b'.repeat(64)}`, null, 5]) {
     await assert.rejects(audit(store, { action }), /bad action name/, String(action));
   }
