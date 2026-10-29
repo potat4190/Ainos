@@ -2,6 +2,7 @@
   "artists": [
     "5ZHIXpQ952T6oCzjluu68p",
     "CfOHdGHAfTQcEED3VHxuVF",
+    "DATmu3MLGYTuKXB8quMyIm",
     "DXGcohmKmEzZLzFrijMiWw",
     "GErVRYMF4uoydJ9LT0Dkkf",
     "OzP3PONpdAEAw0A4GEwlVJ",
@@ -17,12 +18,14 @@
     "J1DpxrxxEgqy0QLILYW967",
     "J8SPXaQJ00iK8yMaWPrUhb",
     "MlSCloAOG4slqP1PL419yt",
+    "YVYkRTzSISZNCBIuy6716l",
     "Zlht8IwEpKzVXsvNz3ifwG",
     "f8o08cztwc8bYvAUJEp3b5",
     "n709JZISQnwHcmoBO3VRsn",
     "vDuf9mDx0VtpUxu77510fm"
   ],
   "editorial_playlists": [
+    "3XAd3K5Ny6OdnoxP0cnNzo",
     "97FoWlo5jnUF6Atuz271AS",
     "BjmdetxIh5oqrkRP2bYHh1",
     "Guh8pWClPtVGWRnkm7h3iC",
@@ -31,6 +34,17 @@
     "pqvB0bCpONaT3C40kaiSdv"
   ],
   "tracks": {
+    "0E2vveDRcQ1EW0R4lh7lw6": {
+      "tempo": 66,
+      "key": 3,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "2ee897fc5e6e60ff9a06e7e336674f62d103c7964835a9705a2349ab0d05f491",
+        "low": "77956022a9a9a2ceb59584a37223cb679ff8e5fd264d373abb75f4e03d373e9e"
+      }
+    },
     "2LkJzFwqMfWJ4OvJKejUlV": {
       "tempo": 135,
       "key": 4,
@@ -40,6 +54,17 @@
       "wav": {
         "high": "383b12969a85e1a54de0f1248db495ba1c9ff43501555bd5dff8754ed364cb3a",
         "low": "71ccc2321573be1ed191338369b7a2fbdbea66bcf0c2b9e371ca4c0787f7ddd0"
+      }
+    },
+    "4HiUbEgF7pNk48ORnZNZrm": {
+      "tempo": 100,
+      "key": 5,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "9381c0bffe091b12f38a70b3ccbc766b782745cf8b83e13679f4fd589aa0b766",
+        "low": "30fa4d194d18cd31823319dcf7cf10e0b653296706770d4bbaedcd5a1091efc5"
       }
     },
     "4O8z2sP1J91vrSUuMf1COw": {
@@ -130,6 +155,17 @@
         "low": "715c15d8e8e637106d370a02126ac602ad97019c28fda24b28c2f0c00d464355"
       }
     },
+    "HYL13Jwm2GakjeVtUiA4F7": {
+      "tempo": 76,
+      "key": 10,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "c07bfb98a3a30b5e69626fbe3ca2f0abb1bc14e6e4761c5b65c441f0f37eaa88",
+        "low": "d520425c3420f7872809f7717f0be69be002896022cd4f8ab4fff2ef48388774"
+      }
+    },
     "HqXqAdsgdYuJHQxw5jF5ye": {
       "tempo": 101,
       "key": 0,
@@ -161,6 +197,17 @@
       "wav": {
         "high": "cec954a34b109428c8bc86ba2a202793ebefb691c0610cf66d93b65088f54f3f",
         "low": "d61c790dfe6702aa937b264c0471d498e95ba292e8463ca224228b731476c936"
+      }
+    },
+    "O1lCxw5GloYgTzp2Fu2EbK": {
+      "tempo": 88,
+      "key": 4,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "95c2fa97699ff383c842a94ba85f3b4dcef690bda147a029295454fe489b902f",
+        "low": "0331a1d65b2b9c5c1b4ac2ba91ca702f0e16f8f3531dcfa509cbd395141745a4"
       }
     },
     "PF4JyUcDWFEeg1h1x05NF2": {
@@ -240,6 +287,17 @@
         "low": "ff491676a692d5bcd8034f9a7a25ea93a9077659d51a3ae163e5a766864b0f30"
       }
     },
+    "VaPd0yza3iMdCvTK4oU7dk": {
+      "tempo": 92,
+      "key": 7,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "bde5bda0f419ec13bbc32d74e3fbd7836a35fc4e09a2dde9646270306dc12342",
+        "low": "e4bd7e0325789ee07e68717b1342e7c8e95237de0b64599f033a35b53a511235"
+      }
+    },
     "VtX4m9I32P8FdQxRNTEGC7": {
       "tempo": 121,
       "key": 8,
@@ -249,6 +307,17 @@
       "wav": {
         "high": "0c9bec22fd84f8d36719e3f5adf9c44334c6cba4d58f537bb41ef5987f18a1b1",
         "low": "0587e9e4db3fc75e95cc1a596a2ae3efec200ef614dc9c130f62bb96b8055fc0"
+      }
+    },
+    "YFEWQqX6gfigi1R5FapQ5p": {
+      "tempo": 84,
+      "key": 7,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "547e8a5ec78a17a5b835cc05e0ff312ea98296fc99adc310bb5ed4683091e2ee",
+        "low": "18149e944625fcc78a849c839165511afca2518d05bd17b1bb71b7d975a2bcc4"
       }
     },
     "bW7UDX7WghDFBpis4h9fzq": {
@@ -282,6 +351,17 @@
       "wav": {
         "high": "8adf8f110520f87c08dba3354befc84fc8744b625071c3a20d38d62818af66d3",
         "low": "559b0fecf080f5b852b12a5ec7000993ad3ce5f17ba7089c265c4c2814d6ea8e"
+      }
+    },
+    "hMkdnxXtgfRYl1D5hK1KtE": {
+      "tempo": 76,
+      "key": 1,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "fdff91f3580af96e6bcc6a707e610fc5b17d788ddd38e85ee52e30909b313ff0",
+        "low": "e0ab51a3731b00e56d2506a7b3542b63be6d852a3aa221d636efd4697b436aa7"
       }
     },
     "iZqPhDnnqNKnKZuQ0Bl7m9": {
@@ -370,6 +450,17 @@
       "wav": {
         "high": "f6ac350ab67deb50b9a81b9a60fe1e719c7b36bf605979c6dc127d3dadeeff14",
         "low": "b8cd96a9954bd50835b434be730fa1a41214bcd7a948b32062f2ecd6f2ffcabc"
+      }
+    },
+    "xM1WzqPC7LIUuDMJPnIh0P": {
+      "tempo": 92,
+      "key": 3,
+      "mode": 1,
+      "duration_ms": 6000,
+      "loudness": -16,
+      "wav": {
+        "high": "7bbf26494645c72cb7ca6544157ea41160d0a341502722b12b63ae2f1c968b73",
+        "low": "eb7e51e5d3a3cd151ace8cac12465b3d679da78ca3de8ff6ba8b318d69737f96"
       }
     },
     "ywyXcARJ9QRWh7n2uldjW8": {

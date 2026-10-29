@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install",
+  "installCommand": "npm ci --omit=dev",
   "buildCommand": "node --disable-warning=ExperimentalWarning scripts/vercel-build.js",
   "outputDirectory": "dist",
   "regions": ["iad1"],

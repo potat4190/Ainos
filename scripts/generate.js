@@ -13,8 +13,10 @@ import { fileURLToPath } from 'node:url';
 import { openDb, tx } from '../server/db.js';
 import { hashPasswordSync as hashPassword } from '../server/auth.js';
 import { integratedLoudness, samplePeakDb } from '../server/loudness.js';
-import { mulberry32, seededId, hashSeed, clamp, searchText } from '../server/util.js';
-import { renderTrack, master, downsample2, encodeWav16 } from './synth.js';
+import { mulberry32, seededId, hashSeed, clamp, searchText, fold } from '../server/util.js';
+import { renderTrack, renderMelody, master, downsample2, encodeWav16 } from './synth.js';
+import { HYMNS, HYMN_ARTIST, HYMN_ALBUM } from './hymns.js';
+import { displayName } from './catalog-names.js';
 import { albumCover, artistImage, hexFromHsl } from './art.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -143,24 +145,30 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
 
   const tracks = [];
   let totalBytes = 0;
+  // The names in CATALOG are seed keys: ids, audio, features and art patterns
+  // come from them and never change. What people see comes from the owner's
+  // picks in catalog-names.js, falling back to the CATALOG name.
   for (const artist of CATALOG) {
     const artistId = seededId(rnd);
+    const artistName = displayName('artist', artist.name, artist.name);
     const artistImg = `art/artist-${artistId}.svg`;
-    fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artist.name, hue: artist.hue, seed: hashSeed(artist.name) }));
-    insArtist.run(artistId, artist.name, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
-    addSearchDoc('artist', artistId, artist.name, artist.genre);
+    fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artistName, hue: artist.hue, seed: hashSeed(artist.name) }));
+    insArtist.run(artistId, artistName, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
+    addSearchDoc('artist', artistId, artistName, artist.genre);
 
     for (const [ai, album] of artist.albums.entries()) {
       const albumId = seededId(rnd);
       const hue = artist.hue + ai * 35;
+      const albumTitle = displayName('album', `${artist.name}/${album.title}`, album.title);
       const cover = `art/album-${albumId}.svg`;
-      fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: album.title, artist: artist.name, style: artist.style, hue, seed: hashSeed(album.title) }));
+      fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: albumTitle, artist: artistName, style: artist.style, hue, seed: hashSeed(album.title) }));
       const releasedAt = album.year === 2026 ? now - Math.floor(rnd() * 20) * 86400000 : Date.UTC(album.year, Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 27));
-      insAlbum.run(albumId, artistId, album.title, album.year, album.type || 'album', cover, hexFromHsl(hue, 55, 32), releasedAt);
-      addSearchDoc('album', albumId, album.title, `${artist.name} ${album.year}`);
+      insAlbum.run(albumId, artistId, albumTitle, album.year, album.type || 'album', cover, hexFromHsl(hue, 55, 32), releasedAt);
+      addSearchDoc('album', albumId, albumTitle, `${artistName} ${album.year}`);
 
       for (const [ti, title] of album.tracks.entries()) {
         const trackId = seededId(rnd);
+        const trackTitle = displayName('track', `${artist.name}/${title}`, title);
         const params = trackParams(artist, title, { quick });
         const { bpm, mode, key, jitter } = params;
         const tStart = Date.now();
@@ -182,13 +190,13 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
           danceability: clamp(f.dance + jitter[2], 0, 1),
           acousticness: clamp(f.acoustic + jitter[3] * 0.5, 0, 1),
         };
-        insTrack.run(trackId, albumId, artistId, title, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
+        insTrack.run(trackId, albumId, artistId, trackTitle, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
           features.energy, features.valence, features.danceability, features.acousticness, 0.95);
         insFile.run(trackId, 'high', hiFile, 'audio/wav', hi.length, SR, Math.round((SR * 16) / 1000), 44);
         insFile.run(trackId, 'low', loFile, 'audio/wav', lo.length, SR / 2, Math.round(((SR / 2) * 16) / 1000), 44);
-        addSearchDoc('track', trackId, title, `${artist.name} ${album.title}`);
-        tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
-        say(`  ♪ ${artist.name} – ${title}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
+        addSearchDoc('track', trackId, trackTitle, `${artistName} ${albumTitle}`);
+        tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title: trackTitle, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
+        say(`  ♪ ${artistName} – ${trackTitle}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
       }
     }
   }
@@ -267,12 +275,114 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
     demoTaste.slice(0, 6).forEach((t, i) => insPT.run(pid, t.id, i, now));
   });
 
+  // ---- public-domain hymns (scripts/hymns.js) ----
+  // Appended after everything the shared rnd draws, with ids from their own
+  // seeds, so no existing id, editorial playlist or listener changes. They stay
+  // out of the simulated listening and the feature-based editorial playlists;
+  // a "Hymns" playlist holds them instead.
+  const hymnCount = addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFile, insPlaylist, insPT, addSearchDoc, say });
+  totalBytes += hymnCount.bytes;
+
   db.close();
   const ms = Date.now() - t0;
-  say(`\n✓ ${tracks.length} tracks, ${editorial.length} editorial playlists, ${simulatedUsers} simulated listeners, ${streamCount} streams`);
+  say(`\n✓ ${tracks.length} tracks + ${hymnCount.tracks} hymns, ${editorial.length + 1} editorial playlists, ${simulatedUsers} simulated listeners, ${streamCount} streams`);
   say(`✓ ${(totalBytes / 1e6).toFixed(1)} MB of audio in ${path.join(dataDir, 'media')}  (${(ms / 1000).toFixed(1)} s)`);
   say('✓ Demo login: demo / ainos-demo');
-  return { tracks: tracks.length };
+  return { tracks: tracks.length + hymnCount.tracks };
+}
+
+// Hymns are mastered gently, a little below the -14 LUFS the player normalizes to.
+const HYMN_TARGET_LUFS = -16;
+// Every hymn row's id comes from a seed of its own, never from the shared rnd.
+const hymnId = (key) => seededId(mulberry32(hashSeed(key)));
+export const HYMN_IDS = {
+  artist: hymnId('hymn-artist'),
+  album: hymnId('hymn-album:1'),
+  playlist: hymnId('playlist:hymns'),
+  track: (slug) => hymnId(`hymn:${slug}`),
+  song: (slug) => hymnId(`song:${slug}`),
+  source: (slug) => hymnId(`source:${slug}`),
+  section: (slug, label) => hymnId(`section:${slug}:en:${label}`),
+  arrangement: (slug, name) => hymnId(`arrangement:${slug}:${name}`),
+};
+
+/** Section order for `passes` verses of a hymn (every verse when passes is omitted), with the refrain after each. */
+export function hymnOrder(hymn, passes) {
+  const verses = hymn.sections.filter((s) => s.label.startsWith('V')).map((s) => s.label).slice(0, passes);
+  return verses.flatMap((v) => (hymn.cycle.includes('C') ? [v, 'C'] : [v]));
+}
+
+/** Write the hymn album, its songs and lyrics, and the Hymns playlist. Returns counts. */
+function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFile, insPlaylist, insPT, addSearchDoc, say }) {
+  const A = HYMN_ARTIST;
+  const created = HYMN_ALBUM.released; // fixed, so a deploy's catalog sync never rewrites these rows
+  const insSong = db.prepare('INSERT INTO songs (id, title, artist, language, ccli_number, public_domain, org_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, 1, NULL, NULL, ?, ?)');
+  const insAlias = db.prepare('INSERT INTO song_aliases (song_id, alias, folded) VALUES (?, ?, ?)');
+  const insTheme = db.prepare('INSERT INTO song_themes (song_id, theme) VALUES (?, ?)');
+  const insSource = db.prepare("INSERT INTO song_sources (id, song_id, source, track_id, youtube_video_id, kind, available, last_checked_at) VALUES (?, ?, 'ainos', ?, NULL, NULL, 1, NULL)");
+  const insSection = db.prepare('INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES (?, ?, ?, ?, ?, ?, NULL)');
+  const insArrangement = db.prepare('INSERT INTO song_arrangements (id, song_id, org_id, name, section_order) VALUES (?, ?, NULL, ?, ?)');
+  let bytes = 0;
+
+  return tx(db, () => {
+    const artistImg = `art/artist-${HYMN_IDS.artist}.svg`;
+    fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: A.name, hue: A.hue, seed: hashSeed('hymn-artist') }));
+    insArtist.run(HYMN_IDS.artist, A.name, A.genre, A.language, A.bio, artistImg, hexFromHsl(A.hue, 55, 32));
+    addSearchDoc('artist', HYMN_IDS.artist, A.name, A.genre);
+    const cover = `art/album-${HYMN_IDS.album}.svg`;
+    fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: HYMN_ALBUM.title, artist: A.name, style: 'hymn', hue: A.hue, seed: hashSeed('hymn-album:1') }));
+    insAlbum.run(HYMN_IDS.album, HYMN_IDS.artist, HYMN_ALBUM.title, HYMN_ALBUM.year, 'album', cover, hexFromHsl(A.hue, 55, 32), HYMN_ALBUM.released);
+    addSearchDoc('album', HYMN_IDS.album, HYMN_ALBUM.title, `${A.name} ${HYMN_ALBUM.year}`);
+
+    const trackIds = [];
+    for (const [i, h] of HYMNS.entries()) {
+      const trackId = HYMN_IDS.track(h.slug);
+      const [beatsPerBar] = h.timeSignature;
+      const { samples } = renderMelody({ melody: h.melody, bpm: h.bpm, passes: h.audioVerses, beatsPerBar, pickupBeats: h.pickupBeats,
+        seed: hashSeed(`hymn:${h.slug}`), maxSeconds: quick ? 6 : undefined }, SR);
+      let peak = 0;
+      for (const v of samples) peak = Math.max(peak, Math.abs(v));
+      for (let k = 0; k < samples.length; k++) samples[k] /= peak || 1;
+      master(samples, Math.pow(10, (HYMN_TARGET_LUFS - integratedLoudness(samples, SR)) / 20));
+      // Rounded: the last bits of these doubles differ between platforms (Windows
+      // vs Linux), though the audio is byte-identical, and a deploy's catalog
+      // sync refreshes hymn measurements whenever they differ.
+      const round6 = (v) => Math.round(v * 1e6) / 1e6;
+      const loud = round6(integratedLoudness(samples, SR));
+      const peakDb = round6(samplePeakDb(samples));
+      const hi = encodeWav16(samples, SR);
+      const lo = encodeWav16(downsample2(samples), SR / 2);
+      fs.writeFileSync(path.join(dataDir, `media/high/${trackId}.wav`), hi);
+      fs.writeFileSync(path.join(dataDir, `media/low/${trackId}.wav`), lo);
+      bytes += hi.length + lo.length;
+      const durationMs = Math.round((samples.length / SR) * 1000);
+      // A single unaccompanied voice: quiet, unhurried, acoustic-sounding.
+      const major = h.mode === 'major';
+      insTrack.run(trackId, HYMN_IDS.album, HYMN_IDS.artist, h.title, i + 1, durationMs, A.genre, A.language, loud, peakDb, h.bpm, h.tonic % 12, major ? 1 : 0,
+        clamp(0.12 + (h.bpm - 60) / 400, 0, 1), major ? 0.62 : 0.38, 0.15, 0.85, 0.95);
+      insFile.run(trackId, 'high', `media/high/${trackId}.wav`, 'audio/wav', hi.length, SR, Math.round((SR * 16) / 1000), 44);
+      insFile.run(trackId, 'low', `media/low/${trackId}.wav`, 'audio/wav', lo.length, SR / 2, Math.round(((SR / 2) * 16) / 1000), 44);
+      addSearchDoc('track', trackId, h.title, `${A.name} ${HYMN_ALBUM.title}`);
+      trackIds.push(trackId);
+
+      // The song: what is sung, every printed stanza, and how the recording orders them.
+      const songId = HYMN_IDS.song(h.slug);
+      insSong.run(songId, h.title, A.name, A.language, created, created);
+      const firstLine = h.sections[0].lines[0].replace(/[,;:.!]+$/, '');
+      if (fold(firstLine) !== fold(h.title)) insAlias.run(songId, firstLine, fold(firstLine));
+      for (const theme of h.themes) insTheme.run(songId, theme);
+      insSource.run(HYMN_IDS.source(h.slug), songId, trackId);
+      for (const s of h.sections) insSection.run(HYMN_IDS.section(h.slug, s.label), songId, 'en', s.label, s.lines.join('\n'), searchText(s.lines.join(' '), ''));
+      insArrangement.run(HYMN_IDS.arrangement(h.slug, 'all'), songId, 'All verses', JSON.stringify(hymnOrder(h)));
+      insArrangement.run(HYMN_IDS.arrangement(h.slug, 'recording'), songId, 'Recording', JSON.stringify(hymnOrder(h, h.audioVerses)));
+      say(`  ♪ ${A.name} – ${h.title}  (${h.bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)`);
+    }
+
+    insPlaylist.run(HYMN_IDS.playlist, null, 'Hymns', 'Public-domain hymns, played as written, with their words to sing along.', '#7a5a2e', created, created);
+    trackIds.forEach((id, pos) => insPT.run(HYMN_IDS.playlist, id, pos, created));
+    addSearchDoc('playlist', HYMN_IDS.playlist, 'Hymns', 'Public-domain hymns, played as written, with their words to sing along.');
+    return { tracks: trackIds.length, bytes };
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

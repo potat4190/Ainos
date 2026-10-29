@@ -1,6 +1,6 @@
 # Ainos — instructions for Claude Code
 
-Ainos is a Christian worship and praise streaming app (Node.js ≥ 22.13, ES modules, no framework,
+Ainos is a Christian worship and praise streaming app (Node.js 24.x, ES modules, no framework,
 no build step; SQLite locally, Supabase Postgres + Vercel in production). See `context.md` for the
 architecture, conventions and gotchas, and `README.md` for setup and deploy.
 

@@ -12,7 +12,7 @@ A Christian faith-based music streaming app dedicated to Christian worship, prai
 
 ## Run it
 
-Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Running locally needs no `npm install`: the two packages in `package.json` (`pg`, `@vercel/functions`) are only used by the hosted deployment.
+Requires **Node.js 24** (it uses the built-in `node:sqlite`; `package.json` pins `engines` to `24.x` so Vercel builds on 24 too, and the version is raised on purpose, not by Vercel’s default). Running the app locally needs no `npm install`: the two packages in `dependencies` (`pg`, `@vercel/functions`) are only used by the hosted deployment. `npm install` also brings the one dev dependency, [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly), which `npm test` uses to check `server/schema.pg.sql` and the deploy-time catalog sync against real Postgres; without it those tests are skipped.
 
 ```bash
 npm start          # first run generates the catalog (~15 s), then serves http://127.0.0.1:4321
@@ -31,7 +31,7 @@ Because the account is shared, visitors can see each other's changes until the n
 | `npm start` | Start the server (`PORT`, `HOST` env vars; default `127.0.0.1:4321`; `TRUST_PROXY=1` behind an HTTPS proxy or tunnel) |
 | `npm run dev` | Same, restarting on file changes |
 | `npm run setup` | Regenerate the catalog from scratch (wipes `data/`) |
-| `npm test` | Automated test suite: streaming, auth, events, playlists, search, multi-language recommendations, Connect, loudness meter, security |
+| `npm test` | Automated test suite: streaming, auth, events, playlists, search, multi-language recommendations, Connect, loudness meter, security, and the Postgres schema and catalog sync (after `npm install`) |
 
 To use Connect from your phone, start with `HOST=0.0.0.0 npm start` (PowerShell: `$env:HOST="0.0.0.0"; npm start`), open the printed network address, and log in with the same account.
 
@@ -42,7 +42,7 @@ Locally everything lives in SQLite under `data/`. In production the same code ru
 - **Database:** `server/store.js` gives the app one async query interface. Without `DATABASE_URL` it uses SQLite; with it, Postgres. The Postgres schema is in `server/schema.pg.sql` (row-level security is on with no policies, so Supabase's public Data API can read nothing; the app connects as its own role). The connection uses TLS and checks the server's certificate.
 - **API:** `api/index.js` is a Vercel Function that serves every `/api/*` route.
 - **Audio and art:** the catalog generator is deterministic, so `scripts/vercel-build.js` regenerates the same WAV and SVG files on every build and Vercel serves them as static files. `middleware.js` checks the HMAC signature on every `/media/` request, as the local server does.
-- **Schema and migrations:** `server/schema.pg.sql` creates missing tables and migrates existing ones, so every statement in it must be safe to re-run. The app's database role (`ainos_app`) can only read and write rows, so the file is applied by the tables' owner: paste it into the Supabase SQL editor, or set `DATABASE_MIGRATION_URL` and the build applies it. **Every deploy** then checks, as the app's role, that every table and column in the file exists, and stops with a list of what is missing if not. On the first deploy it seeds the empty database from the generated catalog (`scripts/seed-postgres.js`); later builds only check that the track ids still match the files.
+- **Schema and migrations:** `server/schema.pg.sql` creates missing tables and migrates existing ones, so every statement in it must be safe to re-run. The app's database role (`ainos_app`) can only read and write rows, so the file is applied by the tables' owner: paste it into the Supabase SQL editor, or set `DATABASE_MIGRATION_URL` and the build applies it. **Every deploy** then checks, as the app's role, that every table and column in the file exists, and stops with a list of what is missing if not. On the first deploy it seeds the empty database from the generated catalog (`scripts/seed-postgres.js`). Later builds sync the catalog instead: every track already in the database must still be generated (its audio file is named by its id, so the build stops otherwise); new catalog rows, such as appended hymns, are added, and display fields (names, descriptions, lyrics) refreshed. Measured loudness and audio features stay as first seeded (hymns excepted: their audio is rendered from `scripts/hymns.js`, so their measurements follow it), the lyrics, arrangements and themes of its own songs follow the generator (rows it no longer writes are removed; aliases are kept), editorial playlists gain tracks it adds to them, and user data, church rows and user playlists are never changed. Removing an existing track is a manual data migration. A preview build of a branch older than the preview database's catalog skips the sync with a warning; a production build refuses.
 
 Environment variables on Vercel:
 
@@ -103,10 +103,11 @@ server/
   loudness.js    ITU-R BS.1770-4 integrated loudness + normalization gain
 scripts/
   generate.js    builds the Christian worship catalog across 6 languages, synthesizes audio, measures loudness, seeds users
-  synth.js       procedural music synthesizer (8 styles) + WAV encoder
+  synth.js       procedural music synthesizer (8 styles), hymn melody renderer, WAV encoder
+  hymns.js       public-domain hymns: sourced melodies (note data) and lyrics
   art.js         generated SVG cover art
-  seed-postgres.js  applies the Postgres schema, then copies a generated catalog into an empty database
-  vercel-build.js   Vercel build: generate catalog, seed/verify Postgres, assemble dist/
+  seed-postgres.js  applies the Postgres schema, then seeds an empty database or syncs the generated catalog into it
+  vercel-build.js   Vercel build: generate catalog, seed/sync Postgres, assemble dist/
   smoke.js       end-to-end check against a running deployment
 api/index.js     Vercel Function for /api/*
 middleware.js    Vercel middleware: signature check for /media/
@@ -121,6 +122,6 @@ docs/HOW-SPOTIFY-WORKS.md   the evidence report
 test/            node:test suites
 ```
 
-**About the music.** The catalog has 33 original Christian worship & devotional tracks across 8 artists spanning English, Hindi, Nepali, Chinese, Japanese, and Spanish, synthesized from code at setup time. That keeps the app free of copyrighted audio and external dependencies. Masters are mixed at deliberately different loudness levels (−9 to −19 LUFS), so normalization has something to fix. To use your own audio, add rows to `tracks`/`track_files` pointing at 16-bit PCM WAV files at `data/media/high/<track id>.wav` and `data/media/low/<track id>.wav`.
+**About the music.** The catalog has 33 original worship & devotional tracks across 8 artists, plus 8 public-domain hymns (Amazing Grace, Be Thou My Vision, It Is Well with My Soul and others) whose original tunes are synthesized from note data in `scripts/hymns.js`, each with its sources and lyrics. The original tracks span English, Hindi, Nepali, Chinese, Japanese, and Spanish, synthesized from code at setup time. That keeps the app free of copyrighted audio and external dependencies. Masters are mixed at deliberately different loudness levels (−9 to −19 LUFS), so normalization has something to fix. To use your own audio, add rows to `tracks`/`track_files` pointing at 16-bit PCM WAV files at `data/media/high/<track id>.wav` and `data/media/low/<track id>.wav`.
 
 **Scale caveats.** In-process recommendations and SSE fan-out are right for one machine. At global scale each piece becomes a service: a CDN for media, Pub/Sub plus Dataflow for events, Voyager/Annoy indexes for nearest-neighbour search, and a stateful connect-state service. The evidence report covers where Ainos deliberately differs.

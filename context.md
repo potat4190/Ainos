@@ -6,14 +6,14 @@ Quick orientation for anyone (human or AI assistant) picking up work on this rep
 
 Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music streaming app modelled on Spotify's architecture. It is a learning/demo project with an evidence report ([docs/HOW-SPOTIFY-WORKS.md](docs/HOW-SPOTIFY-WORKS.md)) that maps each feature to how Spotify does it.
 
-- **Catalog:** 33 original tracks across 8 artists in 6 languages (en, hi, ne, zh, ja, es). All audio is synthesized from code at setup time, so there is no copyrighted audio.
+- **Catalog:** 33 original tracks across 8 artists in 6 languages (en, hi, ne, zh, ja, es), plus 8 public-domain hymns (`scripts/hymns.js`: sourced melodies, every printed stanza as lyrics, a `songs` row each). All audio is synthesized from code at setup time, so there is no copyrighted audio.
 - **One plan:** every user gets "All-Access" (high quality, unlimited skips, offline, Connect). There is no Free/Premium split; the old `plan` column is dropped by a migration.
 - **Language drives everything:** the user's `language` sets the UI translation *and* which songs get recommended.
 - **Demo:** "Try the demo" (`POST /api/auth/demo`) resets the shared `demo` account to a snapshot (`server/demo.js`) and signs in. `demo` / `ainos-demo` still works and does not reset.
 
 ## Stack
 
-- **Node.js ≥ 22.13, ES modules, no framework, no build step.** Uses built-in `node:sqlite`, `node:test`, `node:http`.
+- **Node.js 24.x (pinned in `engines`, so Vercel builds on 24; upgrade deliberately), ES modules, no framework, no build step.** Uses built-in `node:sqlite`, `node:test`, `node:http`.
 - **Local:** zero dependencies; data is SQLite in `data/` (gitignored).
 - **Production:** Vercel (one Function for `/api/*`, static files for app/audio/art, middleware for signed media) + Supabase Postgres. Only `pg` and `@vercel/functions` are npm dependencies, and only production uses them.
 - **Frontend:** vanilla JS ES modules in `public/js/`, DOM built with the `h()` helper in `ui.js`. A strict CSP means **no inline scripts or styles**.
@@ -25,7 +25,7 @@ Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music st
 | `npm start` | Generates the catalog on first run, serves `http://127.0.0.1:4321` |
 | `npm run dev` | Same, with `--watch` |
 | `npm run setup` | Wipes and regenerates `data/` |
-| `npm test` | `node:test` suites in `test/`, run one file at a time |
+| `npm test` | `node:test` suites in `test/`, run one file at a time. `test/postgres.test.js` runs `schema.pg.sql` and `seed-postgres.js` against PGlite (in-process Postgres, a dev dependency that app code must never import); it skips without `npm install`. A preview deploy stays the final check against Supabase itself |
 | `node scripts/smoke.js <url>` | End-to-end check against a running deployment |
 
 ## Layout
@@ -64,9 +64,10 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 ## Gotchas
 
 - **`schema.pg.sql` is the migration.** Every statement must be safe to re-run on a live database. Wrap changes to existing tables in `DO $ ... $` blocks that check first (`ALTER TABLE` locks the table even when it changes nothing). The app connects as `ainos_app`, which can only read and write rows, so the owner applies the file (Supabase SQL editor, or `DATABASE_MIGRATION_URL` at build time) and **new tables need a `GRANT` to `ainos_app`**. Every deploy checks that each table and column in the file exists and fails the build if not, so apply migrations before deploying code that needs them.
-- **Preview and Production share one database** on Vercel (same `DATABASE_URL`), so a preview deploy, or a smoke test against it, touches live data, including the demo account.
+- **Previews have their own database** (Supabase project "ainos-preview", set in Vercel's Preview variables since 2026-10-29), so a preview deploy or a smoke test against it never touches production. A smoke test still resets the demo account of the database it runs against.
 - **The demo account is shared.** Anything a demo visitor can publish would reach everyone, so demo playlists are forced private (`isDemo()` in `server/demo.js`). Guard any new "publish" or account-changing route the same way.
-- **Changing `scripts/generate.js` can change track ids.** On Vercel, audio files are named by id; if the generated ids stop matching the ids already in Postgres, `seed-postgres.js` refuses to continue. Treat catalog changes as a data migration.
+- **Changing `scripts/generate.js` can change track ids.** On Vercel, audio files are named by id; if a track already in Postgres is no longer generated, `seed-postgres.js` refuses to continue (preview builds skip the sync with a warning). Appending is fine: new catalog rows are synced in on deploy. `test/catalog-ids.test.js` fails on any change to an existing id or its audio (hymns excepted: after an intended melody change, `AINOS_UPDATE_CATALOG_SNAPSHOT=hymns npm test` rewrites their entries). Treat changes to existing tracks as a data migration.
+- **Generator-owned songs** (the hymns, `org_id` NULL, written by `generate.js`) are refreshed from `scripts/hymns.js` on every deploy, and their global lyrics, arrangements and themes are pruned to match: edit them there, not in the database, or a deploy will undo it.
 - **Row-level security** is on with no policies in Postgres, so Supabase's public Data API sees nothing. The app connects with its own role. Don't add RLS policies without a reason.
 - **Connect on Vercel** keeps devices in each instance's memory, so two devices only see each other if they hit the same instance. It works fully locally.
 - **Event NDJSON logs** are written to `data/events/` only when running on SQLite.

@@ -628,3 +628,60 @@ export function encodeWav16(samples, sr) {
   }
   return buf;
 }
+
+// ---------- hymns: a written melody, played as written ----------
+
+/**
+ * When each entry of a melody sounds. melody: [[midi | null, beats], ...] for
+ * one pass of the tune (a quarter note is one beat, null is a rest), played
+ * `passes` times in a row (one pass per verse). Pure, so lyric timings can be
+ * derived from it without rendering audio.
+ * Returns { events: [{ pass, index, t, dur, midi, downbeat }], seconds }.
+ */
+export function melodyTimeline(melody, { bpm, passes = 1, beatsPerBar = 4, pickupBeats = 0, leadIn = 0.5 }) {
+  if (!melody.length || !(bpm > 0) || passes < 1) throw new Error('melodyTimeline: melody, bpm and passes required');
+  const beat = 60 / bpm;
+  const passBeats = melody.reduce((s, [, b]) => s + b, 0);
+  const events = [];
+  for (let pass = 0; pass < passes; pass++) {
+    let pos = 0; // beats from the start of this pass
+    for (const [index, [midi, beats]] of melody.entries()) {
+      if (!(beats > 0)) throw new Error(`melodyTimeline: note ${index} has no length`);
+      const bar = (pos - pickupBeats) / beatsPerBar;
+      events.push({ pass, index, t: leadIn + (pass * passBeats + pos) * beat, dur: beats * beat, midi, downbeat: Math.abs(bar - Math.round(bar)) < 1e-9 });
+      pos += beats;
+    }
+  }
+  return { events, seconds: leadIn + passes * passBeats * beat };
+}
+
+/**
+ * Render a melody alone, unharmonized: one organ-like voice, doubled softly an
+ * octave below (like an organ's 16' stop), with a gentle room reverb. Bar
+ * downbeats are slightly stronger. maxSeconds cuts it short (test catalogs).
+ * spec: { melody, bpm, passes, beatsPerBar, pickupBeats, seed, maxSeconds }
+ */
+export function renderMelody(spec, sr = 22050) {
+  const { events, seconds } = melodyTimeline(spec.melody, spec);
+  const tail = 3;
+  const total = Math.min(seconds + tail, spec.maxSeconds ?? Infinity);
+  const e = new Engine(sr, total, spec.seed ?? 1);
+  for (const ev of events) {
+    if (ev.midi == null || ev.t >= total) continue;
+    const amp = ev.downbeat ? 0.32 : 0.27;
+    // Slightly detached, so repeated notes are heard as separate syllables.
+    const dur = Math.max(0.08, ev.dur - Math.min(0.08, ev.dur * 0.12));
+    const voice = { wave: 'organ', a: 0.035, d: 0.12, s: 0.88, r: 0.22, vibRate: 5, vibDepth: 6, cutoff: 3200 };
+    e.note('lead', ev.t, dur, mtof(ev.midi), amp, voice);
+    e.note('pad', ev.t, dur, mtof(ev.midi - 12), amp * 0.35, { ...voice, vibDepth: 0, cutoff: 1400 });
+  }
+  reverbFx(e.buses.lead, sr, 0.35, 2.0);
+  reverbFx(e.buses.pad, sr, 0.3, 2.0);
+  const out = new Float32Array(e.n);
+  for (const b of ['lead', 'pad']) for (let i = 0; i < e.n; i++) out[i] += e.buses[b][i];
+  const fin = Math.round(0.02 * sr);
+  for (let i = 0; i < Math.min(fin, out.length); i++) out[i] *= i / fin;
+  const fadeLen = Math.min(out.length, Math.round(1.5 * sr));
+  for (let i = 0; i < fadeLen; i++) out[out.length - 1 - i] *= Math.pow(i / fadeLen, 1.5);
+  return { samples: out, sr, durationMs: Math.round((out.length / sr) * 1000), events };
+}
