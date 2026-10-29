@@ -286,7 +286,11 @@ test('retraining is rate-limited across all users', async () => {
   const other = await signup(srv.base, 'tinkerer');
   assert.equal((await demo.post('/api/internals/retrain')).status, 200);
   assert.equal((await other.post('/api/internals/retrain')).status, 200);
-  assert.equal((await demo.post('/api/internals/retrain')).status, 429);
+  const limited = await demo.post('/api/internals/retrain');
+  assert.equal(limited.status, 429);
+  assert.equal(limited.json.error.code, 'rate_limited');
+  const wait = Number(limited.headers.get('retry-after'));
+  assert.ok(Number.isInteger(wait) && wait >= 1 && wait <= 60, `Retry-After ${limited.headers.get('retry-after')}`);
 });
 
 test('home is personalized and includes made-for-you mixes', async () => {

@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export class HttpError extends Error {
-  constructor(status, message, code = undefined) {
+  /** headers: extra response headers for the error, e.g. Retry-After on a 429. */
+  constructor(status, message, code = undefined, headers = undefined) {
     super(message);
     this.status = status;
     this.code = code;
+    this.headers = headers;
   }
 }
 

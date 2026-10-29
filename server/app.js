@@ -6,7 +6,7 @@ import { sqliteStore, postgresStore, inList } from './store.js';
 import { Router, HttpError, sendJson, readJson, serveFile, serveRange, safeJoin } from './http.js';
 import {
   hashPassword, verifyPassword, validateCredentials, createSession, destroySession, purgeExpiredSessions, sessionCookie, clearCookie,
-  userFromRequest, rateLimiter, purgeRateLimits, signMediaPath, verifyMediaSignature,
+  userFromRequest, rateLimiter, rateLimit, purgeRateLimits, signMediaPath, verifyMediaSignature,
 } from './auth.js';
 import { Catalog } from './catalog.js';
 import { Recommender } from './recommend.js';
@@ -59,7 +59,6 @@ export async function createApp({
   const events = new EventPipeline(store, eventLogDir, { onStreams: (n) => recommender.noteNewStreams(n) });
   const hub = new ConnectHub();
   const loginLimiter = rateLimiter(store, { name: 'auth', limit: authAttemptsPerMinute, windowMs: 60_000 });
-  const retrainLimiter = rateLimiter(store, { name: 'retrain', limit: 2, windowMs: 60_000 });
   // Each demo sign-in rewrites the demo account, so it is limited per visitor
   // and, so a crowd of addresses cannot keep it busy, overall.
   const demoLimiter = rateLimiter(store, { name: 'demo', limit: demoSignInsPerMinute, windowMs: 60_000 });
@@ -552,7 +551,7 @@ export async function createApp({
 
   // A full retrain is CPU-heavy, so it is rate-limited across all users.
   r.post('/api/internals/retrain', auth(async ({ res }) => {
-    if (!(await retrainLimiter('global'))) throw new HttpError(429, 'The recommender was just retrained, try again in a minute');
+    await rateLimit(store, 'global:retrain', { limit: 2, windowSec: 60, message: 'The recommender was just retrained, try again in a minute' });
     sendJson(res, 200, await recommender.train({ fresh: true }));
   }));
 
@@ -617,7 +616,7 @@ export async function createApp({
       if (res.headersSent) { try { res.end(); } catch { /* ignore */ } return; }
       const status = err instanceof HttpError ? err.status : 500;
       if (status >= 500) log('[error]', req.method, req.url, err);
-      sendJson(res, status, { error: { status, message: status >= 500 ? 'Internal server error' : err.message, code: err.code } });
+      sendJson(res, status, { error: { status, message: status >= 500 ? 'Internal server error' : err.message, code: err.code } }, status < 500 ? err.headers : undefined);
     });
   }
 

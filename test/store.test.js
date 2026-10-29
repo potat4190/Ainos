@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { sqliteStore, pgConnection } from '../server/store.js';
-import { rateLimiter, purgeRateLimits } from '../server/auth.js';
+import { rateLimiter, rateLimit, purgeRateLimits } from '../server/auth.js';
+import { HttpError } from '../server/http.js';
 
 test('Postgres connections check the server certificate, except on this machine', () => {
   for (const host of ['localhost', '127.0.0.1', '[::1]']) assert.equal(pgConnection(`postgres://u:p@${host}:5432/db`, '').ssl, false, host);
@@ -35,6 +36,40 @@ test('rate limits are shared by every server process on the database', async () 
   } finally {
     await a.close();
     await b.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('rateLimit throws 429 with Retry-After, keeps per-minute and per-day windows apart, and day windows survive the purge', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-limits-'));
+  const store = sqliteStore(path.join(dir, 'ainos.db'));
+  const limited = (err) => err instanceof HttpError && err.status === 429 && err.code === 'rate_limited';
+  try {
+    const t0 = 1_800_000_000_000;
+    const perMinute = { limit: 2, windowSec: 60 };
+    await rateLimit(store, 'user:7:scripture', { ...perMinute, now: t0 });
+    await rateLimit(store, 'user:7:scripture', { ...perMinute, now: t0 + 1000 });
+    const err = await rateLimit(store, 'user:7:scripture', { ...perMinute, now: t0 + 20_000 }).catch((e) => e);
+    assert.ok(limited(err), 'the third hit in a minute is refused');
+    assert.equal(err.headers['Retry-After'], '40', 'seconds until the window that started at t0 ends');
+    await rateLimit(store, 'user:7:scripture', { ...perMinute, now: t0 + 61_000 }); // next window
+
+    // The same key with a day window counts separately from its minute window.
+    const perDay = { limit: 3, windowSec: 86_400 };
+    for (const dt of [0, 1000, 61_000]) await rateLimit(store, 'user:7:scripture', { ...perDay, now: t0 + dt });
+    const dayErr = await rateLimit(store, 'user:7:scripture', { ...perDay, now: t0 + 3600_000 }).catch((e) => e);
+    assert.ok(limited(dayErr));
+    assert.equal(dayErr.headers['Retry-After'], String(86_400 - 3600));
+    await rateLimit(store, 'user:8:scripture', { ...perDay, now: t0 }); // other users have their own count
+
+    // A day window opened two hours ago is still in force after housekeeping.
+    await store.run('UPDATE rate_limits SET window_start = ? WHERE key = ?', [Date.now() - 2 * 3600_000, 'user:7:scripture/86400s']);
+    await purgeRateLimits(store);
+    assert.ok(await store.get('SELECT 1 AS x FROM rate_limits WHERE key = ?', ['user:7:scripture/86400s']), 'not purged early');
+
+    await assert.rejects(rateLimit(store, 'x', { limit: 1, windowSec: 2 * 86_400 }), /purged early/, 'windows longer than a day are refused');
+  } finally {
+    await store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -84,19 +84,41 @@ export async function userFromRequest(store, req) {
  * allowing `limit` on its own. Resolves to false once the key is over it.
  */
 export function rateLimiter(store, { name, limit, windowMs }) {
-  return async (key) => {
-    const now = Date.now();
-    const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
-      ON CONFLICT (key) DO UPDATE SET
-        hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
-        window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
-      RETURNING hits`, [`${name}:${key}`, now, now - windowMs, now - windowMs]);
-    return row.hits <= limit;
-  };
+  return async (key) => (await hit(store, `${name}:${key}`, windowMs)).hits <= limit;
 }
 
-/** Delete rate-limit windows that ended long ago. */
-export function purgeRateLimits(store, olderThanMs = 3600 * 1000) {
+/** Count one hit on a key's current window (starting a new window if the last one is over). */
+async function hit(store, key, windowMs, now = Date.now()) {
+  const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
+    ON CONFLICT (key) DO UPDATE SET
+      hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
+      window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
+    RETURNING hits, window_start`, [key, now, now - windowMs, now - windowMs]);
+  return { hits: row.hits, windowStart: Number(row.window_start) };
+}
+
+// The longest window any limit uses (a day), plus an hour of slack.
+const LONGEST_WINDOW_MS = 25 * 3600 * 1000;
+
+/**
+ * Rate limit for routes: counts a hit on `key` and throws 429 with a
+ * Retry-After header once it is over `limit` in the current window. Keys name
+ * who and what, e.g. `user:${user.id}:scripture` or `ip:${ip}:invite`; the
+ * window length is part of the stored key, so one key can carry a per-minute
+ * and a per-day limit.
+ */
+export async function rateLimit(store, key, { limit, windowSec, message = 'Too many requests, try again later', now = Date.now() }) {
+  if (windowSec * 1000 > LONGEST_WINDOW_MS) throw new Error('rate-limit windows longer than a day would be purged early');
+  const windowMs = windowSec * 1000;
+  const { hits, windowStart } = await hit(store, `${key}/${windowSec}s`, windowMs, now);
+  if (hits > limit) {
+    const retryAfter = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
+    throw new HttpError(429, message, 'rate_limited', { 'Retry-After': String(retryAfter) });
+  }
+}
+
+/** Delete rate-limit windows that ended long ago (older than any window in use). */
+export function purgeRateLimits(store, olderThanMs = LONGEST_WINDOW_MS) {
   return store.run('DELETE FROM rate_limits WHERE window_start < ?', [Date.now() - olderThanMs]);
 }
 
