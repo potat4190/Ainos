@@ -76,3 +76,84 @@ test('lyrics: every stanza fits the tune line for line, within the app’s limit
     assert.ok(h.themes.length >= 1 && h.themes.length <= 3 && h.themes.every((t) => THEMES.includes(t)), `${h.slug}: themes`);
   }
 });
+
+// ---- what the catalog generator writes for them ----
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { before, after } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
+import { generateCatalog, HYMN_IDS, hymnOrder } from '../scripts/generate.js';
+
+let dir, db;
+before(async () => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-hymns-'));
+  await generateCatalog({ dataDir: dir, quick: true, quiet: true, simulatedUsers: 5 });
+  db = new DatabaseSync(path.join(dir, 'ainos.db'), { readOnly: true });
+});
+after(() => {
+  db?.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('each hymn is a native track with audio, on the Hymnal album', () => {
+  const tracks = db.prepare('SELECT * FROM tracks WHERE album_id = ? ORDER BY track_no').all(HYMN_IDS.album);
+  assert.deepEqual(tracks.map((t) => t.id), HYMNS.map((h) => HYMN_IDS.track(h.slug)), 'ids from each hymn’s own seed, in album order');
+  for (const [i, t] of tracks.entries()) {
+    const h = HYMNS[i];
+    assert.equal(t.title, h.title);
+    assert.equal(t.artist_id, HYMN_IDS.artist);
+    assert.equal(t.genre, 'Hymn');
+    assert.equal(t.language, 'en');
+    assert.equal(t.tempo, h.bpm);
+    assert.ok(Number.isFinite(t.loudness_lufs) && t.loudness_lufs < -10);
+    for (const q of ['high', 'low']) {
+      const f = db.prepare('SELECT * FROM track_files WHERE track_id = ? AND quality = ?').get(t.id, q);
+      assert.ok(f && fs.statSync(path.join(dir, f.file)).size === f.bytes, `${h.slug} ${q} file`);
+    }
+  }
+  const artist = db.prepare('SELECT * FROM artists WHERE id = ?').get(HYMN_IDS.artist);
+  assert.equal(artist.name, HYMN_ARTIST.name);
+  assert.ok(fs.existsSync(path.join(dir, artist.image)));
+  const album = db.prepare('SELECT * FROM albums WHERE id = ?').get(HYMN_IDS.album);
+  assert.equal(album.released_at, HYMN_ALBUM.released);
+});
+
+test('each hymn is a public-domain song with every stanza, its source, arrangements and themes', () => {
+  for (const h of HYMNS) {
+    const songId = HYMN_IDS.song(h.slug);
+    const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(songId);
+    assert.equal(song.title, h.title);
+    assert.equal(song.public_domain, 1);
+    assert.equal(song.org_id, null);
+    const source = db.prepare('SELECT * FROM song_sources WHERE song_id = ?').all(songId);
+    assert.deepEqual(source.map((s) => [s.id, s.source, s.track_id, s.youtube_video_id]), [[HYMN_IDS.source(h.slug), 'ainos', HYMN_IDS.track(h.slug), null]]);
+    const sections = db.prepare('SELECT label, lines, folded, language, org_id FROM song_sections WHERE song_id = ? ORDER BY id').all(songId);
+    assert.deepEqual(sections.map((s) => s.label).sort(), h.sections.map((s) => s.label).sort(), `${h.slug}: all stanzas stored`);
+    for (const s of h.sections) {
+      const row = sections.find((r) => r.label === s.label);
+      assert.equal(row.lines, s.lines.join('\n'));
+      assert.ok(row.folded.length > 0 && row.language === 'en' && row.org_id === null);
+    }
+    const arrangements = Object.fromEntries(db.prepare('SELECT name, section_order FROM song_arrangements WHERE song_id = ?').all(songId).map((a) => [a.name, JSON.parse(a.section_order)]));
+    assert.deepEqual(arrangements['All verses'], hymnOrder(h));
+    assert.deepEqual(arrangements.Recording, hymnOrder(h, h.audioVerses));
+    assert.equal(arrangements.Recording.filter((l) => l.startsWith('V')).length, h.audioVerses, `${h.slug}: the recording has ${h.audioVerses} verses`);
+    assert.deepEqual(db.prepare('SELECT theme FROM song_themes WHERE song_id = ? ORDER BY theme').all(songId).map((r) => r.theme), [...h.themes].sort());
+  }
+  // Searchable by first line where it differs from the title.
+  const aliases = (slug) => db.prepare('SELECT alias FROM song_aliases WHERE song_id = ?').all(HYMN_IDS.song(slug)).map((r) => r.alias);
+  assert.ok(aliases('it-is-well').some((x) => /^When peace,? like a river/i.test(x)), JSON.stringify(aliases('it-is-well')));
+  assert.deepEqual(aliases('rock-of-ages'), [], 'no alias when the first line is the title');
+});
+
+test('a Hymns playlist holds the album; the feature-based editorial playlists stay as they were', () => {
+  const p = db.prepare('SELECT * FROM playlists WHERE id = ?').get(HYMN_IDS.playlist);
+  assert.equal(p.name, 'Hymns');
+  assert.equal(p.owner_id, null);
+  assert.equal(p.is_public, 1);
+  assert.deepEqual(db.prepare('SELECT track_id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position').all(p.id).map((r) => r.track_id), HYMNS.map((h) => HYMN_IDS.track(h.slug)));
+  const others = db.prepare('SELECT pt.track_id FROM playlist_tracks pt JOIN playlists pl ON pl.id = pt.playlist_id WHERE pl.owner_id IS NULL AND pl.id <> ?').all(p.id).map((r) => r.track_id);
+  assert.ok(!others.some((id) => HYMNS.some((h) => HYMN_IDS.track(h.slug) === id)), 'hymns are not in the other editorial playlists');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM streams WHERE track_id IN (SELECT id FROM tracks WHERE genre = ?)').get('Hymn').n, 0, 'nor in the simulated listening');
+});

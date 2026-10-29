@@ -1830,6 +1830,14 @@ const EDITORIAL_I18N = {
     ja: ['朝のデボーション', '神様と共に一日を始めるための優しいアコースティック賛美歌。'],
     es: ['Devocional Matutino', 'Suaves himnos acústicos para comenzar tu día en comunión con Dios.'],
   },
+  Hymns: {
+    en: ['Hymns', 'Public-domain hymns, played as written, with their words to sing along.'],
+    hi: ['भजन', 'सार्वजनिक डोमेन के भजन, जैसे लिखे गए वैसे ही बजाए गए, साथ गाने के लिए शब्दों सहित।'],
+    ne: ['भजन', 'सार्वजनिक डोमेनका भजनहरू, लेखिएझैँ बजाइएका, सँगै गाउन शब्दहरूसहित।'],
+    zh: ['圣诗', '公有领域的经典圣诗，按原谱演奏，附歌词可跟唱。'],
+    ja: ['賛美歌', 'パブリックドメインの賛美歌を原曲どおりに。歌詞つきで一緒に歌えます。'],
+    es: ['Himnos', 'Himnos de dominio público, tocados tal como se escribieron, con la letra para cantar.'],
+  },
 };
 
 const GENRE_I18N = {
@@ -1841,6 +1849,7 @@ const GENRE_I18N = {
   Chiptune: { en: 'Chiptune Praise', hi: 'चिप्यून स्तुति', ne: 'चिप्यून प्रशंसा', zh: '复古电子赞美', ja: 'チップチューン賛美', es: 'Alabanza Chiptune' },
   Dub: { en: 'Psalms & Dub', hi: 'भजन और डब', ne: 'भजन र डब', zh: '诗篇回响', ja: '詩篇ダブ', es: 'Salmos y Dub' },
   'Drum & Bass': { en: 'Rhythmic Praise', hi: 'लयबद्ध स्तुति', ne: 'लयबद्ध प्रशंसा', zh: '高能赞美', ja: 'リズミック賛美', es: 'Alabanza Rítmica' },
+  Hymn: { en: 'Hymns', hi: 'भजन', ne: 'भजन', zh: '圣诗', ja: '賛美歌', es: 'Himnos' },
 };
 
 let currentLang = 'en';

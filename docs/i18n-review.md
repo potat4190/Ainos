@@ -35,6 +35,9 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Energy Boost'] (description)` | High-energy praise celebrating faith and victory. | विश्वास और आनंद से भरे उच्च-ऊर्जा स्तुति गीत। | 1 |
 | [ ] | `EDITORIAL_I18N['Dance Floor'] (description)` | Rhythmic, uplifting songs for youth fellowship and celebration. | युवा संगति और उत्सव के लिए लयबद्ध गीत। | 1 |
 | [ ] | `EDITORIAL_I18N['Feel Good'] (description)` | Bright, major-key melodies filled with hope and thanksgiving. | आशा और धन्यवाद से भरी उज्ज्वल धुनें। | 1 |
+| [ ] | `GENRE_I18N['Hymn']` | Hymns | भजन | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेन के भजन, जैसे लिखे गए वैसे ही बजाए गए, साथ गाने के लिए शब्दों सहित। | 1 |
 
 ## Nepali (ne)
 
@@ -64,6 +67,9 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Energy Boost'] (description)` | High-energy praise celebrating faith and victory. | विश्वास र विजयको उत्सव मनाउने उच्च-ऊर्जा प्रशंसा गीतहरू। | 1 |
 | [ ] | `EDITORIAL_I18N['Dance Floor'] (description)` | Rhythmic, uplifting songs for youth fellowship and celebration. | युवा संगति र उत्सवका लागि लयबद्ध गीतहरू। | 1 |
 | [ ] | `EDITORIAL_I18N['Feel Good'] (description)` | Bright, major-key melodies filled with hope and thanksgiving. | आशा र कृतज्ञताले भरिएका उज्याला धुनहरू। | 1 |
+| [ ] | `GENRE_I18N['Hymn']` | Hymns | भजन | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेनका भजनहरू, लेखिएझैँ बजाइएका, सँगै गाउन शब्दहरूसहित। | 1 |
 
 ## Chinese (zh)
 
@@ -91,6 +97,9 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `mix_daily_desc` | {genre} and more in {lang}, based on what you play. | 精选{lang} {genre} 诗歌与相似推荐。 | 1 |
 | [ ] | `EDITORIAL_I18N['Deep Focus'] (description)` | Low-energy contemplative instrumentals for Scripture reading and prayer. | 柔和安静的器乐，伴你读经、默想与亲近神。 | 1 |
 | [ ] | `EDITORIAL_I18N['Energy Boost'] (description)` | High-energy praise celebrating faith and victory. | 充满活力的赞美诗歌，欢庆信心的得胜。 | 1 |
+| [ ] | `GENRE_I18N['Hymn']` | Hymns | 圣诗 | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 圣诗 | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | 公有领域的经典圣诗，按原谱演奏，附歌词可跟唱。 | 1 |
 
 ## Japanese (ja)
 
@@ -113,6 +122,9 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `pickSomething` | Pick a song to play. Details about the stream, its loudness and audio features show up here. | 曲を選んで再生してください。ストリームやラウドネス、音響特徴がここに表示されます。 | 1 |
 | [ ] | `mix_discover_weekly_desc` | Your weekly mix of fresh worship in {lang}. Refreshes every Monday. | {lang}の新しいワーシップを毎週お届けします。 | 1 |
 | [ ] | `fansAlsoLike` | Fellow believers also like | 信仰の仲間のお気に入り | 1 |
+| [ ] | `GENRE_I18N['Hymn']` | Hymns | 賛美歌 | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 賛美歌 | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | パブリックドメインの賛美歌を原曲どおりに。歌詞つきで一緒に歌えます。 | 1 |
 
 ## Spanish (es)
 
@@ -142,3 +154,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Energy Boost'] (description)` | High-energy praise celebrating faith and victory. | Alabanzas llenas de energía para celebrar la fe con júbilo. | 1 |
 | [ ] | `EDITORIAL_I18N['Dance Floor'] (description)` | Rhythmic, uplifting songs for youth fellowship and celebration. | Ritmos alegres de alabanza para jóvenes y comunión. | 1 |
 | [ ] | `EDITORIAL_I18N['Feel Good'] (description)` | Bright, major-key melodies filled with hope and thanksgiving. | Melodías luminosas llenas de esperanza y acción de gracias. | 1 |
+| [ ] | `GENRE_I18N['Hymn']` | Hymns | Himnos | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | Himnos | 1 |
+| [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | Himnos de dominio público, tocados tal como se escribieron, con la letra para cantar. | 1 |

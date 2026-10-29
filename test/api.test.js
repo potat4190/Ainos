@@ -297,7 +297,8 @@ test('home is personalized and includes made-for-you mixes', async () => {
   const h = (await demo.get('/api/home')).json;
   assert.ok(h.made_for_you.some((m) => m.kind === 'discover-weekly'));
   assert.ok(h.made_for_you.some((m) => m.kind.startsWith('daily-mix')));
-  assert.equal(h.editorial.length, 6);
+  assert.equal(h.editorial.length, 7, 'six feature-based playlists plus Hymns');
+  assert.ok(h.editorial.some((p) => p.name === 'Hymns'));
 });
 
 // ------------------------------------------------------------- security

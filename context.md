@@ -6,7 +6,7 @@ Quick orientation for anyone (human or AI assistant) picking up work on this rep
 
 Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music streaming app modelled on Spotify's architecture. It is a learning/demo project with an evidence report ([docs/HOW-SPOTIFY-WORKS.md](docs/HOW-SPOTIFY-WORKS.md)) that maps each feature to how Spotify does it.
 
-- **Catalog:** 33 original tracks across 8 artists in 6 languages (en, hi, ne, zh, ja, es). All audio is synthesized from code at setup time, so there is no copyrighted audio.
+- **Catalog:** 33 original tracks across 8 artists in 6 languages (en, hi, ne, zh, ja, es), plus 8 public-domain hymns (`scripts/hymns.js`: sourced melodies, every printed stanza as lyrics, a `songs` row each). All audio is synthesized from code at setup time, so there is no copyrighted audio.
 - **One plan:** every user gets "All-Access" (high quality, unlimited skips, offline, Connect). There is no Free/Premium split; the old `plan` column is dropped by a migration.
 - **Language drives everything:** the user's `language` sets the UI translation *and* which songs get recommended.
 - **Demo:** "Try the demo" (`POST /api/auth/demo`) resets the shared `demo` account to a snapshot (`server/demo.js`) and signs in. `demo` / `ainos-demo` still works and does not reset.

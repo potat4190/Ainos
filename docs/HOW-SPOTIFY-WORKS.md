@@ -241,7 +241,7 @@ Spotify Connect lets you start music on your phone and play it on a laptop or sp
 - **Audio:** Ainos ships 16-bit PCM WAV that it synthesizes itself (Node has no built-in lossy encoder, and real songs can't be redistributed). Spotify uses Ogg Vorbis, AAC and FLAC.
 - **No DRM:** Ainos protects files with signed, expiring URLs only. Spotify uses Widevine on the web and an encrypted cache.
 - **No peer-to-peer:** Spotify itself dropped it in 2014.
-- **Recommendation scale:** 33 tracks and 301 users in Ainos versus 100M+ tracks at Spotify. The algorithms are the same family; the infrastructure (Pub/Sub, Dataflow, Voyager indexes) is replaced by SQLite (or Postgres when hosted) and in-process code.
+- **Recommendation scale:** 41 tracks and 301 users in Ainos versus 100M+ tracks at Spotify. The algorithms are the same family; the infrastructure (Pub/Sub, Dataflow, Voyager indexes) is replaced by SQLite (or Postgres when hosted) and in-process code.
 - **Loud mode:** Ainos caps gain at −1 dBFS peak instead of running a limiter, so very quiet, peaky masters may stay slightly below target.
 
 ---
