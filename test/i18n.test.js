@@ -31,3 +31,17 @@ test('API error codes map to translated messages', () => {
   assert.equal(errorText({ status: 429, code: 'rate_limited' }), STRINGS.en.errRateLimited);
   assert.equal(errorText({ status: 400, message: 'server text' }), 'server text', 'unknown codes show the server message');
 });
+
+// Spec 1.3: the faith is in the content, not in adjectives on every heading.
+test('UI copy carries no "Christian" adjectives, in any language', async () => {
+  const adjective = /christian|cristian|ईसाई|ख्रीष्टियन|基督教|クリスチャン|キリスト教/i;
+  for (const lang of LANGUAGE_CODES) {
+    for (const [key, value] of Object.entries(STRINGS[lang])) assert.doesNotMatch(value, adjective, `${lang}.${key}`);
+  }
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /christian/i, 'index.html title, meta and fallbacks');
+  const i18n = fs.readFileSync(new URL('../public/js/i18n.js', import.meta.url), 'utf8');
+  const editorial = i18n.slice(i18n.indexOf('const EDITORIAL_I18N'), i18n.indexOf('const GENRE_I18N'));
+  assert.doesNotMatch(editorial, adjective, 'editorial playlist names and descriptions');
+});
