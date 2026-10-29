@@ -2,6 +2,8 @@
 Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · re-review fix: preview skip only for older branches, prune guard, advisory lock, hymn snapshot update mode, docs · commit b3d93f3
+- 2026-10-29 Phase 1 · re-review (one fresh reviewer, ran the sync against a real Postgres 17): nothing critical/high; lows fixed above or recorded below
 - 2026-10-29 Phase 1 · review fix: docs (sync, separate preview DB, generator-owned songs), Acoustic genre label, Holy Holy Holy note, hymn count · commit 7ac4a2b
 - 2026-10-29 Phase 1 · review fix: sync refreshes hymn measurements, prunes dropped lyrics, appends editorial tracks, guards owned rows, previews warn on older branches; verified on preview Postgres · commit 8c5e86a
 - 2026-10-29 Phase 1 · reviews round 1 (fresh subagents): correctness found no defects in the invariants, 3 medium operational issues; security nothing high/medium, 5 lows; fixed or recorded below
@@ -58,6 +60,7 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 - Waiting on the owner: name picks in `scripts/catalog-names.js` (then P1.8: update names in docs/HOW-SPOTIFY-WORKS.md), and listening to the 8 hymns on the preview before they ship.
 
 ## Open questions and answers
+- NEW (2026-10-29) May PGlite (an in-process Postgres, npm `@electric-sql/pglite`) be added as a dev dependency, so `npm test` can run the catalog sync against real Postgres? Today that is only checked by hand against the preview database. → waiting
 - NEW (2026-10-29) Come, Thou Fount lyrics: the research used Robinson's original 1759 wording (4 stanzas, e.g. "Mount of God's unchanging Love", "Seal it from thy Courts above"); the familiar 3-stanza wording from the 1921 tune source is listed in that hymn's notes. Which should ship? → (2026-10-29) the familiar 3-stanza text, as printed with the tune in The Voice of Thanksgiving No. 3 (1921), No. 258 (transcribed from the page scan); the 1759 original is kept in the hymn's notes
 - NEW (2026-10-29) Amazing Grace ships the 4 stanzas printed in Coronation Hymns (1910): Newton's 1–3 plus the later public-domain "When we've been there ten thousand years"; Newton's stanzas 4–6 are in its notes. Abide with Me ships the 5 stanzas printed in 1905 (Lyte's 1, 2, 6, 7, 8). OK? → (2026-10-29) yes to both: Amazing Grace as printed in 1910; Abide with Me the 5 printed stanzas
 - NEW (2026-10-29) Be Thou My Vision: SLANE in the 1909 folk rhythm (Joyce, the tune's first printing) or the 1919/1927 hymn rhythm? → (2026-10-29) the 1909 folk original, as researched
@@ -109,6 +112,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
   2. Check no real user already has the name `church-demo` (read-only: `SELECT id FROM users WHERE lower(username) = 'church-demo'`); this branch treats that name as a demo account (Q20).
 
 ## Review follow-ups deliberately left for later
+- Catalog sync: aliases are never pruned (a corrected first line leaves the old alias searchable); a track removed by hand from an editorial playlist comes back on the next deploy; a Vercel custom environment reports VERCEL_ENV=preview and would skip (not refuse) an older catalog. Phase 7: uploaded tracks in `tracks` would make `planCatalog` refuse; give uploads their own rule then.
 - Phase 3: `song_sources_youtube` is unique across all songs; before churches add YouTube sources, decide whether one video row is shared or uniqueness is per song (and avoid leaking "someone already has it").
 - Phase 3: search folds keep ’ and ' distinct; harmless today (search terms split on letters only) but normalize if lyric/alias search starts matching across apostrophes. `songs.artist` is "Ainos Hymnal", so searching a hymn writer's name needs the author in an alias or search text.
 - Phase 3/4: the generator owns its hymns' lyrics, themes and arrangements (refreshed and pruned on every deploy); admin edits to them must go to scripts/hymns.js, not the database.
