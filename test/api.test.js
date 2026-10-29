@@ -244,9 +244,13 @@ test('likes and follows', async () => {
 
 // -------------------------------------------------------------- search
 test('search uses prefix matching and ranks titles', async () => {
-  const r = (await demo.get('/api/search?q=neon')).json;
+  // Whatever display name the owner picks for this artist (scripts/catalog-names.js).
+  const { displayName } = await import('../scripts/catalog-names.js');
+  const name = displayName('artist', 'Neon Harbor', 'Neon Harbor');
+  const prefix = name.split(/\s+/)[0].slice(0, 4).toLowerCase();
+  const r = (await demo.get(`/api/search?q=${encodeURIComponent(prefix)}`)).json;
   assert.equal(r.top.kind, 'artist');
-  assert.equal(r.top.item.name, 'Neon Harbor');
+  assert.equal(r.top.item.name, name);
   assert.ok(r.tracks.length >= 4);
   const empty = (await demo.get('/api/search?q=%22%27%29(')).json;
   assert.deepEqual(empty.tracks, []);

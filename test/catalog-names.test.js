@@ -77,9 +77,13 @@ test('no option echoes a real worship act or a well-known worship song title', (
   }
 });
 
-test('until the owner picks, every display name is the old one', () => {
+test('the display name is the owner’s custom name, else the picked option, else the old name', () => {
   for (const [kind, list] of Object.entries(keys)) {
-    for (const key of list) assert.equal(displayName(kind, key, key.split('/').pop()), key.split('/').pop());
+    for (const key of list) {
+      const e = tables[kind][key];
+      const old = key.split('/').pop();
+      assert.equal(displayName(kind, key, old), e.custom || (e.pick ? e[e.pick][0] : old), key);
+    }
   }
   assert.equal(displayName('track', 'nope/nope', 'Fallback'), 'Fallback');
   // A pick or a custom name takes over (checked on a copy, so the draft stays untouched).
@@ -92,5 +96,43 @@ test('until the owner picks, every display name is the old one', () => {
     assert.equal(displayName('track', 'Lumen Drift/First Glow', 'First Glow'), 'Bright Morning Star');
   } finally {
     Object.assign(entry, saved);
+  }
+});
+
+test('a picked name reaches the catalog and search, while ids and audio stay as they were', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const crypto = await import('node:crypto');
+  const { DatabaseSync } = await import('node:sqlite');
+  const { generateCatalog } = await import('../scripts/generate.js');
+  const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/catalog-fingerprint.json', import.meta.url), 'utf8'));
+  const entries = [ARTISTS['Lumen Drift'], ALBUMS['Lumen Drift/Slow Light'], TRACKS['Lumen Drift/First Glow']];
+  const saved = entries.map((e) => ({ ...e }));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-names-'));
+  try {
+    ARTISTS['Lumen Drift'].pick = 'a';
+    ALBUMS['Lumen Drift/Slow Light'].pick = 'b';
+    TRACKS['Lumen Drift/First Glow'].custom = 'Bright Morning Star';
+    await generateCatalog({ dataDir: dir, quick: true, quiet: true, simulatedUsers: 5 });
+    const db = new DatabaseSync(path.join(dir, 'ainos.db'), { readOnly: true });
+    try {
+      const track = db.prepare(`SELECT t.id, t.title, a.name AS artist, al.title AS album FROM tracks t
+        JOIN artists a ON a.id = t.artist_id JOIN albums al ON al.id = t.album_id WHERE t.title = ?`).get('Bright Morning Star');
+      assert.ok(track, 'the custom track name is used');
+      assert.equal(track.artist, 'Lamplight Hours');
+      assert.equal(track.album, 'A Lamp for My Feet');
+      assert.ok(fixture.tracks[track.id], 'same track id as before the rename');
+      const wav = db.prepare("SELECT file FROM track_files WHERE track_id = ? AND quality = 'high'").get(track.id).file;
+      assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, wav))).digest('hex'), fixture.tracks[track.id].wav.high, 'same audio');
+      const search = db.prepare("SELECT title, subtitle FROM search_index WHERE kind = 'track' AND ref_id = ?").get(track.id);
+      assert.deepEqual({ ...search }, { title: 'Bright Morning Star', subtitle: 'Lamplight Hours A Lamp for My Feet' });
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE title = 'First Glow'").get().n, 0, 'the old name is gone');
+    } finally {
+      db.close();
+    }
+  } finally {
+    entries.forEach((e, i) => Object.assign(e, saved[i]));
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

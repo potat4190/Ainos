@@ -16,6 +16,7 @@ import { integratedLoudness, samplePeakDb } from '../server/loudness.js';
 import { mulberry32, seededId, hashSeed, clamp, searchText, fold } from '../server/util.js';
 import { renderTrack, renderMelody, master, downsample2, encodeWav16 } from './synth.js';
 import { HYMNS, HYMN_ARTIST, HYMN_ALBUM } from './hymns.js';
+import { displayName } from './catalog-names.js';
 import { albumCover, artistImage, hexFromHsl } from './art.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -144,24 +145,30 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
 
   const tracks = [];
   let totalBytes = 0;
+  // The names in CATALOG are seed keys: ids, audio, features and art patterns
+  // come from them and never change. What people see comes from the owner's
+  // picks in catalog-names.js, falling back to the CATALOG name.
   for (const artist of CATALOG) {
     const artistId = seededId(rnd);
+    const artistName = displayName('artist', artist.name, artist.name);
     const artistImg = `art/artist-${artistId}.svg`;
-    fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artist.name, hue: artist.hue, seed: hashSeed(artist.name) }));
-    insArtist.run(artistId, artist.name, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
-    addSearchDoc('artist', artistId, artist.name, artist.genre);
+    fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artistName, hue: artist.hue, seed: hashSeed(artist.name) }));
+    insArtist.run(artistId, artistName, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
+    addSearchDoc('artist', artistId, artistName, artist.genre);
 
     for (const [ai, album] of artist.albums.entries()) {
       const albumId = seededId(rnd);
       const hue = artist.hue + ai * 35;
+      const albumTitle = displayName('album', `${artist.name}/${album.title}`, album.title);
       const cover = `art/album-${albumId}.svg`;
-      fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: album.title, artist: artist.name, style: artist.style, hue, seed: hashSeed(album.title) }));
+      fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: albumTitle, artist: artistName, style: artist.style, hue, seed: hashSeed(album.title) }));
       const releasedAt = album.year === 2026 ? now - Math.floor(rnd() * 20) * 86400000 : Date.UTC(album.year, Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 27));
-      insAlbum.run(albumId, artistId, album.title, album.year, album.type || 'album', cover, hexFromHsl(hue, 55, 32), releasedAt);
-      addSearchDoc('album', albumId, album.title, `${artist.name} ${album.year}`);
+      insAlbum.run(albumId, artistId, albumTitle, album.year, album.type || 'album', cover, hexFromHsl(hue, 55, 32), releasedAt);
+      addSearchDoc('album', albumId, albumTitle, `${artistName} ${album.year}`);
 
       for (const [ti, title] of album.tracks.entries()) {
         const trackId = seededId(rnd);
+        const trackTitle = displayName('track', `${artist.name}/${title}`, title);
         const params = trackParams(artist, title, { quick });
         const { bpm, mode, key, jitter } = params;
         const tStart = Date.now();
@@ -183,13 +190,13 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
           danceability: clamp(f.dance + jitter[2], 0, 1),
           acousticness: clamp(f.acoustic + jitter[3] * 0.5, 0, 1),
         };
-        insTrack.run(trackId, albumId, artistId, title, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
+        insTrack.run(trackId, albumId, artistId, trackTitle, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
           features.energy, features.valence, features.danceability, features.acousticness, 0.95);
         insFile.run(trackId, 'high', hiFile, 'audio/wav', hi.length, SR, Math.round((SR * 16) / 1000), 44);
         insFile.run(trackId, 'low', loFile, 'audio/wav', lo.length, SR / 2, Math.round(((SR / 2) * 16) / 1000), 44);
-        addSearchDoc('track', trackId, title, `${artist.name} ${album.title}`);
-        tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
-        say(`  ♪ ${artist.name} – ${title}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
+        addSearchDoc('track', trackId, trackTitle, `${artistName} ${albumTitle}`);
+        tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title: trackTitle, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
+        say(`  ♪ ${artistName} – ${trackTitle}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
       }
     }
   }
