@@ -2,6 +2,7 @@
 Last updated: 2026-10-29 · Current phase: 1 done (PR #3 awaiting owner review) · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · fresh correctness + security reviews of 416ff23..48a0dc5 (PGlite, Node pin, CI, names): nothing significant. Fixed: Vercel install is now `npm ci --omit=dev` (no dev dependencies in builds that hold DB credentials); PGlite tests run the sync as ainos_app with production-like grants; duplicate-name check covers custom names · commit 1ca7c7f. Preview 48a0dc5 smoke passed (73 checks) and the preview database took the new names (new names found by search, old ones gone)
 - 2026-10-29 Phase 1 · P1.8: `docs/HOW-SPOTIFY-WORKS.md` names no catalog artist, album or track (checked every old name across the repo), so it needs no change. Remaining mentions are deliberate: the legacy language map in `server/db.js` (upgrades pre-language databases by their old artist names), the CATALOG keys in `scripts/generate.js`/`catalog-names.js`, and the spec's description of the old catalog
 - 2026-10-29 Phase 1 · P1.7 names applied (owner: option a everywhere, swap flagged ones). Each chosen title was web-searched against existing songs; 10 flagged, 4 took option b, 6 got new names (both options flagged). Tests: every entry picked, no flagged title chosen; PGlite: a database under the old names takes the new ones on deploy (search too), ids unchanged. 30 non-English names added to `docs/i18n-review.md` · commit cadaed3
 - 2026-10-29 Phase 1 · pushed 4189dea: CI check `test` passed on PR #3 (130 tests, 0 skipped, audit 0 vulnerabilities); preview smoke passed (73 checks); result posted on the PR
@@ -128,6 +129,9 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
   2. Check no real user already has the name `church-demo` (read-only: `SELECT id FROM users WHERE lower(username) = 'church-demo'`); this branch treats that name as a demo account (Q20).
 
 ## Review follow-ups deliberately left for later
+- (2026-10-29 review) Album and artist art has names drawn in, at id-based URLs cached for a day (`/art/` max-age=86400): browsers may show old covers for up to 24 h after the rename deploys. Accepted; a content hash in the art URL would fix it but changes the stored cover paths.
+- (2026-10-29 review) PGlite tests apply schema.pg.sql only to fresh databases, so the DO-block migrations of existing tables never run against old-shaped data. Production already went through them in Phase 0; add such a test when the next migration of an existing table is written.
+- (2026-10-29 review) CI audits production dependencies only (owner's command); PGlite is not audited. Builds no longer install it.
 - Catalog sync: aliases are never pruned (a corrected first line leaves the old alias searchable); a track removed by hand from an editorial playlist comes back on the next deploy; a Vercel custom environment reports VERCEL_ENV=preview and would skip (not refuse) an older catalog. Phase 7: uploaded tracks in `tracks` would make `planCatalog` refuse; give uploads their own rule then.
 - Phase 3: `song_sources_youtube` is unique across all songs; before churches add YouTube sources, decide whether one video row is shared or uniqueness is per song (and avoid leaking "someone already has it").
 - Phase 3: search folds keep ’ and ' distinct; harmless today (search terms split on letters only) but normalize if lyric/alias search starts matching across apostrophes. `songs.artist` is "Ainos Hymnal", so searching a hymn writer's name needs the author in an alias or search text.
