@@ -188,6 +188,82 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS audit_log_org ON audit_log(org_id, created_at);
+
+-- Songs: what is sung (title, lyrics), separate from the recordings that play
+-- it (song_sources). org_id NULL = global catalog; otherwise private to that
+-- church (orgs arrive in Phase 5, so org_id has no foreign key; checked in code).
+CREATE TABLE IF NOT EXISTS songs (
+  id            TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  artist        TEXT NOT NULL,
+  language      TEXT NOT NULL,
+  ccli_number   TEXT,
+  public_domain INTEGER NOT NULL DEFAULT 0,
+  org_id        TEXT,
+  created_by    INTEGER,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS songs_org ON songs(org_id);
+CREATE INDEX IF NOT EXISTS songs_language ON songs(language);
+
+-- Other titles, transliterations and translations a song is searched by.
+CREATE TABLE IF NOT EXISTS song_aliases (
+  song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  alias   TEXT NOT NULL,
+  folded  TEXT NOT NULL,
+  PRIMARY KEY (song_id, folded)
+);
+
+-- Theme and season tags, from the closed list in songs.js.
+CREATE TABLE IF NOT EXISTS song_themes (
+  song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  theme   TEXT NOT NULL,
+  PRIMARY KEY (song_id, theme)
+);
+CREATE INDEX IF NOT EXISTS song_themes_theme ON song_themes(theme);
+
+-- How to play a song: a native track or a YouTube video, exactly one of them.
+CREATE TABLE IF NOT EXISTS song_sources (
+  id               TEXT PRIMARY KEY,
+  song_id          TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  source           TEXT NOT NULL CHECK (source IN ('ainos', 'youtube')),
+  track_id         TEXT REFERENCES tracks(id),
+  youtube_video_id TEXT,
+  kind             TEXT,
+  available        INTEGER NOT NULL DEFAULT 1,
+  last_checked_at  INTEGER,
+  CHECK ((source = 'ainos' AND track_id IS NOT NULL AND youtube_video_id IS NULL) OR (source = 'youtube' AND youtube_video_id IS NOT NULL AND track_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS song_sources_song ON song_sources(song_id);
+CREATE INDEX IF NOT EXISTS song_sources_track ON song_sources(track_id);
+CREATE UNIQUE INDEX IF NOT EXISTS song_sources_youtube ON song_sources(youtube_video_id);
+
+-- Lyrics, once per section per language; lines are newline-separated.
+-- folded = searchText(lines) for lyric search. Church-pasted lyrics carry
+-- their org_id. UNIQUE treats NULLs as distinct, so global rows get their own
+-- partial unique index.
+CREATE TABLE IF NOT EXISTS song_sections (
+  id       TEXT PRIMARY KEY,
+  song_id  TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  language TEXT NOT NULL,
+  label    TEXT NOT NULL,
+  lines    TEXT NOT NULL,
+  folded   TEXT NOT NULL DEFAULT '',
+  org_id   TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS song_sections_org ON song_sections(song_id, language, label, org_id);
+CREATE UNIQUE INDEX IF NOT EXISTS song_sections_global ON song_sections(song_id, language, label) WHERE org_id IS NULL;
+
+-- The order sections are sung in, e.g. ["V1","C","V2","C"] (JSON).
+CREATE TABLE IF NOT EXISTS song_arrangements (
+  id            TEXT PRIMARY KEY,
+  song_id       TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  org_id        TEXT,
+  name          TEXT NOT NULL,
+  section_order TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS song_arrangements_song ON song_arrangements(song_id);
 `;
 
 // Language tags for the artists of the original (pre-language) seed catalog,
