@@ -1,0 +1,266 @@
+{
+  "artists": [
+    "5ZHIXpQ952T6oCzjluu68p",
+    "CfOHdGHAfTQcEED3VHxuVF",
+    "DXGcohmKmEzZLzFrijMiWw",
+    "GErVRYMF4uoydJ9LT0Dkkf",
+    "OzP3PONpdAEAw0A4GEwlVJ",
+    "mEJdiyoulbR37UWed1riXd",
+    "mIDrSfxKdrGKGDXzDQ0FhL",
+    "qdzx63JRBQBYgYtQS0qIhv"
+  ],
+  "albums": [
+    "5pah6qQJcUU0j9xZ68RBGF",
+    "7vkRLxWxytl6Ceg9GSTqcZ",
+    "BaEnFVn86nVOP7uOjgLsDO",
+    "IBIdFGHe2OXMPABVvXPY3N",
+    "J1DpxrxxEgqy0QLILYW967",
+    "J8SPXaQJ00iK8yMaWPrUhb",
+    "MlSCloAOG4slqP1PL419yt",
+    "Zlht8IwEpKzVXsvNz3ifwG",
+    "f8o08cztwc8bYvAUJEp3b5",
+    "n709JZISQnwHcmoBO3VRsn",
+    "vDuf9mDx0VtpUxu77510fm"
+  ],
+  "editorial_playlists": [
+    "97FoWlo5jnUF6Atuz271AS",
+    "BjmdetxIh5oqrkRP2bYHh1",
+    "Guh8pWClPtVGWRnkm7h3iC",
+    "N44WP38RzvoIXex6SmFEDc",
+    "WpUplFUAU5XT2eAM6ytQDk",
+    "pqvB0bCpONaT3C40kaiSdv"
+  ],
+  "tracks": {
+    "2LkJzFwqMfWJ4OvJKejUlV": {
+      "tempo": 135,
+      "key": 4,
+      "mode": 1,
+      "duration_ms": 17222,
+      "loudness": -17.3
+    },
+    "4O8z2sP1J91vrSUuMf1COw": {
+      "tempo": 76,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 28263,
+      "loudness": -13.9
+    },
+    "62wvizo3LNW0FLqGa2inLH": {
+      "tempo": 171,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 14228,
+      "loudness": -11.7
+    },
+    "6kwFXn8O5PaKLgAvk39Gmu": {
+      "tempo": 142,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 16521,
+      "loudness": -14.8
+    },
+    "7B7hz2M75DKtfCbhyJ6XDC": {
+      "tempo": 79,
+      "key": 8,
+      "mode": 0,
+      "duration_ms": 27304,
+      "loudness": -9.7
+    },
+    "7PBGyAWFBLpEbZGKoYUHj1": {
+      "tempo": 101,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 22010,
+      "loudness": -11.1
+    },
+    "ERcjvfXJ5zlTFMgzBdTQqk": {
+      "tempo": 171,
+      "key": 1,
+      "mode": 0,
+      "duration_ms": 14228,
+      "loudness": -10.6
+    },
+    "EovjALrVB8D22anNejqxKL": {
+      "tempo": 77,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 27935,
+      "loudness": -13.4
+    },
+    "G4E1mLi1AByfTkEw8mZMKX": {
+      "tempo": 64,
+      "key": 11,
+      "mode": 1,
+      "duration_ms": 33000,
+      "loudness": -15.2
+    },
+    "HqXqAdsgdYuJHQxw5jF5ye": {
+      "tempo": 101,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 22010,
+      "loudness": -17.4
+    },
+    "JwZlcbSfTzXc2L2Xg23vPh": {
+      "tempo": 149,
+      "key": 11,
+      "mode": 0,
+      "duration_ms": 15886,
+      "loudness": -16.9
+    },
+    "KWCINfAcu9P27VC8WD9vLl": {
+      "tempo": 98,
+      "key": 11,
+      "mode": 0,
+      "duration_ms": 22592,
+      "loudness": -13.7
+    },
+    "PF4JyUcDWFEeg1h1x05NF2": {
+      "tempo": 124,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 18484,
+      "loudness": -10.6
+    },
+    "PGn2O1MbYs6xy9iyUbZ0e2": {
+      "tempo": 121,
+      "key": 10,
+      "mode": 0,
+      "duration_ms": 18868,
+      "loudness": -10.9
+    },
+    "QTVMh4WT9IWWZHgw6biHJd": {
+      "tempo": 79,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 27304,
+      "loudness": -15.7
+    },
+    "QaO84FmHX514skM31sg5j7": {
+      "tempo": 92,
+      "key": 10,
+      "mode": 1,
+      "duration_ms": 23870,
+      "loudness": -11.8
+    },
+    "RVUzvtcbuWw2TzFnRSJDN0": {
+      "tempo": 76,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 28263,
+      "loudness": -14.3
+    },
+    "U3Ch411VML7vM5lecBYuAp": {
+      "tempo": 71,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 30042,
+      "loudness": -17.2
+    },
+    "UM56U2iNM7pKP9bjRFTBvP": {
+      "tempo": 144,
+      "key": 1,
+      "mode": 1,
+      "duration_ms": 16333,
+      "loudness": -9.6
+    },
+    "VtX4m9I32P8FdQxRNTEGC7": {
+      "tempo": 121,
+      "key": 8,
+      "mode": 1,
+      "duration_ms": 18868,
+      "loudness": -9.7
+    },
+    "bW7UDX7WghDFBpis4h9fzq": {
+      "tempo": 64,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 33000,
+      "loudness": -10.3
+    },
+    "eTtyWEBdXd5MUoZvYl5kFa": {
+      "tempo": 72,
+      "key": 8,
+      "mode": 0,
+      "duration_ms": 29667,
+      "loudness": -11.2
+    },
+    "ffAzRefUQEEOvMDhVgbhyH": {
+      "tempo": 121,
+      "key": 7,
+      "mode": 1,
+      "duration_ms": 18868,
+      "loudness": -17.8
+    },
+    "iZqPhDnnqNKnKZuQ0Bl7m9": {
+      "tempo": 85,
+      "key": 2,
+      "mode": 1,
+      "duration_ms": 25588,
+      "loudness": -9.7
+    },
+    "kY1ukACrDXzQCQ5Y8KrH9F": {
+      "tempo": 99,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 22394,
+      "loudness": -16.3
+    },
+    "peAmBhV1uS3qGursltvJRb": {
+      "tempo": 60,
+      "key": 3,
+      "mode": 0,
+      "duration_ms": 35000,
+      "loudness": -10.5
+    },
+    "rjZcbiR3RRQ30aWiw4JA0j": {
+      "tempo": 95,
+      "key": 2,
+      "mode": 1,
+      "duration_ms": 23211,
+      "loudness": -14
+    },
+    "s62Z6t8lHaWZFSmBYNHvXX": {
+      "tempo": 82,
+      "key": 8,
+      "mode": 1,
+      "duration_ms": 26415,
+      "loudness": -17
+    },
+    "ufK5sr46ZuVuapYnlyQ7gz": {
+      "tempo": 175,
+      "key": 3,
+      "mode": 0,
+      "duration_ms": 13971,
+      "loudness": -12.2
+    },
+    "v7IZ2a1UOqzwuFZluuWjcj": {
+      "tempo": 123,
+      "key": 5,
+      "mode": 1,
+      "duration_ms": 18610,
+      "loudness": -10.9
+    },
+    "vi7q2gus2edvkRguS6pYMT": {
+      "tempo": 88,
+      "key": 4,
+      "mode": 1,
+      "duration_ms": 24818,
+      "loudness": -12
+    },
+    "ywyXcARJ9QRWh7n2uldjW8": {
+      "tempo": 76,
+      "key": 6,
+      "mode": 1,
+      "duration_ms": 28263,
+      "loudness": -18.1
+    },
+    "yyBpCAbE2zJThuXkHR0eCm": {
+      "tempo": 99,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 22394,
+      "loudness": -12.5
+    }
+  }
+}
