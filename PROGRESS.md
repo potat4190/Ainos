@@ -2,11 +2,23 @@
 Last updated: 2026-10-29 · Current phase: 0 · Branch: phase-0-baseline
 
 ## Done (newest first)
-- 2026-10-29 Phase 0 · gitignore `.claude/` (owner Q1) · commit (this one)
+- 2026-10-29 Phase 0 · P0.13 env vars + helpers documented in context.md / README · commit 6f9a00b
+- 2026-10-29 Phase 0 · P0.12 smoke test checks security headers; smoke script tested locally · commit 0fffcf6
+- 2026-10-29 Phase 0 · P0.11 media secret rotation (`AINOS_SECRET_PREVIOUS`, server + middleware), README plan · commit 91bba0e
+- 2026-10-29 Phase 0 · P0.10 `audit_log` table + `audit()` · commit a371332
+- 2026-10-29 Phase 0 · P0.9 deploy schema parser skips constraint lines; schema sync test · commit 18ac464
+- 2026-10-29 Phase 0 · P0.8 `noDemo` guard for `demo` + `church-demo`; demo names reserved at signup; i18n parity test · commit 33de595
+- 2026-10-29 Phase 0 · P0.7 `rateLimit()` with Retry-After; purge after 25 h · commit 686bf66
+- 2026-10-29 Phase 0 · P0.6 `server/validate.js` · commit 8df3b6d
+- 2026-10-29 Phase 0 · P0.5 CSRF check compares full origin; Secure logout cookie · commit 34a3a98
+- 2026-10-29 Phase 0 · P0.4 Referrer-Policy strict-origin-when-cross-origin · commit ec1df2f
+- 2026-10-29 Phase 0 · P0.3 fix: crossfade.js in the service-worker shell · commit 7452ac9
+- 2026-10-29 Phase 0 · P0.2 catalog id + audio-input snapshot test · commit 4f83374
+- 2026-10-29 Phase 0 · gitignore `.claude/` (owner Q1) · commit 96b9e0f
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- P0.2: catalog snapshot test (`test/catalog-ids.test.js`, `test/fixtures/track-ids.json`).
+- Phase 0 end: correctness review + security review (fresh subagents), fix findings, then preview deploy + smoke (blocked on Q3–Q5).
 
 ## Open questions and answers
 Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary here).
@@ -42,7 +54,9 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Phase 0 preview deploy + smoke run — waiting on Q3, Q4, Q5
 
 ## Notes for the next session
-- Baseline before any spec work: `npm test` = 57 tests, all pass (Node 24.22).
+- Baseline before any spec work: `npm test` = 57 tests, all pass (Node 24.22). After Phase 0 tasks: 86.
+- `church-demo` is the assumed church demo username (Q20 pending); it is a constant in `server/demo.js` and reserved at signup.
+- P0.14 (CI) not done; the plan's other Phase 0 tasks are committed.
 - `PLAN.md` lists every task (P0.1 … P6.6), the spec-vs-code conflicts and how each is resolved.
 - The deploy schema check (`schemaColumns()` in `scripts/seed-postgres.js`) reads the first word of every line inside `CREATE TABLE IF NOT EXISTS x (...)` as a column name. Never put table-level `UNIQUE`/`CHECK` lines in a table body until P0.9 lands.
 - New Postgres tables need a `GRANT` to `ainos_app` and an entry in the RLS array in `schema.pg.sql`, or the deploy check fails.
