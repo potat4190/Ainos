@@ -1,7 +1,9 @@
 # Progress
-Last updated: 2026-10-29 · Current phase: 0 · Branch: phase-0-baseline
+Last updated: 2026-10-29 · Current phase: 0 done (PR #2 awaiting owner review) · Branch: phase-0-baseline
 
 ## Done (newest first)
+- 2026-10-29 Phase 0 · DONE: pushed `phase-0-baseline`, PR #2 to `main`; preview build (commit 5ceb4b2) migrated the preview database (build log: schema applied, schema up to date, already seeded with 33 tracks); `scripts/smoke.js` against the preview: all checks passed, security headers included (HSTS comes from Vercel, which settles Q6)
+- 2026-10-29 Preview database "ainos-preview" set up and Vercel Preview variables replaced (details under "Blocked / skipped") · commit 5ceb4b2
 - 2026-10-29 Phase 0 · final-review fix: forwarded addresses with ports; strict audit user ids; whole-second limiter windows · commit 49b86bf
 - 2026-10-29 Phase 0 · final-review fix: `str()` keeps Hebrew CGJ, emoji flag tags, Mongolian/braille separators; non-empty text must show something · commit 1e14afb
 - 2026-10-29 Phase 0 · review round 3 (one fresh reviewer, correctness + security, on the round-2 fixes): nothing medium or higher; lows fixed above
@@ -37,7 +39,8 @@ Last updated: 2026-10-29 · Current phase: 0 · Branch: phase-0-baseline
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Phase 0: reviews done and findings fixed (89 tests pass). Remaining: push `phase-0-baseline`, run `node scripts/smoke.js <preview url>` against the Vercel preview (blocked on Q3–Q5), then the owner reviews and merges (see "Before merging Phase 0" below). Then Phase 1 on `phase-1-catalog`, starting with P1.1 (song tables); P1.3/P1.7 need Q9/Q10 answers.
+- Owner: review and merge PR #2 after the "Before merging Phase 0" steps; pick names in `scripts/catalog-names.js`.
+- Phase 1 on `phase-1-catalog` (rebased on phase-0-baseline), when the owner says go: P1.1 song tables → P1.2 melody renderer → P1.3 `scripts/hymns.js` (melodies checked against old hymnal scans) → P1.4 → P1.5 → P1.6 → P1.7 wiring (after names are picked) → P1.8 → P1.9.
 
 ## Open questions and answers
 Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary here).
@@ -46,7 +49,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Q3 Push `phase-N-*` branches to GitHub for Vercel previews + PR per phase (never `main`)? → (2026-10-29) Yes: push each phase branch and open a PR to `main`. Never push or merge to `main`; the owner merges every PR after review. Branch protection is on for `main`.
 - Q4 Is `DATABASE_MIGRATION_URL` set for Preview builds? Separate Preview database possible? → (2026-10-29) Owner created a separate Supabase project, "ainos-preview", for previews; Claude finishes its setup (Vercel Preview variables via stdin, schema + seed, verify RLS). Follow-up answers (2026-10-29): create `ainos_app` in ainos-preview with a generated password piped straight into Vercel; `DATABASE_URL` = transaction pooler as `ainos_app`, `DATABASE_MIGRATION_URL` = session pooler as `postgres`; replace Preview `DATABASE_URL` and `AINOS_SECRET`; leave the shared `DATABASE_CA_CERT` (confirm the connection with the local `prod-ca-2021.crt`); add Preview `DATABASE_MIGRATION_URL`. No SQL for production's `ainos_app` exists (none in the repo or its history either): use the proposed grants and report them; never connect to production to inspect it. Status under "Blocked / skipped".
 - Q5 Preview protection: may I read `VERCEL_AUTOMATION_BYPASS_SECRET` from `.env.vercel.local`? → (2026-10-29) Previews are protected. Never read any `.env*` file; read `VERCEL_AUTOMATION_BYPASS_SECRET` from the environment (ask if missing). Run smoke tests only against previews, never production without asking.
-- Q6 HSTS: rely on Vercel's platform header (smoke checks it) or add our own? → waiting
+- Q6 HSTS: rely on Vercel's platform header (smoke checks it) or add our own? → settled by the preview smoke test: Vercel sends HSTS on previews; no header change needed
 - Q7 GitHub Actions CI (`npm test` + `npm audit`)? → waiting
 - Q8 Global admin: `is_admin` column or env allowlist of user ids? → waiting (needed by Phase 2)
 - Q9 New catalog names: I draft `scripts/catalog-names.js` or owner supplies? → (2026-10-29) Claude drafts it for approval. Brief: titles from Scripture and worship themes (psalms, Gospels, grace, light, the cross); artist names clearly fictional and never close to real worship bands; 2 options per item so the owner picks. Do not deploy until approved.
@@ -71,7 +74,6 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 ## Blocked / skipped
 - SECURITY (2026-10-29): a repo-wide grep by Claude Code did not exclude `.env*` files and printed the production `DATABASE_URL` line (with the `ainos_app` password) from `.env.vercel.local` into the session transcript. Not written to any file, commit or service. Owner action: rotate production `ainos_app`'s password, update Vercel Production `DATABASE_URL`, redeploy. Separately, a password-like string was quoted in chat earlier; the owner reset the preview database password.
 - P0.14 CI workflow — waiting on Q7
-- Phase 0 preview deploy + smoke run — waiting on the preview database setup (below). Do not push a phase branch until Preview's `DATABASE_URL` points at "ainos-preview", or the preview build would connect to production.
 - Preview database "ainos-preview": set up 2026-10-29 (done):
   - Supabase project "ainos-preview". Schema applied from `server/schema.pg.sql` as `postgres`; seeded as `ainos_app` from a freshly generated full catalog (`{"seeded":true}`: 8 artists, 11 albums, 33 tracks, 66 track files, 301 users, 7 playlists, 76 playlist tracks, 663 likes, 2 follows, 15,369 streams, 58 search rows; 16 tables).
   - Verified: all 16 public tables have row-level security on and 0 policies; TLS 1.3 to the pooler with the certificate verified against `prod-ca-2021.crt` (an unrelated CA is refused).
