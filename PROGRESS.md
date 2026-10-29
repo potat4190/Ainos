@@ -124,4 +124,4 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - The deploy schema check (`schemaColumns()` in `scripts/seed-postgres.js`) reads the first word of every line inside `CREATE TABLE IF NOT EXISTS x (...)` as a column name. Never put table-level `UNIQUE`/`CHECK` lines in a table body until P0.9 lands.
 - New Postgres tables need a `GRANT` to `ainos_app` and an entry in the RLS array in `schema.pg.sql`, or the deploy check fails.
 - `users.id` is an integer; `seededId()` takes a PRNG (`seededId(mulberry32(hashSeed('…')))`).
-- Preview and Production share one Supabase database; the smoke test resets the live demo account.
+- Preview and Production have separate Supabase databases since 2026-10-29 ("ainos-preview" for previews); a smoke test resets the demo account of the database it runs against.

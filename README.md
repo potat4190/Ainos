@@ -42,7 +42,7 @@ Locally everything lives in SQLite under `data/`. In production the same code ru
 - **Database:** `server/store.js` gives the app one async query interface. Without `DATABASE_URL` it uses SQLite; with it, Postgres. The Postgres schema is in `server/schema.pg.sql` (row-level security is on with no policies, so Supabase's public Data API can read nothing; the app connects as its own role). The connection uses TLS and checks the server's certificate.
 - **API:** `api/index.js` is a Vercel Function that serves every `/api/*` route.
 - **Audio and art:** the catalog generator is deterministic, so `scripts/vercel-build.js` regenerates the same WAV and SVG files on every build and Vercel serves them as static files. `middleware.js` checks the HMAC signature on every `/media/` request, as the local server does.
-- **Schema and migrations:** `server/schema.pg.sql` creates missing tables and migrates existing ones, so every statement in it must be safe to re-run. The app's database role (`ainos_app`) can only read and write rows, so the file is applied by the tables' owner: paste it into the Supabase SQL editor, or set `DATABASE_MIGRATION_URL` and the build applies it. **Every deploy** then checks, as the app's role, that every table and column in the file exists, and stops with a list of what is missing if not. On the first deploy it seeds the empty database from the generated catalog (`scripts/seed-postgres.js`). Later builds sync the catalog instead: every track already in the database must still be generated (its audio file is named by its id, so the build stops otherwise); new catalog rows, such as appended hymns, are added, and display fields (names, descriptions, lyrics) refreshed. Measured loudness and audio features, existing playlist contents and user data are never changed.
+- **Schema and migrations:** `server/schema.pg.sql` creates missing tables and migrates existing ones, so every statement in it must be safe to re-run. The app's database role (`ainos_app`) can only read and write rows, so the file is applied by the tables' owner: paste it into the Supabase SQL editor, or set `DATABASE_MIGRATION_URL` and the build applies it. **Every deploy** then checks, as the app's role, that every table and column in the file exists, and stops with a list of what is missing if not. On the first deploy it seeds the empty database from the generated catalog (`scripts/seed-postgres.js`). Later builds sync the catalog instead: every track already in the database must still be generated (its audio file is named by its id, so the build stops otherwise); new catalog rows, such as appended hymns, are added, and display fields (names, descriptions, lyrics) refreshed. Measured loudness and audio features stay as first seeded (hymns excepted: their audio is rendered from `scripts/hymns.js`, so their measurements follow it), lyrics the generator no longer writes are removed, and user data, church rows and user playlists are never changed. Removing an existing track is a manual data migration. A preview build of a branch older than the preview database's catalog skips the sync with a warning; a production build refuses.
 
 Environment variables on Vercel:
 
@@ -103,10 +103,11 @@ server/
   loudness.js    ITU-R BS.1770-4 integrated loudness + normalization gain
 scripts/
   generate.js    builds the Christian worship catalog across 6 languages, synthesizes audio, measures loudness, seeds users
-  synth.js       procedural music synthesizer (8 styles) + WAV encoder
+  synth.js       procedural music synthesizer (8 styles), hymn melody renderer, WAV encoder
+  hymns.js       public-domain hymns: sourced melodies (note data) and lyrics
   art.js         generated SVG cover art
-  seed-postgres.js  applies the Postgres schema, then copies a generated catalog into an empty database
-  vercel-build.js   Vercel build: generate catalog, seed/verify Postgres, assemble dist/
+  seed-postgres.js  applies the Postgres schema, then seeds an empty database or syncs the generated catalog into it
+  vercel-build.js   Vercel build: generate catalog, seed/sync Postgres, assemble dist/
   smoke.js       end-to-end check against a running deployment
 api/index.js     Vercel Function for /api/*
 middleware.js    Vercel middleware: signature check for /media/

@@ -288,7 +288,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   say(`\n✓ ${tracks.length} tracks + ${hymnCount.tracks} hymns, ${editorial.length + 1} editorial playlists, ${simulatedUsers} simulated listeners, ${streamCount} streams`);
   say(`✓ ${(totalBytes / 1e6).toFixed(1)} MB of audio in ${path.join(dataDir, 'media')}  (${(ms / 1000).toFixed(1)} s)`);
   say('✓ Demo login: demo / ainos-demo');
-  return { tracks: tracks.length };
+  return { tracks: tracks.length + hymnCount.tracks };
 }
 
 // Hymns are mastered gently, a little below the -14 LUFS the player normalizes to.

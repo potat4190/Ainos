@@ -38,6 +38,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `GENRE_I18N['Hymn']` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेन के भजन, जैसे लिखे गए वैसे ही बजाए गए, साथ गाने के लिए शब्दों सहित। | 1 |
+| [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | अकूस्टिक आराधना | 1 |
 
 ## Nepali (ne)
 
@@ -70,6 +71,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `GENRE_I18N['Hymn']` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेनका भजनहरू, लेखिएझैँ बजाइएका, सँगै गाउन शब्दहरूसहित। | 1 |
+| [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | अकुस्टिक आराधना | 1 |
 
 ## Chinese (zh)
 
@@ -100,6 +102,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `GENRE_I18N['Hymn']` | Hymns | 圣诗 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 圣诗 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | 公有领域的经典圣诗，按原谱演奏，附歌词可跟唱。 | 1 |
+| [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | 原声敬拜 | 1 |
 
 ## Japanese (ja)
 
@@ -125,6 +128,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `GENRE_I18N['Hymn']` | Hymns | 賛美歌 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 賛美歌 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | パブリックドメインの賛美歌を原曲どおりに。歌詞つきで一緒に歌えます。 | 1 |
+| [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | アコースティック・ワーシップ | 1 |
 
 ## Spanish (es)
 
@@ -157,3 +161,4 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `GENRE_I18N['Hymn']` | Hymns | Himnos | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | Himnos | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | Himnos de dominio público, tocados tal como se escribieron, con la letra para cantar. | 1 |
+| [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | Adoración Acústica | 1 |

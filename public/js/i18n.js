@@ -1845,7 +1845,7 @@ const GENRE_I18N = {
   Synthwave: { en: 'Synth Praise', hi: 'सिंथ स्तुति', ne: 'सिन्थ प्रशंसा', zh: '合成器赞美', ja: 'シンセ賛美', es: 'Alabanza Synth' },
   'Lo-fi': { en: 'Devotional Lo-fi', hi: 'भक्ति लो-फाई', ne: 'भक्ति लो-फाई', zh: '灵修 Lo-fi', ja: 'デボーション Lo-fi', es: 'Lo-fi Devocional' },
   House: { en: 'Praise House', hi: 'स्तुति हाउस', ne: 'प्रशंसा हाउस', zh: '律动赞美', ja: 'プレイズ・ハウス', es: 'Alabanza House' },
-  Acoustic: { en: 'Acoustic Hymns', hi: 'अकूस्टिक भजन', ne: 'अकुस्टिक भजन', zh: '原声圣诗', ja: 'アコースティック賛美歌', es: 'Himnos Acústicos' },
+  Acoustic: { en: 'Acoustic Worship', hi: 'अकूस्टिक आराधना', ne: 'अकुस्टिक आराधना', zh: '原声敬拜', ja: 'アコースティック・ワーシップ', es: 'Adoración Acústica' },
   Chiptune: { en: 'Chiptune Praise', hi: 'चिप्यून स्तुति', ne: 'चिप्यून प्रशंसा', zh: '复古电子赞美', ja: 'チップチューン賛美', es: 'Alabanza Chiptune' },
   Dub: { en: 'Psalms & Dub', hi: 'भजन और डब', ne: 'भजन र डब', zh: '诗篇回响', ja: '詩篇ダブ', es: 'Salmos y Dub' },
   'Drum & Bass': { en: 'Rhythmic Praise', hi: 'लयबद्ध स्तुति', ne: 'लयबद्ध प्रशंसा', zh: '高能赞美', ja: 'リズミック賛美', es: 'Alabanza Rítmica' },
