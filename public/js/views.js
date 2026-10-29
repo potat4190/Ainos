@@ -2,6 +2,7 @@ import { api, rememberTracks } from './api.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog, safely } from './ui.js';
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
+import { CROSSFADE_CHOICES } from './crossfade.js';
 import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -517,6 +518,7 @@ export async function internals(el, _p, app) {
           ['Quality', d.active.quality ? `${d.active.quality} · ${d.active.kbps} kbps · ${fmtBytes(d.active.bytes)}` : '—'],
           ['Buffered', d.active.trackId ? `${bufferedPct}%` : '—'], ['Served from', status || (d.active.trackId ? 'network (range requests)' : '—')],
           ['Next track (spare deck)', d.prefetch.trackId ? `${d.spare.title || d.prefetch.trackId} — ${d.prefetch.state}` : d.prefetch.state],
+          ['Crossfade', d.settings.crossfade ? (d.crossfade ? `fading in over ${(d.crossfade.ms / 1000).toFixed(1)} s from ${d.crossfade.from}` : `${d.settings.crossfade} s, at the end of each song`) : 'off'],
           ['Audio graph', d.audioGraph],
         ])),
       h('div', { class: 'box' }, h('h3', {}, 'Latency & stutter'), h('p', { class: 'lede' }, 'Time from pressing play to first audio. Spotify reported 265 ms median with prefetch, 390 ms without.'),
@@ -616,6 +618,7 @@ export async function settings(el, _p, app) {
   el.append(row(t('streamingQuality'), t('streamingQualityDesc'), select(s.quality, [['auto', t('qualityAuto')], ['low', t('qualityLow')], ['high', t('qualityHigh')]], (v) => app.player.updateSettings({ quality: v }))));
   el.append(row(t('normalizeVolume'), t('normalizeVolumeDesc'), toggle(s.normalize, (v) => app.player.updateSettings({ normalize: v }))));
   el.append(row(t('volumeLevel'), t('volumeLevelDesc'), select(s.loudness, [['loud', t('loudnessLoud')], ['normal', t('loudnessNormal')], ['quiet', t('loudnessQuiet')]], (v) => app.player.updateSettings({ loudness: v }))));
+  el.append(row(t('crossfadeTitle'), t('crossfadeDesc'), select(String(s.crossfade || 0), CROSSFADE_CHOICES.map((n) => [String(n), n ? t('secondsN', { n }) : t('crossfadeOff')]), (v) => app.player.updateSettings({ crossfade: Number(v) }))));
   el.append(row(t('cachePlayed'), t('cachePlayedDesc'), toggle(s.autocache, (v) => app.player.updateSettings({ autocache: v }))));
 
   el.append(h('h2', { class: 'section', style: { 'font-size': '18px', 'margin-bottom': '10px' } }, t('devicesStorageSection')));

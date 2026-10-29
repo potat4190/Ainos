@@ -86,7 +86,7 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 ## Testing
 
 - `test/helpers.js` → `startTestServer()` generates a quick catalog in a temp dir and starts the app on a random port with SQLite; `login()` / `signup()` give a cookie-keeping client.
-- Suites: `api` (routes, auth, playlists, security, the demo reset on its own server), `connect`, `loudness`, `recommend`, `search`, `store`. `startTestServer(options)` passes options to `createApp`.
+- Suites: `api` (routes, auth, playlists, security, the demo reset on its own server), `connect`, `crossfade` (pure timing and curve logic from `public/js/crossfade.js`), `loudness`, `recommend`, `search`, `store`. `startTestServer(options)` passes options to `createApp`.
 - Tests run with `--test-concurrency=1`.
 
 ## Current state (2026-10-28)

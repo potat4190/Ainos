@@ -12,14 +12,18 @@
 //    event pipeline; plays of >= 30 s become "streams" server-side.
 //  * A user queue that plays before the rest of the context, shuffle that keeps
 //    the current track first, and repeat off / context / track.
+//  * Crossfade (Settings, 0-12 s): when a song ends on its own and the next
+//    one is already buffered on the spare deck, the next one starts early and
+//    the two decks fade across on an equal-power curve (crossfade.js).
 
 import { api, tracksByIds, rememberTracks } from './api.js';
 import { t } from './i18n.js';
+import { crossfadeMs, shouldStartCrossfade, fadeCurve, equalPowerGains } from './crossfade.js';
 
 export const LOUDNESS_TARGETS = { loud: -11, normal: -14, quiet: -19 };
 const PREFETCH_WINDOW_MS = 30_000;
 const MANIFEST_TTL_MS = 45 * 60_000;
-const DEFAULTS = { quality: 'auto', normalize: true, loudness: 'normal', volume: 0.8, muted: false, autocache: true };
+const DEFAULTS = { quality: 'auto', normalize: true, loudness: 'normal', volume: 0.8, muted: false, autocache: true, crossfade: 0 };
 
 const store = {
   get(k, fallback) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -79,6 +83,8 @@ export class Player extends EventTarget {
     this.loadToken = 0;
     this.lastReport = 0;
     this.downloads = store.get('ainos.downloads', {});
+    this.xfade = null;       // { outgoing deck, ms, timers } while two decks overlap
+    this.pendingXfade = null;
 
     setInterval(() => this.flush(), 15_000);
     addEventListener('pagehide', () => {
@@ -92,7 +98,8 @@ export class Player extends EventTarget {
   #makeDeck() {
     const audio = new Audio();
     audio.preload = 'auto';
-    const deck = { audio, gain: null, source: null, trackId: null, track: null, manifest: null, gainDb: 0 };
+    // gain = loudness normalization; fade = crossfade envelope (1 = full).
+    const deck = { audio, gain: null, fadeNode: null, fade: 1, source: null, trackId: null, track: null, manifest: null, gainDb: 0 };
     const isActive = () => deck === this.decks[this.active];
     audio.addEventListener('timeupdate', () => isActive() && this.#onTime());
     audio.addEventListener('ended', () => isActive() && this.#onEnded());
@@ -132,7 +139,9 @@ export class Player extends EventTarget {
         if (d.source) continue;
         d.source = this.ctx.createMediaElementSource(d.audio);
         d.gain = this.ctx.createGain();
-        d.source.connect(d.gain).connect(this.ctx.destination);
+        d.fadeNode = this.ctx.createGain();
+        d.fadeNode.gain.value = d.fade;
+        d.source.connect(d.gain).connect(d.fadeNode).connect(this.ctx.destination);
         this.#applyGain(d);
       }
     } catch (err) {
@@ -154,7 +163,7 @@ export class Player extends EventTarget {
       deck.gain.gain.value = lin;
       deck.audio.volume = vol;
     } else {
-      deck.audio.volume = Math.min(1, vol * Math.min(1, lin));
+      deck.audio.volume = Math.min(1, vol * Math.min(1, lin) * deck.fade);
     }
   }
 
@@ -211,12 +220,19 @@ export class Player extends EventTarget {
     if (!track) return;
     const token = ++this.loadToken;
     const t0 = performance.now();
+    const xfade = this.pendingXfade;
+    this.pendingXfade = null;
+    this.#endCrossfade(); // any other start cuts a fade still running
     let prefetched = false;
     if (this.spare.trackId === track.id && this.spare.audio.src && !this.spare.audio.error) {
-      this.#unload(this.deck);
+      const outgoing = this.deck;
+      const crossfading = xfade?.outgoing === outgoing;
+      if (crossfading) this.#setFade(this.spare, 0);
+      else this.#unload(outgoing);
       this.active = 1 - this.active;
       prefetched = true;
       this.metrics.prefetchHits++;
+      if (crossfading) this.#beginCrossfade(outgoing, this.deck, xfade.ms);
     } else {
       this.#unload(this.spare);
       this.deck.audio.pause();
@@ -278,7 +294,9 @@ export class Player extends EventTarget {
       s.lastPos = pos;
     }
     const dur = (this.deck.audio.duration || 0) * 1000;
-    if (dur && dur - pos <= PREFETCH_WINDOW_MS && this.prefetch.state === 'idle') this.#prefetchNext();
+    // No prefetch while the spare deck is still fading out the last song.
+    if (dur && dur - pos <= PREFETCH_WINDOW_MS && this.prefetch.state === 'idle' && !this.xfade) this.#prefetchNext();
+    if (dur && !this.xfade && !this.pendingXfade) this.#maybeCrossfade(pos, dur);
     if (this.isPlaying && Date.now() - this.lastReport > 10_000) this.reportState();
     if ('mediaSession' in navigator && dur && navigator.mediaSession.setPositionState) {
       try { navigator.mediaSession.setPositionState({ duration: dur / 1000, position: Math.min(pos, dur) / 1000, playbackRate: 1 }); } catch { /* ignore */ }
@@ -303,13 +321,82 @@ export class Player extends EventTarget {
 
   #invalidatePrefetch() {
     if (this.prefetch.trackId && this.peekNext()?.id === this.prefetch.trackId) return;
-    if (this.spare.trackId) this.#unload(this.spare);
+    if (this.spare.trackId && this.spare !== this.xfade?.outgoing) this.#unload(this.spare);
     this.prefetch = { trackId: null, state: 'idle' };
     this.#emit('debug');
   }
 
   #onEnded() {
     this.next('trackdone');
+  }
+
+  // ------------------------------------------------------------- crossfade
+  /** Near the end of a song that is playing to its end, start the next one early. */
+  #maybeCrossfade(posMs, durMs) {
+    const next = this.peekNext();
+    const spare = this.spare;
+    if (!next || next.id === this.track?.id || this.isRemote) return;
+    const ms = crossfadeMs(this.settings.crossfade, durMs, (spare.audio.duration * 1000) || next.duration_ms);
+    // HAVE_FUTURE_DATA: the next song can start without a gap.
+    const nextReady = spare.trackId === next.id && spare.audio.readyState >= 3 && !spare.audio.error;
+    if (!shouldStartCrossfade({ fadeMs: ms, positionMs: posMs, durationMs: durMs, isPlaying: this.isPlaying, nextReady })) return;
+    this.pendingXfade = { outgoing: this.deck, ms: Math.max(250, durMs - posMs) };
+    this.next('trackdone'); // startTrack takes pendingXfade before its first await
+    this.pendingXfade = null;
+  }
+
+  #beginCrossfade(outgoing, incoming, ms) {
+    this.xfade = { outgoing, ms, timers: [] };
+    this.#rampFade(incoming, 'in', ms);
+    this.#rampFade(outgoing, 'out', ms);
+    this.xfade.timers.push(setTimeout(() => this.#endCrossfade(), ms + 100));
+    this.#emit('debug');
+  }
+
+  /** Finish (or cut short) a crossfade: stop the outgoing deck, the current one at full level. */
+  #endCrossfade() {
+    const x = this.xfade;
+    if (!x) return;
+    this.xfade = null;
+    for (const id of x.timers) { clearTimeout(id); clearInterval(id); }
+    if (x.outgoing !== this.deck) this.#unload(x.outgoing);
+    this.#setFade(x.outgoing, 1);
+    this.#setFade(this.deck, 1);
+    this.#emit('debug');
+  }
+
+  #setFade(deck, value) {
+    deck.fade = value;
+    if (deck.fadeNode && this.ctx) {
+      deck.fadeNode.gain.cancelScheduledValues(0); // also drops a curve already under way
+      deck.fadeNode.gain.value = value;
+    }
+    this.#applyGain(deck);
+  }
+
+  #rampFade(deck, direction, ms) {
+    if (deck.fadeNode && this.ctx) {
+      const g = deck.fadeNode.gain;
+      const now = this.ctx.currentTime;
+      g.cancelScheduledValues(0);
+      try {
+        g.setValueCurveAtTime(fadeCurve(direction), now, ms / 1000);
+      } catch {
+        g.setValueAtTime(direction === 'in' ? 0 : 1, now);
+        g.linearRampToValueAtTime(direction === 'in' ? 1 : 0, now + ms / 1000);
+      }
+      deck.fade = direction === 'in' ? 1 : 0; // where it ends up
+      return;
+    }
+    // No Web Audio: step the element volume instead.
+    const t0 = performance.now();
+    const id = setInterval(() => {
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      deck.fade = equalPowerGains(p)[direction];
+      this.#applyGain(deck);
+      if (p >= 1) clearInterval(id);
+    }, 50);
+    this.xfade?.timers.push(id);
   }
 
   #onError(err) {
@@ -400,6 +487,7 @@ export class Player extends EventTarget {
       await this.#doPlay();
       this.#log('resume', { track_id: this.track.id, position_ms: Math.round(this.positionMs) });
     } else {
+      this.#endCrossfade();
       this.deck.audio.pause();
       this.#log('pause', { track_id: this.track.id, position_ms: Math.round(this.positionMs) });
     }
@@ -407,12 +495,14 @@ export class Player extends EventTarget {
   }
 
   pause() {
+    this.#endCrossfade();
     if (!this.deck.audio.paused) this.deck.audio.pause();
   }
 
   seek(ms) {
     if (this.isRemote) return this.connect.command({ type: 'seek', position_ms: Math.round(ms) });
     if (!this.track) return;
+    this.#endCrossfade();
     const audio = this.deck.audio;
     audio.currentTime = Math.max(0, ms / 1000);
     if (this.session) this.session.lastPos = ms;
@@ -571,6 +661,7 @@ export class Player extends EventTarget {
       deviceId: this.deviceId, active: deckInfo(this.deck), spare: deckInfo(this.spare), prefetch: this.prefetch,
       session: this.session, metrics: this.metrics, pendingEvents: this.queue.length, audioGraph: this.ctx ? this.ctx.state : 'not started',
       normalization: this.deck.manifest?.normalization || null, settings: this.settings,
+      crossfade: this.xfade ? { ms: this.xfade.ms, from: this.xfade.outgoing.track?.title || null } : null,
     };
   }
 

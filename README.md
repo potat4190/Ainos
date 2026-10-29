@@ -64,6 +64,7 @@ Running `npm start` with `DATABASE_URL` set uses that database instead of SQLite
 1. **Switch languages** using the language selector in the top bar (**English**, **हिन्दी (Hindi)**, **नेपाली (Nepali)**, **中文 (Chinese)**, **日本語 (Japanese)**, **Español (Spanish)**). Watch the interface localize and the Home screen recommend Christian worship songs in the selected language.
 2. **Play anything** and open the *Now playing* panel (right). It shows the quality (up to High 353 kbps), the track's measured loudness and the gain applied, the start latency, and a countdown to when the play counts as a stream.
 3. **Let a track run into its last 30 seconds.** The next track preloads on a second audio deck. Under the hood shows the prefetched start latency (a few ms) next to the cold start (tens of ms).
+   With **Settings → Crossfade** on (2–12 s), the next song starts early on that second deck and the two fade across on an equal-power curve; pausing, seeking or skipping cuts the fade.
 4. **Open a second tab** (or a phone) and click the devices icon. The second tab shows what the first is playing and can control it. Pick "This browser" to move playback over at the same position.
 5. **Download an album**, stop the server, and keep playing it in the already-open page. The service worker serves it from cache.
 6. **Under the hood** shows live internals: deck states, latency, stutters, the cache, the event pipeline, recommender stats with a *Retrain now* button, and a streaming architecture mapping table that links to the evidence.
