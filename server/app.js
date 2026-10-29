@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,7 +75,7 @@ export async function createApp({
   const housekeepingTimer = setInterval(housekeeping, 6 * 3600 * 1000);
   housekeepingTimer.unref?.();
 
-  const clientIp = (req) => (trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket?.remoteAddress || 'unknown';
+  const clientIp = (req) => clientAddress(req, { trustProxy });
 
   const r = new Router();
   const auth = (handler) => async (ctx) => {
@@ -657,6 +658,19 @@ function hourIn(tz) {
     fmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23' });
   }
   return (ms) => Number(fmt.formatToParts(ms).find((p) => p.type === 'hour').value) % 24;
+}
+
+/**
+ * The client's IP address, for per-address rate limits. Behind the proxy it is
+ * the last X-Forwarded-For entry: the proxy appends the address it saw, and
+ * anything to the left of it came from the client (Vercel replaces the header
+ * with the client's address alone). Anything that isn't an IP counts as one
+ * shared "unknown" client.
+ */
+export function clientAddress(req, { trustProxy = false } = {}) {
+  const forwarded = trustProxy ? String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean).pop() : '';
+  const ip = forwarded || req.socket?.remoteAddress || '';
+  return net.isIP(ip) ? ip : 'unknown';
 }
 
 /** Whether the browser reached us over HTTPS (behind the proxy, it says so in X-Forwarded-Proto). */

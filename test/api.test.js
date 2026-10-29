@@ -360,6 +360,19 @@ test('CSRF: only the events route takes text/plain bodies (sendBeacon); elsewher
   assert.equal((await ev.json()).accepted, 1);
 });
 
+test('rate limits key on the address the proxy saw, not one the client wrote into X-Forwarded-For', async () => {
+  const { clientAddress } = await import('../server/app.js');
+  const req = (xff, remote = '10.0.0.1') => ({ headers: xff === undefined ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: remote } });
+  // nginx's $proxy_add_x_forwarded_for appends: the client controls everything left of the last entry.
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.9'), { trustProxy: true }), '203.0.113.9');
+  assert.equal(clientAddress(req('203.0.113.9'), { trustProxy: true }), '203.0.113.9', 'Vercel: one entry');
+  assert.equal(clientAddress(req('2001:db8::1'), { trustProxy: true }), '2001:db8::1');
+  assert.equal(clientAddress(req('6.6.6.6'), { trustProxy: false }), '10.0.0.1', 'no proxy: the header is ignored');
+  assert.equal(clientAddress(req(undefined), { trustProxy: true }), '10.0.0.1', 'no header: the socket address');
+  assert.equal(clientAddress(req(`1.1.1.1, ${'x'.repeat(5000)}`), { trustProxy: true }), 'unknown', 'not an address: one shared bucket');
+  assert.equal(clientAddress(req(undefined, null)), 'unknown', 'no address at all');
+});
+
 test('CSRF: behind the proxy, the forwarded host and scheme are the app origin', async () => {
   const { sameOrigin } = await import('../server/app.js');
   const req = (headers, encrypted = false) => ({ headers, socket: { encrypted } });
