@@ -16,8 +16,8 @@ test('plan: seed an empty database, sync one whose tracks are all still generate
   assert.deepEqual(planCatalog(['a', 'b'], []), { action: 'seed' });
   assert.deepEqual(planCatalog(['a', 'b'], ['a', 'b']), { action: 'sync', added: [] });
   assert.deepEqual(planCatalog(['a', 'b', 'h1', 'h2'], ['a', 'b']), { action: 'sync', added: ['h1', 'h2'] }, 'appended hymns');
-  assert.deepEqual(planCatalog(['a', 'c'], ['a', 'b']), { action: 'refuse', lost: ['b'] }, 'a track whose audio would 404');
-  assert.deepEqual(planCatalog([], ['a']), { action: 'refuse', lost: ['a'] });
+  assert.deepEqual(planCatalog(['a', 'c'], ['a', 'b']), { action: 'refuse', lost: ['b'], added: ['c'] }, 'a track whose audio would 404');
+  assert.deepEqual(planCatalog([], ['a']), { action: 'refuse', lost: ['a'], added: [] });
 });
 
 test('upsert SQL: numbered placeholders, conflict target, and updates only when something changed', () => {
@@ -93,7 +93,8 @@ test('a preview build older than its database skips the sync; production refuses
   const lost = planCatalog(['a'], ['a', 'hymn']);
   assert.equal(catalogAction(lost), 'refuse');
   assert.equal(catalogAction(lost, { lostTracks: 'refuse' }), 'refuse');
-  assert.equal(catalogAction(lost, { lostTracks: 'warn' }), 'skip');
+  assert.equal(catalogAction(lost, { lostTracks: 'warn' }), 'skip', 'a branch simply older than the database');
+  assert.equal(catalogAction(planCatalog(['a', 'renamed'], ['a', 'b']), { lostTracks: 'warn' }), 'refuse', 'a changed id (one lost, one added) is refused even in preview');
   assert.equal(catalogAction(planCatalog(['a', 'b'], ['a']), { lostTracks: 'warn' }), 'sync', 'warn mode changes nothing else');
   assert.equal(catalogAction(planCatalog(['a'], []), { lostTracks: 'warn' }), 'seed');
 });

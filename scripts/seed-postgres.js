@@ -16,8 +16,11 @@
 // rows, such as appended hymns, are added and display fields (names, lyrics)
 // refreshed. Measured values (loudness, audio features) stay as first seeded,
 // except for hymns, whose audio is rendered from scripts/hymns.js and follows
-// it. User data, church (org) rows and user playlists are never touched;
-// removing an existing track is a manual data migration.
+// it. The generator's own songs follow its data: global lyrics, arrangements
+// and themes it no longer writes are removed (aliases are kept). Editorial
+// playlists gain tracks the generator adds to them (tracks removed from one by
+// hand come back). User data, church (org) rows and user playlists are never
+// touched; removing an existing track is a manual data migration.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,20 +85,22 @@ export const CATALOG_PRUNE = [
 export function planCatalog(generatedIds, existingIds) {
   if (!existingIds.length) return { action: 'seed' };
   const generated = new Set(generatedIds);
-  const lost = existingIds.filter((id) => !generated.has(id));
-  if (lost.length) return { action: 'refuse', lost };
   const existing = new Set(existingIds);
-  return { action: 'sync', added: generatedIds.filter((id) => !existing.has(id)) };
+  const added = generatedIds.filter((id) => !existing.has(id));
+  const lost = existingIds.filter((id) => !generated.has(id));
+  return lost.length ? { action: 'refuse', lost, added } : { action: 'sync', added };
 }
 
 /**
- * The step a build takes. A preview build whose branch lacks tracks the
- * (shared preview) database already has, e.g. a hotfix branch made before
- * the hymns, skips the sync with a warning instead of failing; production
+ * The step a build takes. A preview build of a branch that is simply older
+ * than the (shared preview) database's catalog, e.g. a hotfix branch made
+ * before the hymns, skips the sync with a warning instead of failing. A build
+ * that also generates tracks the database lacks has changed an id (a rename
+ * loses one id and adds another), so it is refused there too; production
  * always refuses.
  */
 export function catalogAction(plan, { lostTracks = 'refuse' } = {}) {
-  return plan.action === 'refuse' && lostTracks === 'warn' ? 'skip' : plan.action;
+  return plan.action === 'refuse' && lostTracks === 'warn' && !plan.added?.length ? 'skip' : plan.action;
 }
 
 /**
@@ -159,10 +164,12 @@ async function syncCatalog(client, src, log) {
     if (result.length) log(`  ${table}: ${inserted} added, ${result.length - inserted} updated`);
   }
 
-  const songIds = src.prepare('SELECT id FROM songs WHERE org_id IS NULL').all().map((r) => r.id);
   for (const p of CATALOG_PRUNE) {
-    const keep = src.prepare(`SELECT ${p.id} AS k FROM ${p.table} WHERE song_id IN (SELECT id FROM songs WHERE org_id IS NULL)${p.scope ? ` AND ${p.scope}` : ''}`).all().map((r) => r.k);
-    const { rowCount } = await client.query(pruneSql(p), [songIds, keep]);
+    // Only songs that still have generated rows here: a generated file that
+    // lost a table's rows altogether must not wipe every song's lyrics.
+    const rows = src.prepare(`SELECT song_id AS s, ${p.id} AS k FROM ${p.table} WHERE song_id IN (SELECT id FROM songs WHERE org_id IS NULL)${p.scope ? ` AND ${p.scope}` : ''}`).all();
+    if (!rows.length) continue;
+    const { rowCount } = await client.query(pruneSql(p), [[...new Set(rows.map((r) => r.s))], rows.map((r) => r.k)]);
     totals.deleted += rowCount;
     if (rowCount) log(`  ${p.table}: ${rowCount} removed (no longer generated)`);
   }
@@ -276,7 +283,10 @@ export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, lost
     if (plan.action === 'sync') {
       log(`✓ Postgres already seeded (${existing.length} tracks match the generated catalog${plan.added.length ? `; ${plan.added.length} new` : ''})`);
       await client.query('BEGIN');
-      // Never wait long behind live traffic for a row lock: fail the deploy instead.
+      // One sync at a time per database (e.g. two preview builds at once): the
+      // second waits for the first to commit. Taken before the lock timeout,
+      // which is for live traffic: never wait long behind it for a row lock.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('ainos:catalog-sync'))");
       await client.query("SET LOCAL lock_timeout = '10s'");
       const totals = await syncCatalog(client, src, log);
       await client.query('COMMIT');

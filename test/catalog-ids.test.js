@@ -6,6 +6,12 @@
 // To append new tracks to the fixtures after adding them on purpose:
 //   AINOS_UPDATE_CATALOG_SNAPSHOT=1 npm test
 // That only ever adds entries: it still fails if an existing one changed.
+//
+// Hymns are the exception: their audio is rendered from scripts/hymns.js, and
+// a deploy's catalog sync refreshes their stored measurements to match. After
+// changing a hymn's melody or tempo on purpose:
+//   AINOS_UPDATE_CATALOG_SNAPSHOT=hymns npm test
+// rewrites the hymn tracks' entries only; every other entry must still match.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,14 +19,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
-import { generateCatalog, trackParams, renderMastered, CATALOG, SAMPLE_RATE } from '../scripts/generate.js';
+import { generateCatalog, trackParams, renderMastered, CATALOG, SAMPLE_RATE, HYMN_IDS } from '../scripts/generate.js';
+import { HYMNS } from '../scripts/hymns.js';
 import { encodeWav16 } from '../scripts/synth.js';
 import { openDb } from '../server/db.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const IDS_FILE = path.join(FIXTURES, 'track-ids.json');
 const PRINT_FILE = path.join(FIXTURES, 'catalog-fingerprint.json');
-const UPDATE = process.env.AINOS_UPDATE_CATALOG_SNAPSHOT === '1';
+const MODE = process.env.AINOS_UPDATE_CATALOG_SNAPSHOT;
+const UPDATE = MODE === '1' || MODE === 'hymns';
+const HYMN_TRACKS = new Set(HYMNS.map((h) => HYMN_IDS.track(h.slug)));
 
 let dir;
 let current;
@@ -95,7 +104,8 @@ test('existing artists, albums, editorial playlists and track audio are unchange
     assert.deepEqual(lost(snapshot[kind], current.print[kind]), [], `existing ${kind} ids changed or disappeared`);
   }
   for (const [id, was] of Object.entries(snapshot.tracks)) {
-    assert.deepEqual(current.print.tracks[id], was, `audio of track ${id} changed`);
+    if (MODE === 'hymns' && HYMN_TRACKS.has(id)) continue; // rewritten below, on purpose
+    assert.deepEqual(current.print.tracks[id], was, `audio of track ${id} changed${HYMN_TRACKS.has(id) ? ' (a hymn: after an intended melody change, AINOS_UPDATE_CATALOG_SNAPSHOT=hymns)' : ''}`);
   }
   for (const [seedKey, was] of Object.entries(snapshot.full_length_params)) {
     assert.deepEqual(current.print.full_length_params[seedKey], was, `full-length audio inputs of ${seedKey} changed (or its CATALOG seed key was renamed)`);
