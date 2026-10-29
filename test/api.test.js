@@ -364,6 +364,28 @@ test('session cookies are HttpOnly and SameSite=Lax, and Secure over HTTPS', asy
   assert.match(out.headers.get('set-cookie'), /Max-Age=0.*; Secure|; Secure.*Max-Age=0/, 'the clearing cookie matches the one it replaces');
 });
 
+test('demo guard: both shared demo accounts are refused with demo_not_allowed; others pass', async () => {
+  const { noDemo, isDemo, isChurchDemo } = await import('../server/demo.js');
+  const action = noDemo(async ({ user }) => `done by ${user.username}`);
+  for (const username of ['demo', 'DEMO', 'church-demo', 'Church-Demo']) {
+    await assert.rejects(action({ user: { id: 1, username } }), (err) => err.status === 403 && err.code === 'demo_not_allowed', username);
+    assert.equal(isDemo({ username }), true);
+  }
+  assert.equal(await action({ user: { id: 2, username: 'grace' } }), 'done by grace');
+  assert.equal(isDemo({ username: 'demo2' }), false);
+  assert.equal(isChurchDemo({ username: 'church-demo' }), true);
+  assert.equal(isChurchDemo({ username: 'demo' }), false);
+});
+
+test('nobody can sign up with a demo account name, even before that account exists', async () => {
+  for (const username of ['church-demo', 'Church-Demo', 'DEMO']) {
+    const r = await client(srv.base).post('/api/auth/signup', { username, password: 'correct horse battery' });
+    assert.equal(r.status, 409, username);
+    assert.equal(r.json.error.code, 'username_taken');
+  }
+  assert.equal((await srv.app.store.get("SELECT COUNT(*) AS n FROM users WHERE lower(username) = 'church-demo'")).n, 0);
+});
+
 test('static files cannot escape their folders', async () => {
   for (const p of ['/art/..%2Fsecret.key', '/art/../secret.key', '/docs/..%2F..%2Fpackage.json', '/..%2Fdata%2Fsecret.key']) {
     const r = await fetch(srv.base + p);

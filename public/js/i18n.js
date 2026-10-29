@@ -12,7 +12,7 @@ export const LANGUAGES = [
 
 export const LANGUAGE_CODES = LANGUAGES.map((l) => l.code);
 
-const STRINGS = {
+export const STRINGS = {
   en: {
     brandSubtitle: 'Christian Worship & Praise',
     faithBanner: 'Christian Faith Music — Worship, Praise & Devotional Songs in Every Tongue',
@@ -39,6 +39,7 @@ const STRINGS = {
     errTimeout: 'Ainos is taking too long to answer. Try again in a moment.',
     errServer: 'Something went wrong on our side. Try again in a moment.',
     errDemoPrivate: 'Demo playlists stay private. Sign up to share a playlist.',
+    errDemoNotAllowed: 'The shared demo can’t do this. Sign up to use it.',
     tryAgain: 'Try again',
     playTitle: 'Play {title}',
     moreOptions: 'More options',
@@ -344,6 +345,7 @@ const STRINGS = {
     errTimeout: 'Ainos जवाब देने में बहुत समय ले रहा है। थोड़ी देर में फिर कोशिश करें।',
     errServer: 'हमारी ओर से कुछ गड़बड़ हुई। थोड़ी देर में फिर कोशिश करें।',
     errDemoPrivate: 'डेमो प्लेलिस्ट निजी रहती हैं। प्लेलिस्ट साझा करने के लिए साइन अप करें।',
+    errDemoNotAllowed: 'साझा डेमो से यह नहीं किया जा सकता। इसका उपयोग करने के लिए साइन अप करें।',
     tryAgain: 'फिर कोशिश करें',
     playTitle: '{title} चलाएँ',
     moreOptions: 'और विकल्प',
@@ -635,6 +637,7 @@ const STRINGS = {
     errTimeout: 'Ainos ले जवाफ दिन धेरै समय लियो। केही बेरमा फेरि प्रयास गर्नुहोस्।',
     errServer: 'हाम्रो तर्फबाट केही गडबड भयो। केही बेरमा फेरि प्रयास गर्नुहोस्।',
     errDemoPrivate: 'डेमो प्लेलिस्टहरू निजी रहन्छन्। प्लेलिस्ट साझा गर्न साइन अप गर्नुहोस्।',
+    errDemoNotAllowed: 'साझा डेमोबाट यो गर्न मिल्दैन। यसको प्रयोग गर्न साइन अप गर्नुहोस्।',
     tryAgain: 'फेरि प्रयास गर्नुहोस्',
     playTitle: '{title} बजाउनुहोस्',
     moreOptions: 'थप विकल्प',
@@ -926,6 +929,7 @@ const STRINGS = {
     errTimeout: 'Ainos 响应时间过长，请稍后再试。',
     errServer: '我们这边出了点问题，请稍后再试。',
     errDemoPrivate: '演示账号的歌单保持私密。注册后即可分享歌单。',
+    errDemoNotAllowed: '共享演示账号无法执行此操作。注册后即可使用。',
     tryAgain: '重试',
     playTitle: '播放 {title}',
     moreOptions: '更多选项',
@@ -1217,6 +1221,7 @@ const STRINGS = {
     errTimeout: 'Ainos の応答に時間がかかっています。少し待ってからお試しください。',
     errServer: 'サーバー側で問題が発生しました。少し待ってからお試しください。',
     errDemoPrivate: 'デモのプレイリストは非公開のままです。共有するには登録してください。',
+    errDemoNotAllowed: '共有デモではこの操作はできません。ご利用には登録してください。',
     tryAgain: 'もう一度試す',
     playTitle: '{title} を再生',
     moreOptions: 'その他のオプション',
@@ -1508,6 +1513,7 @@ const STRINGS = {
     errTimeout: 'Ainos tarda demasiado en responder. Inténtalo de nuevo en un momento.',
     errServer: 'Algo falló en nuestro lado. Inténtalo de nuevo en un momento.',
     errDemoPrivate: 'Las listas de la demo son privadas. Regístrate para compartir una lista.',
+    errDemoNotAllowed: 'La demo compartida no puede hacer esto. Regístrate para usarlo.',
     tryAgain: 'Reintentar',
     playTitle: 'Reproducir {title}',
     moreOptions: 'Más opciones',
@@ -1865,6 +1871,7 @@ export function t(key, vars = {}) {
 const ERROR_KEYS = {
   bad_credentials: 'errBadCredentials', username_taken: 'errUsernameTaken', bad_username: 'errBadUsername', bad_password: 'errBadPassword',
   rate_limited: 'errRateLimited', network: 'errNetwork', offline: 'errOffline', timeout: 'errTimeout', server: 'errServer', demo_private: 'errDemoPrivate',
+  demo_not_allowed: 'errDemoNotAllowed',
 };
 
 /** A message for an API error in the current language (the server's English text when there is no translation). */

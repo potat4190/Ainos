@@ -13,7 +13,7 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo, DEMO_SESSION_TTL_MS } from './demo.js';
+import { resetDemo, isDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -89,6 +89,9 @@ export async function createApp({
     const { username, password, display_name, language } = await readJson(req);
     validateCredentials(username, password);
     const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
+    // The demo accounts may not exist yet in a database (they are created on
+    // first use); nobody else may claim their names.
+    if (DEMO_USERNAMES.includes(username.toLowerCase())) throw taken();
     if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
     const lang = LANGUAGES.includes(language) ? language : 'en';

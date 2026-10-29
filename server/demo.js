@@ -5,14 +5,36 @@
 // recent listening and Made For You has something to work from.
 import { randomId, mulberry32, hashSeed } from './util.js';
 import { inList } from './store.js';
+import { HttpError } from './http.js';
 
 export const DEMO_USERNAME = 'demo';
+// The church demo (spec Phase 5.7) is a second shared account, confined to one
+// seeded demo church. Recognized here from the start so the guard covers it.
+export const CHURCH_DEMO_USERNAME = 'church-demo';
+export const DEMO_USERNAMES = [DEMO_USERNAME, CHURCH_DEMO_USERNAME];
 export const DEMO_SESSION_TTL_MS = 24 * 3600 * 1000;
 const DISPLAY_NAME = 'Demo Listener';
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
-export const isDemo = (user) => user?.username?.toLowerCase() === DEMO_USERNAME;
+/** Either shared demo account: everyone who clicks "Try the demo" is this user. */
+export const isDemo = (user) => DEMO_USERNAMES.includes(user?.username?.toLowerCase());
+export const isChurchDemo = (user) => user?.username?.toLowerCase() === CHURCH_DEMO_USERNAME;
+
+/** Throws 403 for a shared demo account; for actions that would reach other people or outlive the demo. */
+export function assertNotDemo(user) {
+  if (isDemo(user)) throw new HttpError(403, 'The shared demo can’t do this. Sign up to use it.', 'demo_not_allowed');
+}
+
+/**
+ * Route wrapper for actions the shared demo accounts must not take (create a
+ * church, upload, invite, live YouTube search, account changes). Goes inside
+ * auth(): r.post('/api/orgs', auth(noDemo(async (ctx) => ...))).
+ */
+export const noDemo = (handler) => async (ctx) => {
+  assertNotDemo(ctx.user);
+  return handler(ctx);
+};
 
 /**
  * Which tracks the snapshot uses. Favourites are the first two English artists'
