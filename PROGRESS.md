@@ -2,6 +2,9 @@
 Last updated: 2026-10-29 · Current phase: 1 done (PR #3 awaiting owner review) · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · CI (owner Q7): `.github/workflows/ci.yml` on pull requests to main, one job, **check name `test`**: Node 24, `npm ci`, `npm test`, `npm audit --omit=dev --audit-level=high` (0 vulnerabilities locally). Actions pinned to release commits (checkout v7.0.1, setup-node v7.1.0), read-only token. In CI the PGlite tests fail rather than skip if PGlite is missing · commit b04129d
+- 2026-10-29 Phase 1 · Node pinned to `24.x` in `engines` (owner answer). Nothing blocks local use: node and `npm start`/`npm test` never check engines; on another major `npm install`/`npm ci` only warn (EBADENGINE), since engine-strict is off. Owner's Node 24.22.0 satisfies it · commit 58f0e38
+- 2026-10-29 Phase 1 · PGlite 0.5.10 (exact devDependency) runs `test/postgres.test.js` in `npm test`: schema applies twice, all deploy-check columns, RLS with no policies, ainos_app grants; seeding; the production upgrade (pre-hymn database gains the hymns, editorial playlists and original tracks untouched, idempotent); hymn edit refresh and prune; user and church rows survive; refuse/warn/renamed-id; empty generated table never wipes lyrics; a guard test that no production code mentions pglite. `seedPostgres` takes an optional `connectTo` for this; deploys still use pg · commit 03f10f4
 - 2026-10-29 Phase 1 · DONE (pending owner name picks for P1.7/P1.8 and the hymn listen): PR #3; preview 416ff23 synced the preview DB (8 hymn rows updated once for the rounding) and passed the smoke test incl. the hymn checks; result posted on the PR
 - 2026-10-29 Phase 1 · smoke test checks the Hymns playlist, finds Amazing Grace, streams its audio · commit ad243a5
 - 2026-10-29 Phase 1 · Node.js pin (21d9675) REVERTED (1421b97): its premise was wrong. Every WAV checked (8 hymns, 11 originals) is byte-identical between local Windows/Node 24 and Vercel Linux on Node 24 and 26; only one hymn's stored loudness double differed by ~1e-11 between Windows and Linux. Hymn loudness/peak now rounded to 6 decimals so syncs agree across platforms · commit e7ed4a7
@@ -60,7 +63,7 @@ Last updated: 2026-10-29 · Current phase: 1 done (PR #3 awaiting owner review) 
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Owner: review PR #3; listen to the hymns on the preview; pick names in `scripts/catalog-names.js`; do the "Before merging Phase 1" steps; answer the open questions marked waiting (PGlite dev dependency, Node pin; Q7, Q8, Q14 before Phase 2).
+- Owner: review PR #3; listen to the hymns on the preview; pick names in `scripts/catalog-names.js`; do the "Before merging Phase 1" steps; make `test` a required status check in the main ruleset (CI runs on PR #3 from now on); set ADMIN_USER_IDS (see Notes for how to find your user id) and register for YOUVERSION_APP_KEY when ready; go-ahead for Phase 2.
 - After the picks: P1.8 (names in docs/HOW-SPOTIFY-WORKS.md), on phase-1-catalog. Then Phase 2 (Scripture) on `phase-2-scripture`, which needs Q8 (admin model) and Q14 (YouVersion key, versions, fallback text).
 
 ## Open questions and answers
@@ -105,7 +108,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
   4. Production `ainos_app` password rotation (Phase 0 incident) if not done yet.
 - After Phase 1 is in production, a git revert of it would fail production builds (Postgres would have hymn tracks the build no longer generates); use Vercel's instant rollback instead, which doesn't rebuild.
 - SECURITY (2026-10-29): a repo-wide grep by Claude Code did not exclude `.env*` files and printed the production `DATABASE_URL` line (with the `ainos_app` password) from `.env.vercel.local` into the session transcript. Not written to any file, commit or service. Owner action: rotate production `ainos_app`'s password, update Vercel Production `DATABASE_URL`, redeploy. Separately, a password-like string was quoted in chat earlier; the owner reset the preview database password.
-- P0.14 CI workflow — waiting on Q7
+- P0.14 CI workflow — done in Phase 1 after the Q7 answer (b04129d)
 - Preview database "ainos-preview": set up 2026-10-29 (done):
   - Supabase project "ainos-preview". Schema applied from `server/schema.pg.sql` as `postgres`; seeded as `ainos_app` from a freshly generated full catalog (`{"seeded":true}`: 8 artists, 11 albums, 33 tracks, 66 track files, 301 users, 7 playlists, 76 playlist tracks, 663 likes, 2 follows, 15,369 streams, 58 search rows; 16 tables).
   - Verified: all 16 public tables have row-level security on and 0 policies; TLS 1.3 to the pooler with the certificate verified against `prod-ca-2021.crt` (an unrelated CA is refused).
