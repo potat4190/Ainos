@@ -2,6 +2,11 @@
 Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · P1.9 "Christian" adjectives removed from UI copy (20 keys × 6 languages, editorial descriptions, index.html); review rows in docs/i18n-review.md; guard test · commit 6e0c7c4
+- 2026-10-29 Phase 1 · P1.6 seed-postgres catalog sync (seed / sync / refuse; display-only upserts); verified on the preview Postgres · commit 9e04e57
+- 2026-10-29 Phase 1 · P1.4 demo snapshot independent of names and the hymnal · commit cd1b3de
+- 2026-10-29 Phase 1 · P1.2 melody renderer (melodyTimeline, renderMelody) · commit daea83d
+- 2026-10-29 Phase 1 · P1.1 song tables (+ song_sections and song_arrangements early, owner Q11) · commit bd7a4ee
 - 2026-10-29 Phase 0 · MERGED: owner asked Claude to merge PR #2 → merge commit d6c724d on `main`; production deploy Ready (build log: schema up to date, already seeded with 33 tracks; owner had applied `audit_log`). No smoke test against production (owner rule).
 - 2026-10-29 Phase 1 · P1.7 (draft only) `scripts/catalog-names.js`: 2 Scripture-based options per artist/album/track for owner approval; nothing uses it until picked; `test/catalog-names.test.js` · commit a6c3d46
 - 2026-10-29 Phase 0 · DONE: pushed `phase-0-baseline`, PR #2 to `main`; preview build (commit 5ceb4b2) migrated the preview database (build log: schema applied, schema up to date, already seeded with 33 tracks); `scripts/smoke.js` against the preview: all checks passed, security headers included (HSTS comes from Vercel, which settles Q6)
@@ -42,9 +47,12 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Phase 1 in progress on `phase-1-catalog`: P1.1 song tables → P1.2 melody renderer → P1.3 `scripts/hymns.js` (4 research agents are transcribing the 8 melodies from pre-1929 hymnal scans) → P1.4 → P1.5 → P1.6 → P1.9. P1.7 wiring and P1.8 wait for the owner's name picks in `scripts/catalog-names.js`.
+- P1.3: build `scripts/hymns.js` from the researched hymn JSON files with `node <scratchpad>/hymns/build.mjs`, after checking them with `check.mjs` (same folder). Scratchpad folder of the 2026-10-29 session: C:/Users/rhida/AppData/Local/Temp/claude/C--Users-rhida-Desktop-Ainos/380739b8-4ccb-4a5c-ad81-24b0c36bb2d5/scratchpad/hymns/ (FORMAT.md is the brief). Done and structurally checked: amazing-grace, come-thou-fount, it-is-well, all-hail-the-power, rock-of-ages, abide-with-me. Still being researched when the session hit its usage limit: be-thou-my-vision, holy-holy-holy (check whether their JSON files were written; if not, re-run that research with FORMAT.md). If the scratchpad is gone, redo the research from FORMAT.md's rules (copied in this file's notes below).
+- Then P1.5 (append hymn album + "Hymns" editorial playlist + songs/sections/arrangements in generate.js, ids from hashSeed('hymn:'+slug), album released at a fixed date; update the id snapshot with AINOS_UPDATE_CATALOG_SNAPSHOT=1; add 'Hymns' to EDITORIAL_I18N + review rows), then hymns.test.js, then phase-end reviews, push phase-1-catalog, PR, preview smoke. P1.7/P1.8 wait for the owner's name picks.
 
 ## Open questions and answers
+- NEW (2026-10-29) Come, Thou Fount lyrics: the research used Robinson's original 1759 wording (4 stanzas, e.g. "Mount of God's unchanging Love", "Seal it from thy Courts above"); the familiar 3-stanza wording from the 1921 tune source is listed in that hymn's notes. Which should ship? → waiting
+- NEW (2026-10-29) Amazing Grace ships the 4 stanzas printed in Coronation Hymns (1910): Newton's 1–3 plus the later public-domain "When we've been there ten thousand years"; Newton's stanzas 4–6 are in its notes. Abide with Me ships the 5 stanzas printed in 1905 (Lyte's 1, 2, 6, 7, 8). OK? → waiting
 Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary here).
 - Q1 `.claude/launch.json` untracked: gitignore `.claude/`? → yes (default), done
 - Q2 Spec "uncommitted work": already committed in 8b708bf, mark closed? → waiting
@@ -98,6 +106,7 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - `str()` NFC also maps CJK compatibility ideographs to unified forms (standard trade-off).
 
 ## Notes for the next session
+- Hymn research rules (owner Q10): original public-domain tune only (top voice, no modern arrangement); melody checked against a pre-1929 hymnal scan (e.g. Hymnary.org page images) plus the incipit and a MIDI/MusicXML where possible; words and tune before 1929; every stanza as printed in a cited source; record sources in scripts/hymns.js. Hymnary's MIDI/MusicXML downloads are bot-blocked for curl; CCEL MIDI files worked.
 - Secrets (owner rule, 2026-10-29): never read `.env*` files, and exclude them from every search (`--exclude='.env*'`, or the Grep tool with a glob). Never echo, quote or reconstruct a secret in chat, even as an example; use placeholders like [YOUR-PASSWORD]. Secrets go to Vercel only through stdin.
 - Every new UI string: add it to all six languages in `public/js/i18n.js` AND a row per language in `docs/i18n-review.md` (Q13).
 - New "Hymns" editorial playlist (Q12): its id must come from its own seed (like the hymn tracks), not the global `rnd`, so existing editorial ids stay unchanged (snapshot test).
