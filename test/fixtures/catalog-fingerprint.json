@@ -1,0 +1,905 @@
+{
+  "artists": [
+    "5ZHIXpQ952T6oCzjluu68p",
+    "CfOHdGHAfTQcEED3VHxuVF",
+    "DXGcohmKmEzZLzFrijMiWw",
+    "GErVRYMF4uoydJ9LT0Dkkf",
+    "OzP3PONpdAEAw0A4GEwlVJ",
+    "mEJdiyoulbR37UWed1riXd",
+    "mIDrSfxKdrGKGDXzDQ0FhL",
+    "qdzx63JRBQBYgYtQS0qIhv"
+  ],
+  "albums": [
+    "5pah6qQJcUU0j9xZ68RBGF",
+    "7vkRLxWxytl6Ceg9GSTqcZ",
+    "BaEnFVn86nVOP7uOjgLsDO",
+    "IBIdFGHe2OXMPABVvXPY3N",
+    "J1DpxrxxEgqy0QLILYW967",
+    "J8SPXaQJ00iK8yMaWPrUhb",
+    "MlSCloAOG4slqP1PL419yt",
+    "Zlht8IwEpKzVXsvNz3ifwG",
+    "f8o08cztwc8bYvAUJEp3b5",
+    "n709JZISQnwHcmoBO3VRsn",
+    "vDuf9mDx0VtpUxu77510fm"
+  ],
+  "editorial_playlists": [
+    "97FoWlo5jnUF6Atuz271AS",
+    "BjmdetxIh5oqrkRP2bYHh1",
+    "Guh8pWClPtVGWRnkm7h3iC",
+    "N44WP38RzvoIXex6SmFEDc",
+    "WpUplFUAU5XT2eAM6ytQDk",
+    "pqvB0bCpONaT3C40kaiSdv"
+  ],
+  "tracks": {
+    "2LkJzFwqMfWJ4OvJKejUlV": {
+      "tempo": 135,
+      "key": 4,
+      "mode": 1,
+      "duration_ms": 17222,
+      "loudness": -17.3,
+      "wav": {
+        "high": "383b12969a85e1a54de0f1248db495ba1c9ff43501555bd5dff8754ed364cb3a",
+        "low": "71ccc2321573be1ed191338369b7a2fbdbea66bcf0c2b9e371ca4c0787f7ddd0"
+      }
+    },
+    "4O8z2sP1J91vrSUuMf1COw": {
+      "tempo": 76,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 28263,
+      "loudness": -13.9,
+      "wav": {
+        "high": "e12e62db11f5e5bfac486a73f85297ff9550359e89fec5020aae62c791201301",
+        "low": "0cf11aa6a51d217376f2912d53c7027d705e4dfc289c6f94336e25b9e5def323"
+      }
+    },
+    "62wvizo3LNW0FLqGa2inLH": {
+      "tempo": 171,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 14228,
+      "loudness": -11.7,
+      "wav": {
+        "high": "6286191dd62403bc4ab661e5d84ea767f68b4639ccec35016e008c19db430962",
+        "low": "940623cab5d10739d0b11198c2da7e51559791820250465ee04603844173572c"
+      }
+    },
+    "6kwFXn8O5PaKLgAvk39Gmu": {
+      "tempo": 142,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 16521,
+      "loudness": -14.8,
+      "wav": {
+        "high": "34bccfb7a0e1e68757d8cf003ee976f683b07f869b7768cde6174d66fcdece03",
+        "low": "05fb3a775c3ce0c9a40ab05cad00aff0df0b6d4be6d2c99f9682f5a8218fcbf0"
+      }
+    },
+    "7B7hz2M75DKtfCbhyJ6XDC": {
+      "tempo": 79,
+      "key": 8,
+      "mode": 0,
+      "duration_ms": 27304,
+      "loudness": -9.7,
+      "wav": {
+        "high": "5fdb60a63eb7cf1cd6327a2ab8799ffb5b601a3a7842442bb0b84184d3978d32",
+        "low": "fa98bf3e7a1f4432375b2ced8693f7a3a9894744722a6fb9595d6f7bfe5e2aa6"
+      }
+    },
+    "7PBGyAWFBLpEbZGKoYUHj1": {
+      "tempo": 101,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 22010,
+      "loudness": -11.1,
+      "wav": {
+        "high": "37a0e72a9d4da5032ff403ba07377752d9bca46f96a66a4f666d08db2b00efc6",
+        "low": "84a9a727de958e915f215836c8f3a21fa343e0d806a03f69a0c8081e141a41d9"
+      }
+    },
+    "ERcjvfXJ5zlTFMgzBdTQqk": {
+      "tempo": 171,
+      "key": 1,
+      "mode": 0,
+      "duration_ms": 14228,
+      "loudness": -10.6,
+      "wav": {
+        "high": "43d8c9aab0371ceb146b97061a080640d9195ecc4b029efbaf368fc97b7a983f",
+        "low": "6140d8b3930860b33bb1c27a2eadbd4b9492ee28edee4320eca59647bb200929"
+      }
+    },
+    "EovjALrVB8D22anNejqxKL": {
+      "tempo": 77,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 27935,
+      "loudness": -13.4,
+      "wav": {
+        "high": "afedf802fb71940d8416336c72b4c5b8ef56e970584da6e2fa67f1baa9f917cd",
+        "low": "e9bf3c014b98921274e4e97938bf3400d5d037d5300f478fa1d976c1c43bebcb"
+      }
+    },
+    "G4E1mLi1AByfTkEw8mZMKX": {
+      "tempo": 64,
+      "key": 11,
+      "mode": 1,
+      "duration_ms": 33000,
+      "loudness": -15.2,
+      "wav": {
+        "high": "e220644dcbad391c2bff4f6bb01dd3d6f944cf52836f11a16068b26b238d57b4",
+        "low": "715c15d8e8e637106d370a02126ac602ad97019c28fda24b28c2f0c00d464355"
+      }
+    },
+    "HqXqAdsgdYuJHQxw5jF5ye": {
+      "tempo": 101,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 22010,
+      "loudness": -17.4,
+      "wav": {
+        "high": "c7255e236882b9afe9b6cf9a2aa56a98c25c8cac794a9a8fa4eb4482b48a4600",
+        "low": "a0c304015aeacb5a18fecc5bde396382f182fba435952fc8683f3aa789b868c5"
+      }
+    },
+    "JwZlcbSfTzXc2L2Xg23vPh": {
+      "tempo": 149,
+      "key": 11,
+      "mode": 0,
+      "duration_ms": 15886,
+      "loudness": -16.9,
+      "wav": {
+        "high": "4728e80213a4c89dbe6252bd9c014604638363a7882ab823e3337fbe8a22e51e",
+        "low": "d2b9fac0de33efd2fdeeb47537557d16f0359803531f4df0ab6234d921e16454"
+      }
+    },
+    "KWCINfAcu9P27VC8WD9vLl": {
+      "tempo": 98,
+      "key": 11,
+      "mode": 0,
+      "duration_ms": 22592,
+      "loudness": -13.7,
+      "wav": {
+        "high": "cec954a34b109428c8bc86ba2a202793ebefb691c0610cf66d93b65088f54f3f",
+        "low": "d61c790dfe6702aa937b264c0471d498e95ba292e8463ca224228b731476c936"
+      }
+    },
+    "PF4JyUcDWFEeg1h1x05NF2": {
+      "tempo": 124,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 18484,
+      "loudness": -10.6,
+      "wav": {
+        "high": "858d8dd73dfe7d9e636820f5b945b1def3af7ab7df6dfa64b24b150fd890e7c0",
+        "low": "39ecae0ca9a246feb02824acc1dec42fd5dbdbe064dc37e4d66522fd54d55e73"
+      }
+    },
+    "PGn2O1MbYs6xy9iyUbZ0e2": {
+      "tempo": 121,
+      "key": 10,
+      "mode": 0,
+      "duration_ms": 18868,
+      "loudness": -10.9,
+      "wav": {
+        "high": "952888af4350c056306eef70ae928ad7b6e2e244a498bdce4a842b01085d3805",
+        "low": "f8608335a66e47b3091eb6c47dc0d7b34221c8b0af11fc4aac74d3ed639091c9"
+      }
+    },
+    "QTVMh4WT9IWWZHgw6biHJd": {
+      "tempo": 79,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 27304,
+      "loudness": -15.7,
+      "wav": {
+        "high": "78481fe95b112b41fe535c2f2c8d8b17668895970e866e00e14bd9297259fc0b",
+        "low": "0c993d5ddc24058729d9a4a4f9a5842edb3b6e66a85482236447e8dfcc397c29"
+      }
+    },
+    "QaO84FmHX514skM31sg5j7": {
+      "tempo": 92,
+      "key": 10,
+      "mode": 1,
+      "duration_ms": 23870,
+      "loudness": -11.8,
+      "wav": {
+        "high": "cecc6be21949f26d8173f1394856c32d744f58a02fd0dd034043e879c503e0f4",
+        "low": "9b56339035a6d1765c66667b9e6b70777aa284475c19fe75dee2af77d63fdd93"
+      }
+    },
+    "RVUzvtcbuWw2TzFnRSJDN0": {
+      "tempo": 76,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 28263,
+      "loudness": -14.3,
+      "wav": {
+        "high": "70ab8e5a02ebc47a30d8ee6983829444747f722af47ed7ff9e9ee03f80737b17",
+        "low": "798754baf0b75994a16867c850bb6805f0aa20257910f123a6cb6814364262ab"
+      }
+    },
+    "U3Ch411VML7vM5lecBYuAp": {
+      "tempo": 71,
+      "key": 5,
+      "mode": 0,
+      "duration_ms": 30042,
+      "loudness": -17.2,
+      "wav": {
+        "high": "682d4200219301fab32666096c1c1fadc621e4667cbf2002e3d96965142afa10",
+        "low": "43760225c1a3184c30cdf995b123c707a8e9622d77ce3e596e4fd30a7c486463"
+      }
+    },
+    "UM56U2iNM7pKP9bjRFTBvP": {
+      "tempo": 144,
+      "key": 1,
+      "mode": 1,
+      "duration_ms": 16333,
+      "loudness": -9.6,
+      "wav": {
+        "high": "a38defb670f1fe136de0556258a4eb1564c70249d238b671b7280b0a114ffb7d",
+        "low": "ff491676a692d5bcd8034f9a7a25ea93a9077659d51a3ae163e5a766864b0f30"
+      }
+    },
+    "VtX4m9I32P8FdQxRNTEGC7": {
+      "tempo": 121,
+      "key": 8,
+      "mode": 1,
+      "duration_ms": 18868,
+      "loudness": -9.7,
+      "wav": {
+        "high": "0c9bec22fd84f8d36719e3f5adf9c44334c6cba4d58f537bb41ef5987f18a1b1",
+        "low": "0587e9e4db3fc75e95cc1a596a2ae3efec200ef614dc9c130f62bb96b8055fc0"
+      }
+    },
+    "bW7UDX7WghDFBpis4h9fzq": {
+      "tempo": 64,
+      "key": 9,
+      "mode": 0,
+      "duration_ms": 33000,
+      "loudness": -10.3,
+      "wav": {
+        "high": "2801ff2f0be8f5d92bdfb2c916d8e5e17e5123f2a81f4b32f57a59d1c69b8d6c",
+        "low": "8581a6fbd643beaf150e638f8386be797cc174daa7003d029d499102afeaf91a"
+      }
+    },
+    "eTtyWEBdXd5MUoZvYl5kFa": {
+      "tempo": 72,
+      "key": 8,
+      "mode": 0,
+      "duration_ms": 29667,
+      "loudness": -11.2,
+      "wav": {
+        "high": "f00d02ec626b8fcbeb0ac589189764c6cbf18dcb7eb0179d39e2576dc84e2631",
+        "low": "6e24e491b5f9ae46da1977a620c8c61735bf0fac94048556a595aca381680ecf"
+      }
+    },
+    "ffAzRefUQEEOvMDhVgbhyH": {
+      "tempo": 121,
+      "key": 7,
+      "mode": 1,
+      "duration_ms": 18868,
+      "loudness": -17.8,
+      "wav": {
+        "high": "8adf8f110520f87c08dba3354befc84fc8744b625071c3a20d38d62818af66d3",
+        "low": "559b0fecf080f5b852b12a5ec7000993ad3ce5f17ba7089c265c4c2814d6ea8e"
+      }
+    },
+    "iZqPhDnnqNKnKZuQ0Bl7m9": {
+      "tempo": 85,
+      "key": 2,
+      "mode": 1,
+      "duration_ms": 25588,
+      "loudness": -9.7,
+      "wav": {
+        "high": "b73ffe18b97387ee67333e4cd00f66eebcff2ef2b7b9dba5d468524bf0886f9a",
+        "low": "b38e740f5dc94e86db2fbc9c08c0ea873279bb33588d216e88b501615ecc27b4"
+      }
+    },
+    "kY1ukACrDXzQCQ5Y8KrH9F": {
+      "tempo": 99,
+      "key": 0,
+      "mode": 0,
+      "duration_ms": 22394,
+      "loudness": -16.3,
+      "wav": {
+        "high": "5f67c0191aed716ccf8b182cdd62292feb17f56a2739bb6f2bccdb5ef6f74d61",
+        "low": "69843383ef38446b548e1e106dc6f153c393c3b6d98c318a9cace75e6cd4178b"
+      }
+    },
+    "peAmBhV1uS3qGursltvJRb": {
+      "tempo": 60,
+      "key": 3,
+      "mode": 0,
+      "duration_ms": 35000,
+      "loudness": -10.5,
+      "wav": {
+        "high": "8ed24067aaab8b578428f538ef750f7d5a30bf797de2d1ccf9ed2b56824030f6",
+        "low": "a1f177615c99073b69c7e88aaea5ae80f5f6343c521567a6bb60a60d3b621662"
+      }
+    },
+    "rjZcbiR3RRQ30aWiw4JA0j": {
+      "tempo": 95,
+      "key": 2,
+      "mode": 1,
+      "duration_ms": 23211,
+      "loudness": -14,
+      "wav": {
+        "high": "1ab9b50006fcbbd9e9d58a8e777e6a718c23a639d8a56b0637ad95dcc4dcfb88",
+        "low": "de2c4f61889528353c757a9b4891429361b789cf8ce0cd77956ef3967e0bfcaa"
+      }
+    },
+    "s62Z6t8lHaWZFSmBYNHvXX": {
+      "tempo": 82,
+      "key": 8,
+      "mode": 1,
+      "duration_ms": 26415,
+      "loudness": -17,
+      "wav": {
+        "high": "1791831462e3a8e2c25173877f1d803261ec8cbc7a6ac6729ded1120c0f9fe4a",
+        "low": "50abfa4c062649c169e77958573d3f8570d0c67a79121e58d6dbd268d3e8faf1"
+      }
+    },
+    "ufK5sr46ZuVuapYnlyQ7gz": {
+      "tempo": 175,
+      "key": 3,
+      "mode": 0,
+      "duration_ms": 13971,
+      "loudness": -12.2,
+      "wav": {
+        "high": "506d088244a0562bda07e5f92a4807bdf820f06a98c8c14b4b7e18475635a871",
+        "low": "e465e151e784dd23ed60763aa1143c727c40b5e4566bdc30ca7b5db9ef10e0a6"
+      }
+    },
+    "v7IZ2a1UOqzwuFZluuWjcj": {
+      "tempo": 123,
+      "key": 5,
+      "mode": 1,
+      "duration_ms": 18610,
+      "loudness": -10.9,
+      "wav": {
+        "high": "e90517c2f03be4ac57a7b99000482402bf1697a8347fa470c2883428840fd7d6",
+        "low": "e2be4dac351ebbde0120a352333179304b61adc15c1ef5e41ceaaf362dbd2626"
+      }
+    },
+    "vi7q2gus2edvkRguS6pYMT": {
+      "tempo": 88,
+      "key": 4,
+      "mode": 1,
+      "duration_ms": 24818,
+      "loudness": -12,
+      "wav": {
+        "high": "f6ac350ab67deb50b9a81b9a60fe1e719c7b36bf605979c6dc127d3dadeeff14",
+        "low": "b8cd96a9954bd50835b434be730fa1a41214bcd7a948b32062f2ecd6f2ffcabc"
+      }
+    },
+    "ywyXcARJ9QRWh7n2uldjW8": {
+      "tempo": 76,
+      "key": 6,
+      "mode": 1,
+      "duration_ms": 28263,
+      "loudness": -18.1,
+      "wav": {
+        "high": "17d891417dc5751e475a020b70cc50edd160fa99fb6fe11c7061b90459da0056",
+        "low": "419d1525019c847e7120d2c3804a67196292ae11c7673d892823cd7c6803f9a7"
+      }
+    },
+    "yyBpCAbE2zJThuXkHR0eCm": {
+      "tempo": 99,
+      "key": 7,
+      "mode": 0,
+      "duration_ms": 22394,
+      "loudness": -12.5,
+      "wav": {
+        "high": "409a8ff7c72e9986ed461c0d8fcb1dc708cc69cebb7923d09108302dc268e3f8",
+        "low": "a1e763d48164332c8d125685bfd1ab951a6c8c53e18f743b802632602048f478"
+      }
+    }
+  },
+  "full_length_params": {
+    "Lumen Drift/First Glow": {
+      "style": "ambient",
+      "seed": 121354997,
+      "bpm": 64,
+      "mode": "minor",
+      "key": 9,
+      "duration": 58.561174529604614,
+      "target": -9.94607511581853,
+      "jitter": [
+        -0.02319953378289938,
+        -0.02389844559133053,
+        0.07836011067032814,
+        0.0589846495166421
+      ]
+    },
+    "Lumen Drift/Glass Horizon": {
+      "style": "ambient",
+      "seed": 2109248417,
+      "bpm": 60,
+      "mode": "minor",
+      "key": 3,
+      "duration": 58.99320516735315,
+      "target": -11.98148298682645,
+      "jitter": [
+        0.0757664292305708,
+        -0.05902008645236492,
+        -0.07863382190465927,
+        -0.05785062957555056
+      ]
+    },
+    "Lumen Drift/Tidal Memory": {
+      "style": "ambient",
+      "seed": 4014840021,
+      "bpm": 64,
+      "mode": "major",
+      "key": 11,
+      "duration": 68.41737526468933,
+      "target": -12.111430281307548,
+      "jitter": [
+        0.028192467018961907,
+        -0.07889997161924839,
+        0.06404670849442481,
+        -0.05222058035433293
+      ]
+    },
+    "Lumen Drift/Afterlight": {
+      "style": "ambient",
+      "seed": 2250137608,
+      "bpm": 71,
+      "mode": "minor",
+      "key": 5,
+      "duration": 72.32200808357447,
+      "target": -17.914249169640243,
+      "jitter": [
+        -0.04674911096692085,
+        -0.04934406742453575,
+        -0.02174659837037325,
+        -0.04895652569830418
+      ]
+    },
+    "Neon Harbor/Midnight Arcade": {
+      "style": "synthwave",
+      "seed": 1212758998,
+      "bpm": 98,
+      "mode": "minor",
+      "key": 11,
+      "duration": 65.07154276128858,
+      "target": -16.818909145891666,
+      "jitter": [
+        -0.02738936010748148,
+        0.017549591436982155,
+        0.07703473333269358,
+        0.0170110297575593
+      ]
+    },
+    "Neon Harbor/Chrome Avenue": {
+      "style": "synthwave",
+      "seed": 1244486074,
+      "bpm": 101,
+      "mode": "minor",
+      "key": 0,
+      "duration": 72.74017484858632,
+      "target": -14.076906120404601,
+      "jitter": [
+        0.048948264569044116,
+        0.0319166449084878,
+        -0.006748281940817833,
+        0.06445721566677094
+      ]
+    },
+    "Neon Harbor/Lost Signal": {
+      "style": "synthwave",
+      "seed": 449656376,
+      "bpm": 99,
+      "mode": "minor",
+      "key": 0,
+      "duration": 70.67370555829257,
+      "target": -14.511636666953564,
+      "jitter": [
+        0.03311420101672411,
+        0.020082460641860964,
+        -0.03463863521814346,
+        0.06450625590980053
+      ]
+    },
+    "Neon Harbor/Sunset Protocol": {
+      "style": "synthwave",
+      "seed": 1862243676,
+      "bpm": 99,
+      "mode": "minor",
+      "key": 7,
+      "duration": 62.48572667594999,
+      "target": -13.490451969206333,
+      "jitter": [
+        0.05552678193897009,
+        -0.07820287216454745,
+        0.05734005250036717,
+        0.012555234543979167
+      ]
+    },
+    "Neon Harbor/Overdrive": {
+      "style": "synthwave",
+      "seed": 2032986700,
+      "bpm": 101,
+      "mode": "minor",
+      "key": 9,
+      "duration": 58.850617380812764,
+      "target": -8.937278924509883,
+      "jitter": [
+        0.038947242572903634,
+        -0.06921560816466808,
+        -0.0033733534440398218,
+        -0.07530640102922917
+      ]
+    },
+    "Copper Fox/Steam & Paper": {
+      "style": "lofi",
+      "seed": 1843177154,
+      "bpm": 76,
+      "mode": "minor",
+      "key": 7,
+      "duration": 66.17686652578413,
+      "target": -15.757047693710774,
+      "jitter": [
+        -0.07787525746971369,
+        0.05134065832942725,
+        -0.022287596613168717,
+        0.012498761862516403
+      ]
+    },
+    "Copper Fox/Corner Café": {
+      "style": "lofi",
+      "seed": 427391376,
+      "bpm": 82,
+      "mode": "major",
+      "key": 8,
+      "duration": 71.80212448351085,
+      "target": -11.91171495616436,
+      "jitter": [
+        0.0735707538574934,
+        -0.06585198055952787,
+        -0.026896031163632872,
+        0.019804286770522594
+      ]
+    },
+    "Copper Fox/Sunday Static": {
+      "style": "lofi",
+      "seed": 1498520896,
+      "bpm": 79,
+      "mode": "minor",
+      "key": 9,
+      "duration": 69.21207206323743,
+      "target": -17.94950717035681,
+      "jitter": [
+        0.0022816841676831247,
+        0.06057310808449984,
+        0.04612532924860716,
+        -0.06248037125915289
+      ]
+    },
+    "Copper Fox/Late Bus Home": {
+      "style": "lofi",
+      "seed": 3267576459,
+      "bpm": 77,
+      "mode": "minor",
+      "key": 5,
+      "duration": 64.19374005869031,
+      "target": -17.27230986719951,
+      "jitter": [
+        0.0013034546002745628,
+        0.009161815531551838,
+        -0.05965321570634842,
+        -0.06460242476314307
+      ]
+    },
+    "Copper Fox/Paper Moon": {
+      "style": "lofi",
+      "seed": 2216227973,
+      "bpm": 76,
+      "mode": "major",
+      "key": 6,
+      "duration": 74.28488850593567,
+      "target": -16.818782546557486,
+      "jitter": [
+        0.05649565566331148,
+        0.02501717273145914,
+        0.010033727958798408,
+        -0.03513849217444658
+      ]
+    },
+    "Velvet Static/Pulse Garden": {
+      "style": "house",
+      "seed": 4278786414,
+      "bpm": 121,
+      "mode": "major",
+      "key": 8,
+      "duration": 55.39030879735947,
+      "target": -17.24283742159605,
+      "jitter": [
+        -0.016179989725351333,
+        0.03963712766766548,
+        -0.06468732617795467,
+        0.02650334928184748
+      ]
+    },
+    "Velvet Static/Mirrorball Heart": {
+      "style": "house",
+      "seed": 2499698078,
+      "bpm": 123,
+      "mode": "major",
+      "key": 5,
+      "duration": 58.91336505766958,
+      "target": -13.797561334446073,
+      "jitter": [
+        0.010782510489225388,
+        -0.06544035591185093,
+        -0.05420531265437603,
+        0.05504569921642542
+      ]
+    },
+    "Velvet Static/Deep Current": {
+      "style": "house",
+      "seed": 1253648003,
+      "bpm": 121,
+      "mode": "major",
+      "key": 7,
+      "duration": 73.67593708913773,
+      "target": -12.65516417240724,
+      "jitter": [
+        -0.04100079998373985,
+        -0.05273352518677712,
+        -0.005532413944602013,
+        -0.05769104730337858
+      ]
+    },
+    "Velvet Static/Open Air": {
+      "style": "house",
+      "seed": 2421441284,
+      "bpm": 121,
+      "mode": "minor",
+      "key": 10,
+      "duration": 58.77086860127747,
+      "target": -18.463042004965246,
+      "jitter": [
+        -0.020377830155193805,
+        -0.03778990805149079,
+        -0.06120948530733585,
+        -0.07414881471544504
+      ]
+    },
+    "Velvet Static/Sunrise Set": {
+      "style": "house",
+      "seed": 4129865695,
+      "bpm": 124,
+      "mode": "minor",
+      "key": 5,
+      "duration": 58.02997520659119,
+      "target": -10.725038255564868,
+      "jitter": [
+        0.01655658606439829,
+        -0.07743120603263379,
+        0.032440698742866515,
+        0.05651173122227192
+      ]
+    },
+    "Juniper Lane/Porch Song": {
+      "style": "acoustic",
+      "seed": 3505744932,
+      "bpm": 88,
+      "mode": "major",
+      "key": 4,
+      "duration": 61.67013403959572,
+      "target": -15.31791118811816,
+      "jitter": [
+        0.06645217292010784,
+        -0.06591648492962122,
+        0.01796963706612587,
+        -0.05841500833630562
+      ]
+    },
+    "Juniper Lane/Willow & Wire": {
+      "style": "acoustic",
+      "seed": 1701677568,
+      "bpm": 92,
+      "mode": "major",
+      "key": 10,
+      "duration": 61.272961371578276,
+      "target": -18.078736152034253,
+      "jitter": [
+        0.058885108456015585,
+        0.013687130473554134,
+        0.00843150720000267,
+        0.05389586929231882
+      ]
+    },
+    "Juniper Lane/Little Lantern": {
+      "style": "acoustic",
+      "seed": 1894069859,
+      "bpm": 85,
+      "mode": "major",
+      "key": 2,
+      "duration": 56.76818947773427,
+      "target": -16.107888153288513,
+      "jitter": [
+        0.018687816075980662,
+        0.06313019584864378,
+        -0.04687326308339834,
+        -0.05235338546335697
+      ]
+    },
+    "Juniper Lane/Field Notes": {
+      "style": "acoustic",
+      "seed": 1761427464,
+      "bpm": 95,
+      "mode": "major",
+      "key": 2,
+      "duration": 65.97121254075319,
+      "target": -17.096922513097525,
+      "jitter": [
+        -0.017884241826832296,
+        0.060655942596495156,
+        0.05111737985163927,
+        -0.05712295763194561
+      ]
+    },
+    "Kite Theory/Cloud Runner": {
+      "style": "chiptune",
+      "seed": 3905590893,
+      "bpm": 142,
+      "mode": "minor",
+      "key": 0,
+      "duration": 67.50102025922388,
+      "target": -15.58479710156098,
+      "jitter": [
+        -0.06253611341118813,
+        -0.0012623849883675576,
+        0.07880377165973186,
+        -0.022293427363038062
+      ]
+    },
+    "Kite Theory/Save Point": {
+      "style": "chiptune",
+      "seed": 720172923,
+      "bpm": 144,
+      "mode": "major",
+      "key": 1,
+      "duration": 56.221032845787704,
+      "target": -9.730924904812127,
+      "jitter": [
+        0.009926570281386375,
+        0.07189357161521912,
+        -0.05107570592314005,
+        0.05363383561372757
+      ]
+    },
+    "Kite Theory/Boss Rush": {
+      "style": "chiptune",
+      "seed": 3393584637,
+      "bpm": 149,
+      "mode": "minor",
+      "key": 11,
+      "duration": 71.82452807668597,
+      "target": -13.551041499245912,
+      "jitter": [
+        0.07368777990341187,
+        -0.051732793785631656,
+        0.012607380747795105,
+        0.07355899795889854
+      ]
+    },
+    "Kite Theory/Credits Roll": {
+      "style": "chiptune",
+      "seed": 4029110957,
+      "bpm": 135,
+      "mode": "major",
+      "key": 4,
+      "duration": 72.64897391200066,
+      "target": -10.17180787306279,
+      "jitter": [
+        -0.05483181580901146,
+        -0.049460520036518574,
+        -0.032952317148447034,
+        0.05824860457330942
+      ]
+    },
+    "Ossa/Salt Lines": {
+      "style": "dub",
+      "seed": 234048347,
+      "bpm": 79,
+      "mode": "minor",
+      "key": 8,
+      "duration": 56.652893386781216,
+      "target": -10.568909935187548,
+      "jitter": [
+        0.06354869924485683,
+        0.05893609084188938,
+        0.008575877621769906,
+        0.050919019877910615
+      ]
+    },
+    "Ossa/Undertow": {
+      "style": "dub",
+      "seed": 2679683340,
+      "bpm": 72,
+      "mode": "minor",
+      "key": 8,
+      "duration": 60.089736906811595,
+      "target": -10.356402549892664,
+      "jitter": [
+        -0.051245692968368534,
+        -0.0625074801966548,
+        -0.06049115467816591,
+        0.016189243495464325
+      ]
+    },
+    "Ossa/Harbor Lights": {
+      "style": "dub",
+      "seed": 870862683,
+      "bpm": 76,
+      "mode": "minor",
+      "key": 0,
+      "duration": 65.6493148766458,
+      "target": -17.74121231539175,
+      "jitter": [
+        -0.03202883660793304,
+        0.01707166139036417,
+        0.03593557316809893,
+        0.05733548890799284
+      ]
+    },
+    "Polar Bloom/Frostbite": {
+      "style": "dnb",
+      "seed": 344145515,
+      "bpm": 171,
+      "mode": "minor",
+      "key": 1,
+      "duration": 56.99056793469936,
+      "target": -12.62997511914,
+      "jitter": [
+        0.02131193280220032,
+        0.010084467492997646,
+        -0.016824926137924193,
+        0.04397838573902845
+      ]
+    },
+    "Polar Bloom/Aurora Rush": {
+      "style": "dnb",
+      "seed": 1049674389,
+      "bpm": 171,
+      "mode": "minor",
+      "key": 7,
+      "duration": 59.99845152720809,
+      "target": -8.503828136250377,
+      "jitter": [
+        -0.011801790967583657,
+        0.006544337384402752,
+        -0.018442667610943316,
+        -0.037915143929421906
+      ]
+    },
+    "Polar Bloom/Glacier Run": {
+      "style": "dnb",
+      "seed": 1704454083,
+      "bpm": 175,
+      "mode": "minor",
+      "key": 3,
+      "duration": 61.25399601645768,
+      "target": -18.47557267313823,
+      "jitter": [
+        -0.00831637680530548,
+        -0.02812372662127018,
+        0.0562122704833746,
+        0.0005766578391194344
+      ]
+    }
+  },
+  "full_length_wav": {
+    "Lumen Drift/First Glow": "06777167c52420682bded7ac10eea5b19fc08128ebb9f0e6e8534832c19f7c29",
+    "Neon Harbor/Midnight Arcade": "6684fcf0faf13517b209a3d39d2c1c446cf6f8c7d7d036e9d0bab27f8b3450ee",
+    "Copper Fox/Steam & Paper": "d89e287fae5d40b746a6aaced2c64b20d9155ed742c499392478c533ebf3f654",
+    "Velvet Static/Pulse Garden": "817cde20be046f4c4af90bc64ab13eeea9c40a9ac3781d8bc480234a0fd2788b",
+    "Juniper Lane/Porch Song": "eba09bdad68993ebe1006de90c3f4a0d3b9dee87bfcb18bd14eebd6ae69f574e",
+    "Kite Theory/Cloud Runner": "f77735fd436bd019b51e1d75132a20b2e982e394118f0bc0de5f91c8da1ad870",
+    "Ossa/Salt Lines": "a00280a5e63d0bebe64c2301939a20363b569aba8c4889d9e1969879d070f8b3",
+    "Polar Bloom/Frostbite": "4498a4e70c2970b3c2e985f479c0385dcab2a80db20c7ac59de8cd51c08a9858"
+  }
+}

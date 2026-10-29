@@ -4,12 +4,12 @@
 // browser equivalent. Audio is cached as whole files and range requests from
 // the <audio> element are answered by slicing the cached blob.
 
-const SHELL = 'ainos-shell-v4';
+const SHELL = 'ainos-shell-v5';
 const OFFLINE = 'ainos-offline';
 const LRU = 'ainos-lru';
 const LRU_LIMIT = 60 * 1024 * 1024; // 60 MB
 const META = '/__lru-meta__';
-const SHELL_FILES = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/i18n.js', '/js/ui.js', '/js/player.js', '/js/connect.js', '/js/views.js', '/js/markdown.js', '/img/icon.svg', '/manifest.webmanifest'];
+const SHELL_FILES = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/i18n.js', '/js/ui.js', '/js/player.js', '/js/crossfade.js', '/js/connect.js', '/js/views.js', '/js/markdown.js', '/img/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));

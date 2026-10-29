@@ -6,6 +6,8 @@
 // Signs in with "Try the demo" (which resets the shared demo account to its
 // snapshot), walks every API route, plays with a temporary playlist (deleted
 // at the end) and fetches a signed audio range.
+import { headerProblems } from './check-headers.js';
+
 const base = (process.argv[2] || 'http://127.0.0.1:4321').replace(/\/$/, '');
 // Vercel previews sit behind Deployment Protection; its "Protection Bypass for
 // Automation" secret gets the script through.
@@ -36,6 +38,13 @@ const check = (cond, label) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${label}
 
 await call('GET', '/', undefined);
 await call('GET', '/api/home', undefined, { expect: 401 });
+
+// Security headers on a static page (vercel.json on Vercel) and on an API
+// response (SECURITY_HEADERS in server/app.js). HSTS only over HTTPS.
+for (const url of ['/', '/api/me']) {
+  const problems = headerProblems((await get(url)).headers, { https: base.startsWith('https:') });
+  check(!problems.length, `security headers on ${url}${problems.length ? ': ' + problems.join('; ') : ''}`);
+}
 await call('POST', '/api/auth/demo', {});
 const me = (await call('GET', '/api/me')).json;
 check(me?.username === 'demo' && me?.is_demo === true, 'signed in to the demo');

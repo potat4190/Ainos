@@ -37,7 +37,9 @@ if (usePostgres) {
   console.log('Unset DATABASE_URL to use the local SQLite database instead.\n');
 }
 
-const app = await createApp({ dataDir });
+// TRUST_PROXY=1 behind a TLS-terminating proxy or tunnel (nginx, Caddy, ngrok) that sets
+// X-Forwarded-Proto/-Host/-For; on Vercel it is on already.
+const app = await createApp({ dataDir, ...(process.env.TRUST_PROXY === '1' ? { trustProxy: true } : {}) });
 app.server.listen(PORT, HOST, () => {
   console.log(`Ainos is running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   if (HOST === '0.0.0.0') {

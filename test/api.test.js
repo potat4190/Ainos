@@ -286,7 +286,11 @@ test('retraining is rate-limited across all users', async () => {
   const other = await signup(srv.base, 'tinkerer');
   assert.equal((await demo.post('/api/internals/retrain')).status, 200);
   assert.equal((await other.post('/api/internals/retrain')).status, 200);
-  assert.equal((await demo.post('/api/internals/retrain')).status, 429);
+  const limited = await demo.post('/api/internals/retrain');
+  assert.equal(limited.status, 429);
+  assert.equal(limited.json.error.code, 'rate_limited');
+  const wait = Number(limited.headers.get('retry-after'));
+  assert.ok(Number.isInteger(wait) && wait >= 1 && wait <= 60, `Retry-After ${limited.headers.get('retry-after')}`);
 });
 
 test('home is personalized and includes made-for-you mixes', async () => {
@@ -302,6 +306,137 @@ test('cross-origin writes are refused', async () => {
   assert.equal(r.status, 403);
 });
 
+// A logged-in browser visiting another site must not be able to change
+// anything here: every state-changing method checks where the request came from.
+test('CSRF: writes from another origin are refused for every method; same-origin writes work', async () => {
+  const send = (method, url, headers = {}) => fetch(srv.base + url, {
+    method, headers: { 'Content-Type': 'application/json', Cookie: demo.cookie, ...headers }, body: method === 'DELETE' ? undefined : '{}',
+  });
+  const own = new URL(srv.base);
+  const refused = [
+    { Origin: 'http://evil.example' },
+    { Origin: 'null' }, // sandboxed iframes and some redirects
+    { Origin: `https://${own.host}` }, // right host, wrong scheme
+    { Origin: `http://${own.hostname}:1` }, // right host name, wrong port
+    // Forwarded headers mean nothing without a proxy in front.
+    { Origin: 'http://evil.example', 'X-Forwarded-Host': 'evil.example' },
+    // No Origin, but the browser says the request came from another site.
+    { 'Sec-Fetch-Site': 'cross-site' },
+    { 'Sec-Fetch-Site': 'same-site' },
+  ];
+  for (const [method, url] of [['POST', '/api/me/language'], ['PUT', '/api/me/liked/x'], ['PATCH', '/api/playlists/x'], ['DELETE', '/api/me/liked/x']]) {
+    for (const headers of refused) {
+      const r = await send(method, url, headers);
+      assert.equal(r.status, 403, `${method} ${url} ${JSON.stringify(headers)}`);
+    }
+  }
+  const lang = (headers) => fetch(srv.base + '/api/me/language', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: demo.cookie, ...headers }, body: JSON.stringify({ language: 'en' }),
+  });
+  assert.equal((await lang({ Origin: srv.base })).status, 200, 'same origin');
+  assert.equal((await lang({ 'Sec-Fetch-Site': 'same-origin' })).status, 200, 'no Origin, same-origin fetch');
+  assert.equal((await lang({})).status, 200, 'no Origin at all (curl, older browsers)');
+});
+
+test('CSRF: requests other sites cause are refused for reads too (some GETs change state)', async () => {
+  const get = (url, site) => fetch(srv.base + url, { headers: { Cookie: demo.cookie, ...(site ? { 'Sec-Fetch-Site': site } : {}) } });
+  for (const site of ['cross-site', 'same-site']) {
+    assert.equal((await get('/api/me', site)).status, 403, site);
+    // Connect's push channel registers a device on GET.
+    assert.equal((await get('/api/connect/dealer?device_id=evil123&name=Hacked', site)).status, 403, `dealer ${site}`);
+  }
+  assert.equal((await get('/api/me', 'same-origin')).status, 200, "the app's own fetches");
+  assert.equal((await get('/api/me', 'none')).status, 200, 'a URL typed into the address bar');
+  assert.equal((await get('/api/me')).status, 200, 'no header (curl, older browsers)');
+  assert.ok(!(await demo.get('/api/connect/devices')).json.devices.some((d) => d.name === 'Hacked'));
+});
+
+test('CSRF: only the events route takes text/plain bodies (sendBeacon); elsewhere a form could send them', async () => {
+  const post = (url, body) => fetch(srv.base + url, { method: 'POST', headers: { 'Content-Type': 'text/plain', Cookie: demo.cookie }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/playlists', { name: 'from a form' })).status, 415);
+  assert.equal((await post('/api/me/language', { language: 'en' })).status, 415);
+  const ev = await post('/api/events', { events: [{ type: 'pause', device_id: 'beacon-test', ts: Date.now() }] });
+  assert.equal(ev.status, 200);
+  assert.equal((await ev.json()).accepted, 1);
+});
+
+test('rate limits key on the address the proxy saw, not one the client wrote into X-Forwarded-For', async () => {
+  const { clientAddress } = await import('../server/app.js');
+  const req = (xff, remote = '10.0.0.1') => ({ headers: xff === undefined ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: remote } });
+  // nginx's $proxy_add_x_forwarded_for appends: the client controls everything left of the last entry.
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.9'), { trustProxy: true }), '203.0.113.9');
+  assert.equal(clientAddress(req('203.0.113.9'), { trustProxy: true }), '203.0.113.9', 'Vercel: one entry');
+  assert.equal(clientAddress(req('2001:db8::1'), { trustProxy: true }), '2001:db8::1');
+  assert.equal(clientAddress(req('6.6.6.6'), { trustProxy: false }), '10.0.0.1', 'no proxy: the header is ignored');
+  assert.equal(clientAddress(req(undefined), { trustProxy: true }), '10.0.0.1', 'no header: the socket address');
+  assert.equal(clientAddress(req(`1.1.1.1, ${'x'.repeat(5000)}`), { trustProxy: true }), 'unknown', 'not an address: one shared bucket');
+  assert.equal(clientAddress(req(undefined, null)), 'unknown', 'no address at all');
+  // Some proxies add the client's port.
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.9:51234'), { trustProxy: true }), '203.0.113.9');
+  assert.equal(clientAddress(req('[2001:db8::1]:443'), { trustProxy: true }), '2001:db8::1');
+  assert.equal(clientAddress(req('[2001:db8::1]'), { trustProxy: true }), '2001:db8::1');
+});
+
+test('CSRF: behind the proxy, the forwarded host and scheme are the app origin', async () => {
+  const { sameOrigin } = await import('../server/app.js');
+  const req = (headers, encrypted = false) => ({ headers, socket: { encrypted } });
+  const vercel = { host: 'internal:3000', 'x-forwarded-host': 'ainos.example', 'x-forwarded-proto': 'https' };
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://ainos.example' }), { trustProxy: true }), true);
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'http://ainos.example' }), { trustProxy: true }), false, 'scheme must match');
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://evil.example' }), { trustProxy: true }), false);
+  assert.equal(sameOrigin(req({ ...vercel, origin: 'https://ainos.example' })), false, 'forwarded headers ignored without trustProxy');
+  assert.equal(sameOrigin(req({ host: 'ainos.example', origin: 'https://ainos.example:443' }, true)), true, 'default port');
+  assert.equal(sameOrigin(req({ origin: 'https://ainos.example' })), false, 'no Host header');
+});
+
+test('session cookies are HttpOnly and SameSite=Lax, and Secure over HTTPS', async () => {
+  const signin = (headers = {}) => fetch(srv.base + '/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ username: 'demo', password: 'ainos-demo' }),
+  });
+  const plain = (await signin()).headers.get('set-cookie');
+  assert.match(plain, /; HttpOnly/);
+  assert.match(plain, /; SameSite=Lax/);
+  assert.doesNotMatch(plain, /Secure/, 'plain HTTP (local dev) cannot use Secure cookies');
+  const forged = await signin({ 'X-Forwarded-Proto': 'https' });
+  assert.doesNotMatch(forged.headers.get('set-cookie'), /Secure/, 'X-Forwarded-Proto means nothing without a proxy in front');
+
+  // Behind the proxy (Vercel, or TRUST_PROXY=1), HTTPS cookies are Secure, and so is the one that clears them.
+  const { isSecure } = await import('../server/app.js');
+  const { sessionCookie, clearCookie } = await import('../server/auth.js');
+  const viaProxy = { headers: { 'x-forwarded-proto': 'https' }, socket: {} };
+  assert.equal(isSecure(viaProxy, { trustProxy: true }), true);
+  assert.equal(isSecure(viaProxy), false);
+  assert.equal(isSecure({ headers: {}, socket: { encrypted: true } }), true, 'direct TLS');
+  assert.match(sessionCookie('t', { secure: true }), /^ainos_session=t; Path=\/; HttpOnly; SameSite=Lax; Max-Age=\d+; Secure$/);
+  assert.match(clearCookie({ secure: true }), /HttpOnly; SameSite=Lax; Max-Age=0; Secure$/);
+  assert.doesNotMatch(clearCookie(), /Secure/);
+});
+
+test('demo guard: both shared demo accounts are refused with demo_not_allowed; others pass', async () => {
+  const { noDemo, isDemo, isChurchDemo } = await import('../server/demo.js');
+  const action = noDemo(async ({ user }) => `done by ${user.username}`);
+  for (const username of ['demo', 'DEMO', 'church-demo', 'Church-Demo']) {
+    await assert.rejects(action({ user: { id: 1, username } }), (err) => err.status === 403 && err.code === 'demo_not_allowed', username);
+    assert.equal(isDemo({ username }), true);
+  }
+  assert.equal(await action({ user: { id: 2, username: 'grace' } }), 'done by grace');
+  // Wrapped in the wrong order (no user yet), it refuses rather than letting anyone through.
+  await assert.rejects(action({}), /no signed-in user/);
+  await assert.rejects(action({ user: {} }), /no signed-in user/);
+  assert.equal(isDemo({ username: 'demo2' }), false);
+  assert.equal(isChurchDemo({ username: 'church-demo' }), true);
+  assert.equal(isChurchDemo({ username: 'demo' }), false);
+});
+
+test('nobody can sign up with a demo account name, even before that account exists', async () => {
+  for (const username of ['church-demo', 'Church-Demo', 'DEMO']) {
+    const r = await client(srv.base).post('/api/auth/signup', { username, password: 'correct horse battery' });
+    assert.equal(r.status, 409, username);
+    assert.equal(r.json.error.code, 'username_taken');
+  }
+  assert.equal((await srv.app.store.get("SELECT COUNT(*) AS n FROM users WHERE lower(username) = 'church-demo'")).n, 0);
+});
+
 test('static files cannot escape their folders', async () => {
   for (const p of ['/art/..%2Fsecret.key', '/art/../secret.key', '/docs/..%2F..%2Fpackage.json', '/..%2Fdata%2Fsecret.key']) {
     const r = await fetch(srv.base + p);
@@ -314,6 +449,9 @@ test('security headers are set', async () => {
   const r = await fetch(srv.base + '/');
   assert.match(r.headers.get('content-security-policy'), /default-src 'self'/);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  // YouTube embeds identify the app by its origin in the Referer header; a
+  // stricter policy (same-origin, no-referrer) breaks them.
+  for (const url of ['/', '/api/me']) assert.equal((await fetch(srv.base + url)).headers.get('referrer-policy'), 'strict-origin-when-cross-origin', url);
 });
 
 test('vercel.json gives static files the same security headers as the app', async () => {

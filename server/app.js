@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,14 +7,14 @@ import { sqliteStore, postgresStore, inList } from './store.js';
 import { Router, HttpError, sendJson, readJson, serveFile, serveRange, safeJoin } from './http.js';
 import {
   hashPassword, verifyPassword, validateCredentials, createSession, destroySession, purgeExpiredSessions, sessionCookie, clearCookie,
-  userFromRequest, rateLimiter, purgeRateLimits, signMediaPath, verifyMediaSignature,
+  userFromRequest, rateLimiter, rateLimit, purgeRateLimits, signMediaPath, verifyMediaSignature,
 } from './auth.js';
 import { Catalog } from './catalog.js';
 import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo, DEMO_SESSION_TTL_MS } from './demo.js';
+import { resetDemo, isDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,7 +25,7 @@ const TARGET_LUFS = -14;
 export const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'same-origin',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Cross-Origin-Opener-Policy': 'same-origin',
 };
 
@@ -36,6 +37,7 @@ export async function createApp({
   dataDir = path.join(ROOT, 'data'),
   databaseUrl = process.env.DATABASE_URL,
   secret = process.env.AINOS_SECRET,
+  previousSecret = process.env.AINOS_SECRET_PREVIOUS, // accepted for media URLs during a rotation
   publicDir = path.join(ROOT, 'public'),
   docsDir = path.join(ROOT, 'docs'),
   eventLogDir = databaseUrl ? null : path.join(dataDir, 'events'),
@@ -59,7 +61,6 @@ export async function createApp({
   const events = new EventPipeline(store, eventLogDir, { onStreams: (n) => recommender.noteNewStreams(n) });
   const hub = new ConnectHub();
   const loginLimiter = rateLimiter(store, { name: 'auth', limit: authAttemptsPerMinute, windowMs: 60_000 });
-  const retrainLimiter = rateLimiter(store, { name: 'retrain', limit: 2, windowMs: 60_000 });
   // Each demo sign-in rewrites the demo account, so it is limited per visitor
   // and, so a crowd of addresses cannot keep it busy, overall.
   const demoLimiter = rateLimiter(store, { name: 'demo', limit: demoSignInsPerMinute, windowMs: 60_000 });
@@ -74,7 +75,7 @@ export async function createApp({
   const housekeepingTimer = setInterval(housekeeping, 6 * 3600 * 1000);
   housekeepingTimer.unref?.();
 
-  const clientIp = (req) => (trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket?.remoteAddress || 'unknown';
+  const clientIp = (req) => clientAddress(req, { trustProxy });
 
   const r = new Router();
   const auth = (handler) => async (ctx) => {
@@ -90,6 +91,9 @@ export async function createApp({
     const { username, password, display_name, language } = await readJson(req);
     validateCredentials(username, password);
     const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
+    // The demo accounts may not exist yet in a database (they are created on
+    // first use); nobody else may claim their names.
+    if (DEMO_USERNAMES.includes(username.toLowerCase())) throw taken();
     if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
     const lang = LANGUAGES.includes(language) ? language : 'en';
@@ -102,7 +106,7 @@ export async function createApp({
       throw err;
     }
     const token = await createSession(store, Number(row.id));
-    sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+    sendJson(res, 201, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }) }) });
   });
 
   r.post('/api/auth/login', async ({ req, res }) => {
@@ -111,7 +115,7 @@ export async function createApp({
     const row = typeof username === 'string' ? await store.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?) AND is_simulated = 0', [username]) : null;
     if (!row || typeof password !== 'string' || !(await verifyPassword(password, row.password_hash))) throw new HttpError(401, 'Wrong username or password', 'bad_credentials');
     const token = await createSession(store, row.id);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }) }) });
   });
 
   // "Try the demo": no password on the client. Resets the shared demo account
@@ -123,13 +127,13 @@ export async function createApp({
     // One day, not 30: every click makes a session for the shared account, and
     // expired ones are purged by housekeeping.
     const token = await createSession(store, userId, { ttlMs: DEMO_SESSION_TTL_MS });
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req), maxAgeMs: DEMO_SESSION_TTL_MS }) });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }), maxAgeMs: DEMO_SESSION_TTL_MS }) });
   });
 
   r.post('/api/auth/logout', async ({ req, res }) => {
     const user = await userFromRequest(store, req);
     if (user) await destroySession(store, user.token);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie({ secure: isSecure(req, { trustProxy }) }) });
   });
 
   r.get('/api/me', auth(({ res, user }) => {
@@ -505,7 +509,7 @@ export async function createApp({
 
   // ---------------- events ----------------
   r.post('/api/events', auth(async ({ req, res, user }) => {
-    sendJson(res, 200, await events.ingest(user, await readJson(req, 512 * 1024)));
+    sendJson(res, 200, await events.ingest(user, await readJson(req, 512 * 1024, { allowText: true })));
   }));
 
   // ---------------- connect ----------------
@@ -552,7 +556,7 @@ export async function createApp({
 
   // A full retrain is CPU-heavy, so it is rate-limited across all users.
   r.post('/api/internals/retrain', auth(async ({ res }) => {
-    if (!(await retrainLimiter('global'))) throw new HttpError(429, 'The recommender was just retrained, try again in a minute');
+    await rateLimit(store, 'global:retrain', { limit: 2, windowSec: 60, message: 'The recommender was just retrained, try again in a minute' });
     sendJson(res, 200, await recommender.train({ fresh: true }));
   }));
 
@@ -564,7 +568,13 @@ export async function createApp({
     const pathname = url.pathname;
 
     if (pathname.startsWith('/api/')) {
-      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) throw new HttpError(403, 'Cross-origin request refused');
+      // The API serves this app's own pages only. Browsers mark requests that
+      // other sites cause (links, forms, scripts) with Sec-Fetch-Site; refuse
+      // them for every method, since some GETs change state (Connect's dealer
+      // registers a device). Writes also need a matching Origin.
+      const site = req.headers['sec-fetch-site'];
+      if (site === 'cross-site' || site === 'same-site') throw new HttpError(403, 'Cross-origin request refused');
+      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, { trustProxy })) throw new HttpError(403, 'Cross-origin request refused');
       const m = r.match(req.method, pathname);
       if (!m) throw new HttpError(404, 'Not found');
       if (m.methodNotAllowed) throw new HttpError(405, 'Method not allowed');
@@ -578,7 +588,7 @@ export async function createApp({
     // Audio files: signed URL required; served with byte-range support.
     const media = /^\/media\/(low|high)\/([A-Za-z0-9]{22})\.wav$/.exec(pathname);
     if (media) {
-      if (!verifyMediaSignature(secret, pathname, url.searchParams.get('exp'), url.searchParams.get('sig'))) throw new HttpError(403, 'Invalid or expired media signature');
+      if (!verifyMediaSignature([secret, previousSecret], pathname, url.searchParams.get('exp'), url.searchParams.get('sig'))) throw new HttpError(403, 'Invalid or expired media signature');
       const file = path.join(dataDir, 'media', media[1], media[2] + '.wav');
       if (!fs.existsSync(file)) throw new HttpError(404, 'Not found');
       if (req.headers.range) {
@@ -617,7 +627,7 @@ export async function createApp({
       if (res.headersSent) { try { res.end(); } catch { /* ignore */ } return; }
       const status = err instanceof HttpError ? err.status : 500;
       if (status >= 500) log('[error]', req.method, req.url, err);
-      sendJson(res, status, { error: { status, message: status >= 500 ? 'Internal server error' : err.message, code: err.code } });
+      sendJson(res, status, { error: { status, message: status >= 500 ? 'Internal server error' : err.message, code: err.code } }, status < 500 ? err.headers : undefined);
     });
   }
 
@@ -650,15 +660,43 @@ function hourIn(tz) {
   return (ms) => Number(fmt.formatToParts(ms).find((p) => p.type === 'hour').value) % 24;
 }
 
-function isSecure(req) {
-  return !!req.socket?.encrypted || req.headers['x-forwarded-proto'] === 'https';
+/**
+ * The client's IP address, for per-address rate limits. Behind the proxy it is
+ * the last X-Forwarded-For entry: the proxy appends the address it saw, and
+ * anything to the left of it came from the client (Vercel replaces the header
+ * with the client's address alone). Anything that isn't an IP counts as one
+ * shared "unknown" client.
+ */
+export function clientAddress(req, { trustProxy = false } = {}) {
+  const forwarded = trustProxy ? String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean).pop() : '';
+  // Some proxies write "1.2.3.4:5678" or "[2001:db8::1]:5678".
+  const ip = (forwarded || req.socket?.remoteAddress || '').replace(/^\[([^\]]+)\](?::\d+)?$|^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, '$1$2');
+  return net.isIP(ip) ? ip : 'unknown';
 }
 
-function sameOrigin(req) {
+/** Whether the browser reached us over HTTPS (behind the proxy, it says so in X-Forwarded-Proto). */
+export function isSecure(req, { trustProxy = false } = {}) {
+  return !!req.socket?.encrypted || (trustProxy && req.headers['x-forwarded-proto'] === 'https');
+}
+
+/**
+ * CSRF check for state-changing requests: the browser's Origin header must be
+ * this app's own origin (scheme and host). Forwarded headers count only behind
+ * the proxy (trustProxy); anyone can send them to a bare server.
+ */
+export function sameOrigin(req, { trustProxy = false } = {}) {
   const origin = req.headers.origin;
-  if (!origin) return true; // same-origin fetches from older browsers / curl / sendBeacon may omit it
+  if (!origin) {
+    // Older browsers, curl and the tests omit Origin. Browsers that send
+    // Sec-Fetch-Site still say where the request came from.
+    const site = req.headers['sec-fetch-site'];
+    return !site || site === 'same-origin' || site === 'none';
+  }
+  const host = (trustProxy && req.headers['x-forwarded-host']) || req.headers.host;
+  if (!host) return false;
+  const scheme = isSecure(req, { trustProxy }) ? 'https' : 'http';
   try {
-    return new URL(origin).host === (req.headers['x-forwarded-host'] || req.headers.host);
+    return new URL(origin).origin === new URL(`${scheme}://${host}`).origin; // "null" (sandboxed frames) throws → refused
   } catch {
     return false;
   }

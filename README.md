@@ -28,7 +28,7 @@ Because the account is shared, visitors can see each other's changes until the n
 
 | Command | What it does |
 |---|---|
-| `npm start` | Start the server (`PORT`, `HOST` env vars; default `127.0.0.1:4321`) |
+| `npm start` | Start the server (`PORT`, `HOST` env vars; default `127.0.0.1:4321`; `TRUST_PROXY=1` behind an HTTPS proxy or tunnel) |
 | `npm run dev` | Same, restarting on file changes |
 | `npm run setup` | Regenerate the catalog from scratch (wipes `data/`) |
 | `npm test` | Automated test suite: streaming, auth, events, playlists, search, multi-language recommendations, Connect, loudness meter, security |
@@ -52,6 +52,22 @@ Environment variables on Vercel:
 | `DATABASE_CA_CERT` | The CA certificate that signs your database's TLS certificate, as PEM text. Supabase uses its own CA: download it from *Project Settings → Database → SSL configuration* and paste the file's contents. Not needed for a database whose certificate is signed by a public CA. |
 | `AINOS_SECRET` | A long random string; signs media URLs |
 | `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
+| `AINOS_SECRET_PREVIOUS` | Only while rotating `AINOS_SECRET`: the old value, still accepted for media URLs (see *Rotating secrets*). |
+| `YOUVERSION_APP_KEY` | Used from Phase 2, optional. YouVersion Platform App Key for Scripture text. Without it, Scripture falls back to public-domain text. |
+| `YOUTUBE_API_KEY` | Used from Phase 3, optional. YouTube Data API v3 key, restricted in Google Cloud to that API only. Without it, search shows only the local index. |
+| `CRON_SECRET` | Used from Phase 3. A long random string; Vercel sends it to cron routes, which refuse requests without it. |
+| `YOUTUBE_DAILY_SEARCH_CAP` | Used from Phase 3, optional. Live YouTube searches allowed per day (default 80; YouTube's default quota is 100). |
+| `UPLOAD_BUCKET` | Used from Phase 7 (not started). Private Supabase Storage bucket for verified uploads. |
+
+Keys stay on the server: none is read from `public/`, put in HTML, logged or returned by the API.
+
+### Rotating secrets
+
+Rotate a secret when it may have leaked, and otherwise about once a year. Change it in the Vercel project settings and redeploy; secrets never go in the repo.
+
+- **`AINOS_SECRET`** (signs media URLs, which live for up to an hour). Set `AINOS_SECRET_PREVIOUS` to the current value and `AINOS_SECRET` to a new long random string, then redeploy. The app and `middleware.js` accept both for now, so audio already queued in open tabs keeps playing. After at least an hour, delete `AINOS_SECRET_PREVIOUS` and redeploy. If the old secret leaked, skip the overlap: anyone holding it could keep signing URLs while it is accepted, so set only the new `AINOS_SECRET` (open tabs may need a reload to play).
+- **`CRON_SECRET`** (Vercel sends it to cron routes, from Phase 3). Vercel reads the new value from project settings, so set it and redeploy; nothing else holds the old one.
+- **API keys** (`YOUVERSION_APP_KEY` from Phase 2, `YOUTUBE_API_KEY` from Phase 3). Create a new key in the provider's console (for YouTube, restricted to the YouTube Data API), set it and redeploy, then delete the old key in the console. Without a key the app falls back (public-domain Scripture text, local-only search) rather than failing.
 
 `node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy. It signs in with *Try the demo*, so it resets the demo account.
 

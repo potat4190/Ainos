@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export class HttpError extends Error {
-  constructor(status, message, code = undefined) {
+  /** headers: extra response headers for the error, e.g. Retry-After on a 429. */
+  constructor(status, message, code = undefined, headers = undefined) {
     super(message);
     this.status = status;
     this.code = code;
+    this.headers = headers;
   }
 }
 
@@ -56,7 +58,12 @@ export function sendJson(res, status, data, headers = {}) {
   res.end(body);
 }
 
-export async function readJson(req, limit = 256 * 1024) {
+/**
+ * allowText: also accept a text/plain body. Only the events route needs it
+ * (sendBeacon posts text/plain); elsewhere it would let a cross-site HTML form
+ * (enctype="text/plain") send JSON without a CORS preflight.
+ */
+export async function readJson(req, limit = 256 * 1024, { allowText = false } = {}) {
   const type = req.headers['content-type'] || '';
   let size = 0;
   const chunks = [];
@@ -66,8 +73,7 @@ export async function readJson(req, limit = 256 * 1024) {
     chunks.push(chunk);
   }
   if (size === 0) return {};
-  // sendBeacon posts text/plain; everything else must be JSON.
-  if (!type.startsWith('application/json') && !type.startsWith('text/plain')) {
+  if (!type.startsWith('application/json') && !(allowText && type.startsWith('text/plain'))) {
     throw new HttpError(415, 'Expected application/json');
   }
   try {

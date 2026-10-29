@@ -199,12 +199,26 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   hits         INTEGER NOT NULL
 );
 
+-- Who did what to a church's data (audit.js). No foreign keys: rows outlive
+-- the users and orgs they mention (account deletion, Phase 5, will anonymize them).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT,
+  user_id     BIGINT,
+  action      TEXT NOT NULL,
+  target_type TEXT,
+  target_id   TEXT,
+  details     TEXT,
+  created_at  BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS audit_log_org ON audit_log(org_id, created_at);
+
 -- The app connects as ainos_app, which can only read and write rows; this file
 -- is applied by the tables' owner. New tables need the same grant.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits TO ainos_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log TO ainos_app;
   END IF;
 END $$;
 
@@ -212,7 +226,8 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['users', 'sessions', 'artists', 'albums', 'tracks', 'track_files', 'playlists', 'playlist_tracks',
-                           'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits'] LOOP
+                           'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
+                           'audit_log'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     END IF;

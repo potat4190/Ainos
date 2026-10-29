@@ -40,7 +40,7 @@ test/        node:test suites + helpers.js (temp catalog + server on a random po
 docs/        evidence report, also readable inside the app
 ```
 
-Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Postgres), `db.js` (SQLite schema + migrations), `schema.pg.sql` (Postgres schema + migrations), `auth.js` (scrypt, sessions, rate limits, signed media URLs), `catalog.js` (read models, search), `recommend.js` (ALS + co-listening + audio features), `events.js` (event pipeline, 30-second stream rule), `connect.js` (multi-device over SSE), `loudness.js` (BS.1770 loudness).
+Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Postgres), `db.js` (SQLite schema + migrations), `schema.pg.sql` (Postgres schema + migrations), `auth.js` (scrypt, sessions, rate limits, signed media URLs), `catalog.js` (read models, search), `recommend.js` (ALS + co-listening + audio features), `events.js` (event pipeline, 30-second stream rule), `connect.js` (multi-device over SSE), `loudness.js` (BS.1770 loudness), `validate.js` (input validators), `audit.js` (org audit trail), `demo.js` (shared demo accounts, reset, `noDemo`).
 
 ## Conventions
 
@@ -78,19 +78,35 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 | Variable | Where | Meaning |
 |---|---|---|
 | `PORT`, `HOST` | local | Default `127.0.0.1:4321`; `HOST=0.0.0.0` to test Connect from a phone |
+| `TRUST_PROXY` | local (optional) | `1` when running behind a TLS-terminating proxy or tunnel (nginx, Caddy, ngrok) that sets `X-Forwarded-*`; Vercel sets this up itself. Without it, HTTPS logins behind such a proxy are refused as cross-origin |
 | `DATABASE_URL` | prod (optional locally) | Supabase transaction pooler URL (port 6543); switches the store to Postgres |
 | `DATABASE_CA_CERT` | prod | Supabase CA certificate (PEM) for TLS verification |
 | `AINOS_SECRET` | prod | Long random string for media URL signatures |
 | `DATABASE_MIGRATION_URL` | build (optional) | Owner connection; when set, the build applies `schema.pg.sql` |
+| `AINOS_SECRET_PREVIOUS` | prod (only while rotating) | The old `AINOS_SECRET`, still accepted for media URLs during a rotation (README: "Rotating secrets") |
+| `YOUVERSION_APP_KEY` | prod + local (optional) | Used from Phase 2. YouVersion Platform App Key, sent as `X-YVP-App-Key`; missing → public-domain Scripture fallback |
+| `YOUTUBE_API_KEY` | prod + local (optional) | Used from Phase 3. YouTube Data API v3 key, restricted to that API in Google Cloud; missing → search shows only the local index |
+| `CRON_SECRET` | prod | Used from Phase 3. Vercel sends `Authorization: Bearer <CRON_SECRET>` to cron routes, which refuse anything else |
+| `YOUTUBE_DAILY_SEARCH_CAP` | prod (optional) | Used from Phase 3. Live YouTube searches allowed per day; default 80 (YouTube's default quota is 100) |
+| `UPLOAD_BUCKET` | prod | Used from Phase 7 (not started). Private Supabase Storage bucket for verified uploads |
+
+No key is ever read from `public/` code, embedded in HTML, logged or returned in a response.
 
 ## Testing
 
 - `test/helpers.js` → `startTestServer()` generates a quick catalog in a temp dir and starts the app on a random port with SQLite; `login()` / `signup()` give a cookie-keeping client.
-- Suites: `api` (routes, auth, playlists, security, the demo reset on its own server), `connect`, `crossfade` (pure timing and curve logic from `public/js/crossfade.js`), `loudness`, `recommend`, `search`, `store`. `startTestServer(options)` passes options to `createApp`.
+- Suites: `api` (routes, auth, playlists, security incl. CSRF and cookies, the demo reset on its own server), `audit`, `catalog-ids` (track ids and audio inputs never change; fixtures in `test/fixtures/`), `connect`, `crossfade` (pure timing and curve logic from `public/js/crossfade.js`), `i18n` (every key in all six languages), `loudness`, `media-signing` (server and middleware agree, secret rotation), `recommend`, `schema` (db.js and schema.pg.sql match; RLS and grants), `search`, `shell` (service worker caches every module), `smoke` (runs `scripts/smoke.js` locally), `store`, `validate`. `startTestServer(options)` passes options to `createApp`.
 - Tests run with `--test-concurrency=1`.
+- Adding catalog tracks on purpose: `AINOS_UPDATE_CATALOG_SNAPSHOT=1 npm test` appends them to the fixtures (it can never change an existing entry).
 
-## Current state (2026-10-28)
+## Helpers for new routes
 
-- Branch `main`. Latest commit: "Use Spotify's colors and a green cross logo".
-- Deployed to Vercel with Supabase Postgres.
-- Uncommitted work in progress touches most server files, the scripts, the Postgres schema (unique deferred `(playlist_id, position)` constraint, `search_index.folded` column, shared `rate_limits` table) and adds `test/recommend.test.js`, `test/search.test.js`, `test/store.test.js`.
+- `server/validate.js`: `str`, `int`, `oneOf`, `usfmRef`, `youtubeId`; each throws 400 `invalid_input`.
+- `rateLimit(store, key, {limit, windowSec})` in `server/auth.js`: throws 429 with `Retry-After`; keys like `user:<id>:<bucket>`; windows up to a day.
+- `noDemo(handler)` / `assertNotDemo(user)` in `server/demo.js`: 403 `demo_not_allowed` for both shared demo accounts (`demo`, `church-demo`).
+- `audit(t, {orgId, userId, action, targetType, targetId, details})` in `server/audit.js`: pass the transaction handle.
+
+## Current state (2026-10-29)
+
+- The spec in `AINOS-SPEC.md` is being implemented phase by phase; `PROGRESS.md` is the running record and `PLAN.md` the task list. Phase 0 (baseline and guardrails) is on branch `phase-0-baseline`.
+- Deployed to Vercel with Supabase Postgres (from `main`).

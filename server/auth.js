@@ -63,7 +63,7 @@ export function sessionCookie(token, { secure = false, maxAgeMs = SESSION_TTL_MS
   return parts.join('; ');
 }
 
-export const clearCookie = () => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+export const clearCookie = ({ secure = false } = {}) => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
 
 export async function userFromRequest(store, req) {
   const token = parseCookies(req)[SESSION_COOKIE];
@@ -84,20 +84,59 @@ export async function userFromRequest(store, req) {
  * allowing `limit` on its own. Resolves to false once the key is over it.
  */
 export function rateLimiter(store, { name, limit, windowMs }) {
-  return async (key) => {
-    const now = Date.now();
-    const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
-      ON CONFLICT (key) DO UPDATE SET
-        hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
-        window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
-      RETURNING hits`, [`${name}:${key}`, now, now - windowMs, now - windowMs]);
-    return row.hits <= limit;
-  };
+  checkLimit('rateLimiter', limit, windowMs, 3600 * 1000); // its rows are purged after an hour
+  if (typeof name !== 'string' || !name || name.includes('/')) throw new Error('rateLimiter: name required, without "/"');
+  return async (key) => (await hit(store, `${name}:${key}`, windowMs)).hits <= limit;
 }
 
-/** Delete rate-limit windows that ended long ago. */
-export function purgeRateLimits(store, olderThanMs = 3600 * 1000) {
-  return store.run('DELETE FROM rate_limits WHERE window_start < ?', [Date.now() - olderThanMs]);
+// A typo or a missing setting must fail loudly, not silently allow everything.
+function checkLimit(fn, limit, windowMs, maxWindowMs) {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`${fn}: limit must be a positive integer, got ${limit}`);
+  if (!Number.isInteger(windowMs) || windowMs < 1000 || windowMs % 1000) throw new Error(`${fn}: window must be a whole number of seconds, at least 1, got ${windowMs} ms`);
+  if (windowMs > maxWindowMs) throw new Error(`${fn}: windows longer than ${maxWindowMs / 1000} s would be purged early`);
+}
+
+/** Count one hit on a key's current window (starting a new window if the last one is over). */
+async function hit(store, key, windowMs, now = Date.now()) {
+  const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
+    ON CONFLICT (key) DO UPDATE SET
+      hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
+      window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
+    RETURNING hits, window_start`, [key, now, now - windowMs, now - windowMs]);
+  return { hits: row.hits, windowStart: Number(row.window_start) };
+}
+
+// The longest window rateLimit() allows, and how long its rows are kept (an hour more).
+const MAX_WINDOW_SEC = 86_400;
+const KEEP_MS = (MAX_WINDOW_SEC + 3600) * 1000;
+
+/**
+ * Rate limit for routes: counts a hit on `key` and throws 429 with a
+ * Retry-After header once it is over `limit` in the current window. Keys name
+ * who and what, e.g. `user:${user.id}:scripture` or `ip:${ip}:invite`; the
+ * window length is part of the stored key, so one key can carry a per-minute
+ * and a per-day limit.
+ */
+export async function rateLimit(store, key, { limit, windowSec, message = 'Too many requests, try again later', now = Date.now() }) {
+  if (!Number.isInteger(windowSec)) throw new Error(`rateLimit: windowSec must be a positive integer, got ${windowSec}`);
+  checkLimit('rateLimit', limit, windowSec * 1000, MAX_WINDOW_SEC * 1000);
+  if (typeof key !== 'string' || !key) throw new Error('rateLimit: key required');
+  const windowMs = windowSec * 1000;
+  const { hits, windowStart } = await hit(store, `${key}/${windowSec}s`, windowMs, now);
+  if (hits > limit) {
+    const retryAfter = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
+    throw new HttpError(429, message, 'rate_limited', { 'Retry-After': String(retryAfter) });
+  }
+}
+
+/**
+ * Delete rate-limit windows that ended long ago. rateLimit() keys end in
+ * "/<seconds>s" and may run up to a day; the older per-minute limiters'
+ * keys have no "/", so theirs go after an hour, as before.
+ */
+export async function purgeRateLimits(store, now = Date.now()) {
+  await store.run("DELETE FROM rate_limits WHERE window_start < ? AND key NOT LIKE '%/%s'", [now - 3600 * 1000]);
+  await store.run('DELETE FROM rate_limits WHERE window_start < ?', [now - KEEP_MS]);
 }
 
 /** HMAC-signed, expiring media URLs (like a CDN's signed URLs). */
@@ -107,11 +146,19 @@ export function signMediaPath(secret, pathname, ttlSec = 3600) {
   return `${pathname}?exp=${exp}&sig=${sig}`;
 }
 
-export function verifyMediaSignature(secret, pathname, exp, sig) {
+/**
+ * secrets: the current secret, or [current, previous] while a rotation is in
+ * progress, so URLs signed just before the switch keep working until they
+ * expire (see "Rotating secrets" in README.md). New URLs are always signed
+ * with the current one.
+ */
+export function verifyMediaSignature(secrets, pathname, exp, sig) {
   if (!exp || !sig || !/^\d+$/.test(exp)) return false;
   if (Number(exp) < Date.now() / 1000) return false;
-  const expected = crypto.createHmac('sha256', secret).update(`${pathname}:${exp}`).digest();
   let given;
   try { given = Buffer.from(sig, 'base64url'); } catch { return false; }
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  return [secrets].flat().filter(Boolean).some((secret) => {
+    const expected = crypto.createHmac('sha256', secret).update(`${pathname}:${exp}`).digest();
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  });
 }
