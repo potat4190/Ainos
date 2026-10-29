@@ -80,6 +80,26 @@ const STYLE_FEATURES = {
 
 const log = (...a) => console.log(...a);
 
+/**
+ * Everything a track's audio and features are drawn from, in the order the
+ * generator has always drawn it from the track's own seed. Pure, so the
+ * catalog snapshot test can check full-length values without rendering audio.
+ * `seedKey` is "<artist>/<title>" as written in CATALOG.
+ */
+export function trackParams(artist, title, { quick = false } = {}) {
+  const seed = hashSeed(`${artist.name}/${title}`);
+  const tr = mulberry32(seed);
+  const bpm = Math.round(artist.bpm[0] + tr() * (artist.bpm[1] - artist.bpm[0]));
+  const mode = artist.modes[Math.floor(tr() * artist.modes.length)];
+  const key = Math.floor(tr() * 12);
+  const duration = quick ? 6 : 55 + tr() * 20;
+  // Masters land at deliberately different loudness levels (like real
+  // releases), so loudness normalization in the player is audible.
+  const target = -8.5 - tr() * 10; // -8.5 .. -18.5 LUFS
+  const jitter = [0, 1, 2, 3].map(() => (tr() - 0.5) * 0.16); // energy, valence, danceability, acousticness
+  return { seedKey: `${artist.name}/${title}`, seed, bpm, mode, key, duration, target, jitter };
+}
+
 function rmrf(p) {
   fs.rmSync(p, { recursive: true, force: true });
 }
@@ -128,22 +148,14 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
 
       for (const [ti, title] of album.tracks.entries()) {
         const trackId = seededId(rnd);
-        const seed = hashSeed(`${artist.name}/${title}`);
-        const tr = mulberry32(seed);
-        const bpm = Math.round(artist.bpm[0] + tr() * (artist.bpm[1] - artist.bpm[0]));
-        const mode = artist.modes[Math.floor(tr() * artist.modes.length)];
-        const key = Math.floor(tr() * 12);
-        const duration = quick ? 6 : 55 + tr() * 20;
+        const { seed, bpm, mode, key, duration, target, jitter } = trackParams(artist, title, { quick });
         const tStart = Date.now();
         const { samples } = renderTrack({ style: artist.style, bpm, key, mode, duration, seed }, SR);
 
-        // Masters land at deliberately different loudness levels (like real
-        // releases), so loudness normalization in the player is audible.
         let peak = 0;
         for (const v of samples) peak = Math.max(peak, Math.abs(v));
         for (let i = 0; i < samples.length; i++) samples[i] /= peak || 1;
         const raw = integratedLoudness(samples, SR);
-        const target = -8.5 - tr() * 10; // -8.5 .. -18.5 LUFS
         master(samples, Math.pow(10, (target - raw) / 20));
         const loud = integratedLoudness(samples, SR);
         const peakDb = samplePeakDb(samples);
@@ -158,12 +170,11 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
         const durationMs = Math.round((samples.length / SR) * 1000);
 
         const f = STYLE_FEATURES[artist.style];
-        const jit = () => (tr() - 0.5) * 0.16;
         const features = {
-          energy: clamp(f.energy + jit() + (loud + 14) * 0.01, 0, 1),
-          valence: clamp(f.valence + (mode === 'major' ? 0.12 : -0.12) + jit(), 0, 1),
-          danceability: clamp(f.dance + jit(), 0, 1),
-          acousticness: clamp(f.acoustic + jit() * 0.5, 0, 1),
+          energy: clamp(f.energy + jitter[0] + (loud + 14) * 0.01, 0, 1),
+          valence: clamp(f.valence + (mode === 'major' ? 0.12 : -0.12) + jitter[1], 0, 1),
+          danceability: clamp(f.dance + jitter[2], 0, 1),
+          acousticness: clamp(f.acoustic + jitter[3] * 0.5, 0, 1),
         };
         insTrack.run(trackId, albumId, artistId, title, ti + 1, durationMs, artist.genre, artist.language || 'en', loud, peakDb, bpm, key, mode === 'major' ? 1 : 0,
           features.energy, features.valence, features.danceability, features.acousticness, 0.95);

@@ -12,7 +12,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generateCatalog } from '../scripts/generate.js';
+import crypto from 'node:crypto';
+import { generateCatalog, trackParams, CATALOG } from '../scripts/generate.js';
 import { openDb } from '../server/db.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -29,12 +30,22 @@ before(async () => {
   const db = openDb(path.join(dir, 'ainos.db'));
   try {
     const ids = (sql) => db.prepare(sql).all().map((r) => r.id).sort();
-    // The audio of a track follows from its seed inputs (style, tempo, key, mode,
-    // mastering target). Rounded values, so the check doesn't depend on the last
-    // bit of floating point on a given machine.
+    const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, file))).digest('hex');
+    // The test catalog uses 6-second tracks, so this checks the synth and
+    // mastering code (exact WAV bytes) and each track's seed inputs as rendered.
+    const files = db.prepare('SELECT track_id, quality, file FROM track_files').all();
     const tracks = Object.fromEntries(db.prepare('SELECT id, tempo, key, mode, duration_ms, loudness_lufs FROM tracks').all()
       .sort((a, b) => (a.id < b.id ? -1 : 1))
-      .map((t) => [t.id, { tempo: t.tempo, key: t.key, mode: t.mode, duration_ms: t.duration_ms, loudness: Math.round(t.loudness_lufs * 10) / 10 }]));
+      .map((t) => [t.id, {
+        tempo: t.tempo, key: t.key, mode: t.mode, duration_ms: t.duration_ms, loudness: Math.round(t.loudness_lufs * 10) / 10,
+        wav: Object.fromEntries(files.filter((f) => f.track_id === t.id).sort((a, b) => (a.quality < b.quality ? -1 : 1)).map((f) => [f.quality, sha(f.file)])),
+      }]));
+    // Production renders full-length tracks, which draw one more value (the
+    // duration) from the same seed; these are the parameters it renders from.
+    const full = Object.fromEntries(CATALOG.flatMap((artist) => artist.albums.flatMap((album) => album.tracks.map((title) => {
+      const { seedKey, ...params } = trackParams(artist, title);
+      return [seedKey, { style: artist.style, ...params }];
+    }))));
     current = {
       trackIds: ids('SELECT id FROM tracks'),
       print: {
@@ -42,6 +53,7 @@ before(async () => {
         albums: ids('SELECT id FROM albums'),
         editorial_playlists: ids('SELECT id FROM playlists WHERE owner_id IS NULL'),
         tracks,
+        full_length_params: full,
       },
     };
   } finally {
@@ -64,13 +76,19 @@ test('every track id in the snapshot is still generated, and no unlisted track a
   else assert.deepEqual(current.trackIds, snapshot, 'new tracks: append them with AINOS_UPDATE_CATALOG_SNAPSHOT=1');
 });
 
+// Exact WAV bytes assume one floating-point result for each Math function; a
+// Node.js upgrade that changes one would change the audio Vercel builds too,
+// so a failure here after an upgrade is worth investigating, not overwriting.
 test('existing artists, albums, editorial playlists and track audio are unchanged', () => {
   const snapshot = read(PRINT_FILE);
   for (const kind of ['artists', 'albums', 'editorial_playlists']) {
     assert.deepEqual(lost(snapshot[kind], current.print[kind]), [], `existing ${kind} ids changed or disappeared`);
   }
   for (const [id, was] of Object.entries(snapshot.tracks)) {
-    assert.deepEqual(current.print.tracks[id], was, `audio inputs of track ${id} changed`);
+    assert.deepEqual(current.print.tracks[id], was, `audio of track ${id} changed`);
+  }
+  for (const [seedKey, was] of Object.entries(snapshot.full_length_params)) {
+    assert.deepEqual(current.print.full_length_params[seedKey], was, `full-length audio inputs of ${seedKey} changed (or its CATALOG seed key was renamed)`);
   }
   if (UPDATE) write(PRINT_FILE, current.print);
   else assert.deepEqual(current.print, snapshot, 'new catalog entries: append them with AINOS_UPDATE_CATALOG_SNAPSHOT=1');
