@@ -3,7 +3,7 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
 - 2026-10-29 Phase 1 · smoke test checks the Hymns playlist, finds Amazing Grace, streams its audio · commit ad243a5
-- 2026-10-29 Phase 1 · Node.js pinned to 22.13–24: the first preview build had moved to Node 26, whose render of one hymn differed in the last float bits (inaudible); audio is byte-exact only within one Node version · commit 21d9675
+- 2026-10-29 Phase 1 · Node.js pin (21d9675) REVERTED (1421b97): its premise was wrong. Every WAV checked (8 hymns, 11 originals) is byte-identical between local Windows/Node 24 and Vercel Linux on Node 24 and 26; only one hymn's stored loudness double differed by ~1e-11 between Windows and Linux. Hymn loudness/peak now rounded to 6 decimals so syncs agree across platforms · commit e7ed4a7
 - 2026-10-29 Phase 1 · pushed `phase-1-catalog`, PR #3; preview build migrated + synced the preview DB; smoke passed (before the hymn checks were added)
 - 2026-10-29 Phase 1 · re-review fix: preview skip only for older branches, prune guard, advisory lock, hymn snapshot update mode, docs · commit b3d93f3
 - 2026-10-29 Phase 1 · re-review (one fresh reviewer, ran the sync against a real Postgres 17): nothing critical/high; lows fixed above or recorded below
@@ -63,6 +63,7 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 - Waiting on the owner: name picks in `scripts/catalog-names.js` (then P1.8: update names in docs/HOW-SPOTIFY-WORKS.md), and listening to the 8 hymns on the preview before they ship.
 
 ## Open questions and answers
+- NEW (2026-10-29) Vercel builds use Node 26 because `engines: "node": ">=22.13"` overrides the project setting (24.x) whenever a new major ships. The generated audio was identical on 24 and 26 (checked), so nothing is broken; pin `engines` to your project's 24.x (`>=22.13 <25`) so upgrades are deliberate, or keep auto-upgrading? → waiting
 - NEW (2026-10-29) May PGlite (an in-process Postgres, npm `@electric-sql/pglite`) be added as a dev dependency, so `npm test` can run the catalog sync against real Postgres? Today that is only checked by hand against the preview database. → waiting
 - NEW (2026-10-29) Come, Thou Fount lyrics: the research used Robinson's original 1759 wording (4 stanzas, e.g. "Mount of God's unchanging Love", "Seal it from thy Courts above"); the familiar 3-stanza wording from the 1921 tune source is listed in that hymn's notes. Which should ship? → (2026-10-29) the familiar 3-stanza text, as printed with the tune in The Voice of Thanksgiving No. 3 (1921), No. 258 (transcribed from the page scan); the 1759 original is kept in the hymn's notes
 - NEW (2026-10-29) Amazing Grace ships the 4 stanzas printed in Coronation Hymns (1910): Newton's 1–3 plus the later public-domain "When we've been there ten thousand years"; Newton's stanzas 4–6 are in its notes. Abide with Me ships the 5 stanzas printed in 1905 (Lyte's 1, 2, 6, 7, 8). OK? → (2026-10-29) yes to both: Amazing Grace as printed in 1910; Abide with Me the 5 printed stanzas
