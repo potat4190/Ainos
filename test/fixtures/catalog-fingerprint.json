@@ -891,5 +891,15 @@
         0.0005766578391194344
       ]
     }
+  },
+  "full_length_wav": {
+    "Lumen Drift/First Glow": "06777167c52420682bded7ac10eea5b19fc08128ebb9f0e6e8534832c19f7c29",
+    "Neon Harbor/Midnight Arcade": "6684fcf0faf13517b209a3d39d2c1c446cf6f8c7d7d036e9d0bab27f8b3450ee",
+    "Copper Fox/Steam & Paper": "d89e287fae5d40b746a6aaced2c64b20d9155ed742c499392478c533ebf3f654",
+    "Velvet Static/Pulse Garden": "817cde20be046f4c4af90bc64ab13eeea9c40a9ac3781d8bc480234a0fd2788b",
+    "Juniper Lane/Porch Song": "eba09bdad68993ebe1006de90c3f4a0d3b9dee87bfcb18bd14eebd6ae69f574e",
+    "Kite Theory/Cloud Runner": "f77735fd436bd019b51e1d75132a20b2e982e394118f0bc0de5f91c8da1ad870",
+    "Ossa/Salt Lines": "a00280a5e63d0bebe64c2301939a20363b569aba8c4889d9e1969879d070f8b3",
+    "Polar Bloom/Frostbite": "4498a4e70c2970b3c2e985f479c0385dcab2a80db20c7ac59de8cd51c08a9858"
   }
 }

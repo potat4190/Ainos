@@ -13,7 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
-import { generateCatalog, trackParams, CATALOG } from '../scripts/generate.js';
+import { generateCatalog, trackParams, renderMastered, CATALOG, SAMPLE_RATE } from '../scripts/generate.js';
+import { encodeWav16 } from '../scripts/synth.js';
 import { openDb } from '../server/db.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -46,6 +47,14 @@ before(async () => {
       const { seedKey, ...params } = trackParams(artist, title);
       return [seedKey, { style: artist.style, ...params }];
     }))));
+    // The 6-second test tracks only reach the synth's intro and outro; full
+    // length adds its main sections and breakdowns. Render one full track per
+    // style (each artist's first) and keep the exact bytes production builds.
+    const fullWav = Object.fromEntries(CATALOG.map((artist) => {
+      const params = trackParams(artist, artist.albums[0].tracks[0]);
+      const wav = encodeWav16(renderMastered(artist, params).samples, SAMPLE_RATE);
+      return [params.seedKey, crypto.createHash('sha256').update(wav).digest('hex')];
+    }));
     current = {
       trackIds: ids('SELECT id FROM tracks'),
       print: {
@@ -54,6 +63,7 @@ before(async () => {
         editorial_playlists: ids('SELECT id FROM playlists WHERE owner_id IS NULL'),
         tracks,
         full_length_params: full,
+        full_length_wav: fullWav,
       },
     };
   } finally {
@@ -89,6 +99,9 @@ test('existing artists, albums, editorial playlists and track audio are unchange
   }
   for (const [seedKey, was] of Object.entries(snapshot.full_length_params)) {
     assert.deepEqual(current.print.full_length_params[seedKey], was, `full-length audio inputs of ${seedKey} changed (or its CATALOG seed key was renamed)`);
+  }
+  for (const [seedKey, was] of Object.entries(snapshot.full_length_wav || {})) {
+    assert.equal(current.print.full_length_wav[seedKey], was, `full-length audio of ${seedKey} changed (synth or mastering code)`);
   }
   if (UPDATE) write(PRINT_FILE, current.print);
   else assert.deepEqual(current.print, snapshot, 'new catalog entries: append them with AINOS_UPDATE_CATALOG_SNAPSHOT=1');

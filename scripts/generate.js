@@ -100,6 +100,19 @@ export function trackParams(artist, title, { quick = false } = {}) {
   return { seedKey: `${artist.name}/${title}`, seed, bpm, mode, key, duration, target, jitter };
 }
 
+export const SAMPLE_RATE = 22050;
+
+/** Render a track from its trackParams() and master it to its loudness target. */
+export function renderMastered(artist, { seed, bpm, mode, key, duration, target }, sr = SAMPLE_RATE) {
+  const { samples } = renderTrack({ style: artist.style, bpm, key, mode, duration, seed }, sr);
+  let peak = 0;
+  for (const v of samples) peak = Math.max(peak, Math.abs(v));
+  for (let i = 0; i < samples.length; i++) samples[i] /= peak || 1;
+  const raw = integratedLoudness(samples, sr);
+  master(samples, Math.pow(10, (target - raw) / 20));
+  return { samples, loud: integratedLoudness(samples, sr), peakDb: samplePeakDb(samples) };
+}
+
 function rmrf(p) {
   fs.rmSync(p, { recursive: true, force: true });
 }
@@ -118,7 +131,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   const db = openDb(path.join(dataDir, 'ainos.db'));
   const rnd = mulberry32(20261020);
   const now = Date.now();
-  const SR = 22050;
+  const SR = SAMPLE_RATE;
 
   const insArtist = db.prepare('INSERT INTO artists (id, name, genre, language, bio, image, color) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const insAlbum = db.prepare('INSERT INTO albums (id, artist_id, title, year, type, cover, color, released_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -148,17 +161,10 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
 
       for (const [ti, title] of album.tracks.entries()) {
         const trackId = seededId(rnd);
-        const { seed, bpm, mode, key, duration, target, jitter } = trackParams(artist, title, { quick });
+        const params = trackParams(artist, title, { quick });
+        const { bpm, mode, key, jitter } = params;
         const tStart = Date.now();
-        const { samples } = renderTrack({ style: artist.style, bpm, key, mode, duration, seed }, SR);
-
-        let peak = 0;
-        for (const v of samples) peak = Math.max(peak, Math.abs(v));
-        for (let i = 0; i < samples.length; i++) samples[i] /= peak || 1;
-        const raw = integratedLoudness(samples, SR);
-        master(samples, Math.pow(10, (target - raw) / 20));
-        const loud = integratedLoudness(samples, SR);
-        const peakDb = samplePeakDb(samples);
+        const { samples, loud, peakDb } = renderMastered(artist, params, SR);
 
         const hiFile = `media/high/${trackId}.wav`;
         const loFile = `media/low/${trackId}.wav`;
