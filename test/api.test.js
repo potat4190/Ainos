@@ -338,6 +338,28 @@ test('CSRF: writes from another origin are refused for every method; same-origin
   assert.equal((await lang({})).status, 200, 'no Origin at all (curl, older browsers)');
 });
 
+test('CSRF: requests other sites cause are refused for reads too (some GETs change state)', async () => {
+  const get = (url, site) => fetch(srv.base + url, { headers: { Cookie: demo.cookie, ...(site ? { 'Sec-Fetch-Site': site } : {}) } });
+  for (const site of ['cross-site', 'same-site']) {
+    assert.equal((await get('/api/me', site)).status, 403, site);
+    // Connect's push channel registers a device on GET.
+    assert.equal((await get('/api/connect/dealer?device_id=evil123&name=Hacked', site)).status, 403, `dealer ${site}`);
+  }
+  assert.equal((await get('/api/me', 'same-origin')).status, 200, "the app's own fetches");
+  assert.equal((await get('/api/me', 'none')).status, 200, 'a URL typed into the address bar');
+  assert.equal((await get('/api/me')).status, 200, 'no header (curl, older browsers)');
+  assert.ok(!(await demo.get('/api/connect/devices')).json.devices.some((d) => d.name === 'Hacked'));
+});
+
+test('CSRF: only the events route takes text/plain bodies (sendBeacon); elsewhere a form could send them', async () => {
+  const post = (url, body) => fetch(srv.base + url, { method: 'POST', headers: { 'Content-Type': 'text/plain', Cookie: demo.cookie }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/playlists', { name: 'from a form' })).status, 415);
+  assert.equal((await post('/api/me/language', { language: 'en' })).status, 415);
+  const ev = await post('/api/events', { events: [{ type: 'pause', device_id: 'beacon-test', ts: Date.now() }] });
+  assert.equal(ev.status, 200);
+  assert.equal((await ev.json()).accepted, 1);
+});
+
 test('CSRF: behind the proxy, the forwarded host and scheme are the app origin', async () => {
   const { sameOrigin } = await import('../server/app.js');
   const req = (headers, encrypted = false) => ({ headers, socket: { encrypted } });

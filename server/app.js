@@ -508,7 +508,7 @@ export async function createApp({
 
   // ---------------- events ----------------
   r.post('/api/events', auth(async ({ req, res, user }) => {
-    sendJson(res, 200, await events.ingest(user, await readJson(req, 512 * 1024)));
+    sendJson(res, 200, await events.ingest(user, await readJson(req, 512 * 1024, { allowText: true })));
   }));
 
   // ---------------- connect ----------------
@@ -567,6 +567,12 @@ export async function createApp({
     const pathname = url.pathname;
 
     if (pathname.startsWith('/api/')) {
+      // The API serves this app's own pages only. Browsers mark requests that
+      // other sites cause (links, forms, scripts) with Sec-Fetch-Site; refuse
+      // them for every method, since some GETs change state (Connect's dealer
+      // registers a device). Writes also need a matching Origin.
+      const site = req.headers['sec-fetch-site'];
+      if (site === 'cross-site' || site === 'same-site') throw new HttpError(403, 'Cross-origin request refused');
       if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, { trustProxy })) throw new HttpError(403, 'Cross-origin request refused');
       const m = r.match(req.method, pathname);
       if (!m) throw new HttpError(404, 'Not found');
