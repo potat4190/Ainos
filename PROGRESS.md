@@ -1,7 +1,8 @@
 # Progress
-Last updated: 2026-10-29 · Current phase: 0 done (PR #2 awaiting owner review) / 1 (names draft only) · Branch: phase-1-catalog (from phase-0-baseline)
+Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 0 · MERGED: owner asked Claude to merge PR #2 → merge commit d6c724d on `main`; production deploy Ready (build log: schema up to date, already seeded with 33 tracks; owner had applied `audit_log`). No smoke test against production (owner rule).
 - 2026-10-29 Phase 1 · P1.7 (draft only) `scripts/catalog-names.js`: 2 Scripture-based options per artist/album/track for owner approval; nothing uses it until picked; `test/catalog-names.test.js` · commit a6c3d46
 - 2026-10-29 Phase 0 · DONE: pushed `phase-0-baseline`, PR #2 to `main`; preview build (commit 5ceb4b2) migrated the preview database (build log: schema applied, schema up to date, already seeded with 33 tracks); `scripts/smoke.js` against the preview: all checks passed, security headers included (HSTS comes from Vercel, which settles Q6)
 - 2026-10-29 Preview database "ainos-preview" set up and Vercel Preview variables replaced (details under "Blocked / skipped") · commit 5ceb4b2
@@ -41,14 +42,13 @@ Last updated: 2026-10-29 · Current phase: 0 done (PR #2 awaiting owner review) 
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Owner: review and merge PR #2 after the "Before merging Phase 0" steps; pick names in `scripts/catalog-names.js`.
-- Phase 1 on `phase-1-catalog` (rebased on phase-0-baseline), when the owner says go: P1.1 song tables → P1.2 melody renderer → P1.3 `scripts/hymns.js` (melodies checked against old hymnal scans) → P1.4 → P1.5 → P1.6 → P1.7 wiring (after names are picked) → P1.8 → P1.9.
+- Phase 1 in progress on `phase-1-catalog`: P1.1 song tables → P1.2 melody renderer → P1.3 `scripts/hymns.js` (4 research agents are transcribing the 8 melodies from pre-1929 hymnal scans) → P1.4 → P1.5 → P1.6 → P1.9. P1.7 wiring and P1.8 wait for the owner's name picks in `scripts/catalog-names.js`.
 
 ## Open questions and answers
 Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary here).
 - Q1 `.claude/launch.json` untracked: gitignore `.claude/`? → yes (default), done
 - Q2 Spec "uncommitted work": already committed in 8b708bf, mark closed? → waiting
-- Q3 Push `phase-N-*` branches to GitHub for Vercel previews + PR per phase (never `main`)? → (2026-10-29) Yes: push each phase branch and open a PR to `main`. Never push or merge to `main`; the owner merges every PR after review. Branch protection is on for `main`.
+- Q3 Push `phase-N-*` branches to GitHub for Vercel previews + PR per phase (never `main`)? → (2026-10-29) Yes: push each phase branch and open a PR to `main`. Never push or merge to `main`; the owner merges every PR after review. Branch protection is on for `main`. (For PR #2 the owner explicitly asked Claude to merge; that does not extend to later PRs.)
 - Q4 Is `DATABASE_MIGRATION_URL` set for Preview builds? Separate Preview database possible? → (2026-10-29) Owner created a separate Supabase project, "ainos-preview", for previews; Claude finishes its setup (Vercel Preview variables via stdin, schema + seed, verify RLS). Follow-up answers (2026-10-29): create `ainos_app` in ainos-preview with a generated password piped straight into Vercel; `DATABASE_URL` = transaction pooler as `ainos_app`, `DATABASE_MIGRATION_URL` = session pooler as `postgres`; replace Preview `DATABASE_URL` and `AINOS_SECRET`; leave the shared `DATABASE_CA_CERT` (confirm the connection with the local `prod-ca-2021.crt`); add Preview `DATABASE_MIGRATION_URL`. No SQL for production's `ainos_app` exists (none in the repo or its history either): use the proposed grants and report them; never connect to production to inspect it. Status under "Blocked / skipped".
 - Q5 Preview protection: may I read `VERCEL_AUTOMATION_BYPASS_SECRET` from `.env.vercel.local`? → (2026-10-29) Previews are protected. Never read any `.env*` file; read `VERCEL_AUTOMATION_BYPASS_SECRET` from the environment (ask if missing). Run smoke tests only against previews, never production without asking.
 - Q6 HSTS: rely on Vercel's platform header (smoke checks it) or add our own? → settled by the preview smoke test: Vercel sends HSTS on previews; no header change needed
