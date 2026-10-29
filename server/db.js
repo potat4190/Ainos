@@ -264,6 +264,26 @@ CREATE TABLE IF NOT EXISTS song_arrangements (
   section_order TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS song_arrangements_song ON song_arrangements(song_id);
+
+-- Scripture a song draws on, as USFM references (ROM.12.1); section_label
+-- NULL = the whole song. Only references are stored, never verse text.
+CREATE TABLE IF NOT EXISTS song_scripture (
+  song_id       TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  section_label TEXT,
+  usfm_ref      TEXT NOT NULL,
+  position      INTEGER NOT NULL,
+  PRIMARY KEY (song_id, usfm_ref)
+);
+
+-- Per-user settings as key/value pairs (e.g. bible_version), so new settings
+-- need no new users column.
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
 `;
 
 // Language tags for the artists of the original (pre-language) seed catalog,

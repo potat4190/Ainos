@@ -290,13 +290,33 @@ CREATE TABLE IF NOT EXISTS song_arrangements (
 );
 CREATE INDEX IF NOT EXISTS song_arrangements_song ON song_arrangements(song_id);
 
+-- Scripture a song draws on, as USFM references (ROM.12.1); section_label
+-- NULL = the whole song. Only references are stored, never verse text.
+CREATE TABLE IF NOT EXISTS song_scripture (
+  song_id       TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  section_label TEXT,
+  usfm_ref      TEXT NOT NULL,
+  position      INTEGER NOT NULL,
+  PRIMARY KEY (song_id, usfm_ref)
+);
+
+-- Per-user settings as key/value pairs (e.g. bible_version), so new settings
+-- need no new users column.
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+
 -- The app connects as ainos_app, which can only read and write rows; this file
 -- is applied by the tables' owner. New tables need the same grant.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log, songs, song_aliases, song_themes, song_sources, song_sections,
-      song_arrangements TO ainos_app;
+      song_arrangements, song_scripture, user_settings TO ainos_app;
   END IF;
 END $$;
 
@@ -305,7 +325,8 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['users', 'sessions', 'artists', 'albums', 'tracks', 'track_files', 'playlists', 'playlist_tracks',
                            'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
-                           'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements'] LOOP
+                           'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
+                           'song_scripture', 'user_settings'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     END IF;

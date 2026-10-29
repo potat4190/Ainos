@@ -19,8 +19,11 @@
 // it. The generator's own songs follow its data: global lyrics, arrangements
 // and themes it no longer writes are removed (aliases are kept). Editorial
 // playlists gain tracks the generator adds to them (tracks removed from one by
-// hand come back). User data, church (org) rows and user playlists are never
-// touched; removing an existing track is a manual data migration.
+// hand come back). A song's Scripture references are seeded once, when it
+// has none; after that they belong to the catalog admins (PUT
+// /api/songs/:id/scripture), so their edits survive deploys. User data,
+// church (org) rows and user playlists are never touched; removing an
+// existing track is a manual data migration.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +38,7 @@ const CERT_ERRORS = new Set(['SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNE
 const TABLES = [
   'artists', 'albums', 'tracks', 'track_files', 'users', 'playlists', 'playlist_tracks',
   'liked_tracks', 'followed_artists', 'streams', 'events', 'search_index',
-  'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
+  'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture',
 ];
 
 // The rows the generator owns, in foreign-key order: what a catalog sync may
@@ -172,6 +175,20 @@ async function syncCatalog(client, src, log) {
     const { rowCount } = await client.query(pruneSql(p), [[...new Set(rows.map((r) => r.s))], rows.map((r) => r.k)]);
     totals.deleted += rowCount;
     if (rowCount) log(`  ${p.table}: ${rowCount} removed (no longer generated)`);
+  }
+
+  // Scripture references: only for the generator's songs that have none here yet.
+  const refs = src.prepare(`SELECT * FROM song_scripture WHERE ${GLOBAL_SONG}`).all();
+  if (refs.length) {
+    const songIds = [...new Set(refs.map((r) => r.song_id))];
+    const have = new Set((await client.query('SELECT DISTINCT song_id FROM song_scripture WHERE song_id = ANY($1::text[])', [songIds])).rows.map((r) => r.song_id));
+    const add = refs.filter((r) => !have.has(r.song_id));
+    if (add.length) {
+      const refCols = Object.keys(add[0]);
+      await inBatches(client, add, refCols, (count) => upsertSql('song_scripture', refCols, ['song_id', 'usfm_ref'], [], count));
+      totals.inserted += add.length;
+      log(`  song_scripture: ${add.length} added for ${new Set(add.map((r) => r.song_id)).size} songs`);
+    }
   }
 
   // Editorial playlists: a new one (e.g. Hymns) gets its tracks, an existing

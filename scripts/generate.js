@@ -319,6 +319,7 @@ function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFi
   const insSong = db.prepare('INSERT INTO songs (id, title, artist, language, ccli_number, public_domain, org_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, 1, NULL, NULL, ?, ?)');
   const insAlias = db.prepare('INSERT INTO song_aliases (song_id, alias, folded) VALUES (?, ?, ?)');
   const insTheme = db.prepare('INSERT INTO song_themes (song_id, theme) VALUES (?, ?)');
+  const insScripture = db.prepare('INSERT INTO song_scripture (song_id, section_label, usfm_ref, position) VALUES (?, NULL, ?, ?)');
   const insSource = db.prepare("INSERT INTO song_sources (id, song_id, source, track_id, youtube_video_id, kind, available, last_checked_at) VALUES (?, ?, 'ainos', ?, NULL, NULL, 1, NULL)");
   const insSection = db.prepare('INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES (?, ?, ?, ?, ?, ?, NULL)');
   const insArrangement = db.prepare('INSERT INTO song_arrangements (id, song_id, org_id, name, section_order) VALUES (?, ?, NULL, ?, ?)');
@@ -371,6 +372,7 @@ function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFi
       const firstLine = h.sections[0].lines[0].replace(/[,;:.!]+$/, '');
       if (fold(firstLine) !== fold(h.title)) insAlias.run(songId, firstLine, fold(firstLine));
       for (const theme of h.themes) insTheme.run(songId, theme);
+      h.scripture.forEach((ref, i) => insScripture.run(songId, ref, i));
       insSource.run(HYMN_IDS.source(h.slug), songId, trackId);
       for (const s of h.sections) insSection.run(HYMN_IDS.section(h.slug, s.label), songId, 'en', s.label, s.lines.join('\n'), searchText(s.lines.join(' '), ''));
       insArrangement.run(HYMN_IDS.arrangement(h.slug, 'all'), songId, 'All verses', JSON.stringify(hymnOrder(h)));

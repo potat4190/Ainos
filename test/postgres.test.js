@@ -123,7 +123,7 @@ test('schema.pg.sql applies, re-applies, and every table has row-level security 
   assert.ok(tables.length >= 22);
   assert.deepEqual(tables.filter((t) => !t.relrowsecurity).map((t) => t.relname), [], 'row-level security on');
   assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM pg_policies WHERE schemaname = 'public'"), 0, 'and no policies');
-  for (const t of ['rate_limits', 'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements']) {
+  for (const t of ['rate_limits', 'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture', 'user_settings']) {
     assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', $1, 'SELECT,INSERT,UPDATE,DELETE') AS ok", [t]))[0].ok, true, `${t} granted`);
   }
 });
@@ -147,7 +147,7 @@ test('production upgrade: a database seeded before the hymns gains them, and not
   assert.equal(result.added, 8);
   const src = new DatabaseSync(full, { readOnly: true });
   try {
-    for (const table of ['tracks', 'track_files', 'artists', 'albums', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements']) {
+    for (const table of ['tracks', 'track_files', 'artists', 'albums', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture']) {
       assert.equal(await count(pg, `SELECT COUNT(*) AS n FROM ${table}`), src.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, `${table} matches the generated catalog`);
     }
   } finally {
@@ -237,6 +237,24 @@ test('renaming the catalog: a database seeded under the old names takes the new 
   assert.deepEqual(after.map((t) => t.id), before.map((t) => t.id), 'same ids');
   assert.ok(after.every((t, i) => t.title !== before[i].title), 'every original track renamed');
   assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
+});
+
+test('Scripture references are seeded once per song; after that the admins’ edits survive deploys', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, noHymns);
+  await seed(pg, full);
+  const songId = HYMN_IDS.song('amazing-grace');
+  const refsOf = async (id) => (await rows(pg, 'SELECT usfm_ref FROM song_scripture WHERE song_id = $1 ORDER BY position', [id])).map((r) => r.usfm_ref);
+  assert.deepEqual(await refsOf(songId), ['EPH.2.8', '1CH.17.16', 'JHN.9.25'], 'seeded with the hymn');
+  // An admin replaces the references (what PUT /api/songs/:id/scripture does).
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1', [songId]);
+  await pg.db.query("INSERT INTO song_scripture (song_id, section_label, usfm_ref, position) VALUES ($1, NULL, 'TIT.2.11', 0)", [songId]);
+  const other = HYMN_IDS.song('abide-with-me');
+  const otherBefore = await refsOf(other);
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1 AND position > 0', [other]);
+  assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
+  assert.deepEqual(await refsOf(songId), ['TIT.2.11'], 'the edit survives the next deploy');
+  assert.deepEqual(await refsOf(other), otherBefore.slice(0, 1), 'a trimmed list is not refilled');
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {
