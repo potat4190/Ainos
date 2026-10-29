@@ -52,6 +52,14 @@ Environment variables on Vercel:
 | `DATABASE_CA_CERT` | The CA certificate that signs your database's TLS certificate, as PEM text. Supabase uses its own CA: download it from *Project Settings → Database → SSL configuration* and paste the file's contents. Not needed for a database whose certificate is signed by a public CA. |
 | `AINOS_SECRET` | A long random string; signs media URLs |
 | `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
+| `AINOS_SECRET_PREVIOUS` | Only while rotating `AINOS_SECRET`: the old value, still accepted for media URLs (see *Rotating secrets*). |
+| `YOUVERSION_APP_KEY` | Used from Phase 2, optional. YouVersion Platform App Key for Scripture text. Without it, Scripture falls back to public-domain text. |
+| `YOUTUBE_API_KEY` | Used from Phase 3, optional. YouTube Data API v3 key, restricted in Google Cloud to that API only. Without it, search shows only the local index. |
+| `CRON_SECRET` | Used from Phase 3. A long random string; Vercel sends it to cron routes, which refuse requests without it. |
+| `YOUTUBE_DAILY_SEARCH_CAP` | Used from Phase 3, optional. Live YouTube searches allowed per day (default 80; YouTube's default quota is 100). |
+| `UPLOAD_BUCKET` | Used from Phase 7 (not started). Private Supabase Storage bucket for verified uploads. |
+
+Keys stay on the server: none is read from `public/`, put in HTML, logged or returned by the API.
 
 ### Rotating secrets
 
