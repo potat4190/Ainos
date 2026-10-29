@@ -314,6 +314,9 @@ test('security headers are set', async () => {
   const r = await fetch(srv.base + '/');
   assert.match(r.headers.get('content-security-policy'), /default-src 'self'/);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  // YouTube embeds identify the app by its origin in the Referer header; a
+  // stricter policy (same-origin, no-referrer) breaks them.
+  for (const url of ['/', '/api/me']) assert.equal((await fetch(srv.base + url)).headers.get('referrer-policy'), 'strict-origin-when-cross-origin', url);
 });
 
 test('vercel.json gives static files the same security headers as the app', async () => {
