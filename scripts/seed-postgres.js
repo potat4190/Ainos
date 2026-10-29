@@ -28,13 +28,21 @@ const TABLES = [
 ];
 const IDENTITY = ['users', 'playlist_tracks', 'events', 'streams'];
 
-/** Tables and their columns as declared in schema.pg.sql. */
+// Lines in a table body that declare a table constraint, not a column.
+const CONSTRAINT_LINE = /^(PRIMARY|UNIQUE|CHECK|CONSTRAINT|FOREIGN|EXCLUDE)\b/i;
+
+/**
+ * Tables and their columns as declared in schema.pg.sql. Expects one column
+ * per line inside CREATE TABLE IF NOT EXISTS name (...), with the closing ");"
+ * alone on its own line; table constraint lines are skipped.
+ */
 export function schemaColumns(sql = fs.readFileSync(SCHEMA_FILE, 'utf8')) {
   const tables = new Map();
-  for (const m of sql.replace(/--.*$/gm, '').matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g)) {
-    tables.set(m[1], m[2].split('\n').map((l) => l.trim().split(/\s+/)[0]).filter((c) => c && c !== 'PRIMARY'));
+  const code = sql.replace(/--.*$/gm, '');
+  for (const m of code.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g)) {
+    tables.set(m[1], m[2].split('\n').map((l) => l.trim()).filter((l) => l && !CONSTRAINT_LINE.test(l)).map((l) => l.split(/\s+/)[0]));
   }
-  for (const m of sql.matchAll(/ALTER TABLE (\w+) ADD COLUMN (\w+)/g)) if (!tables.get(m[1])?.includes(m[2])) tables.get(m[1])?.push(m[2]);
+  for (const m of code.matchAll(/ALTER TABLE (\w+) ADD COLUMN (\w+)/g)) if (!tables.get(m[1])?.includes(m[2])) tables.get(m[1])?.push(m[2]);
   return tables;
 }
 
