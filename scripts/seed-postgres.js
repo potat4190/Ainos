@@ -229,8 +229,8 @@ async function connect(pg, databaseUrl) {
 }
 
 /** Apply schema.pg.sql in one transaction (a transaction pooler keeps it on one connection). */
-async function applySchema(pg, databaseUrl) {
-  const owner = await connect(pg, databaseUrl);
+async function applySchema(open, databaseUrl) {
+  const owner = await open(databaseUrl);
   try {
     await owner.query('BEGIN');
     // Never wait long behind live traffic for a lock: fail the deploy instead.
@@ -256,16 +256,20 @@ async function checkSchema(client) {
   }
 }
 
-export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, lostTracks = 'refuse', log = console.log }) {
-  const { default: pg } = await import('pg');
+/**
+ * connectTo(url) opens a client with pg's query(sql, params) / end() interface;
+ * by default a pg connection. The tests pass an in-process Postgres instead.
+ */
+export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, lostTracks = 'refuse', log = console.log, connectTo }) {
+  const open = connectTo || (await import('pg').then(({ default: pg }) => (url) => connect(pg, url)));
   if (migrationUrl) {
-    await applySchema(pg, migrationUrl);
+    await applySchema(open, migrationUrl);
     log('✓ Postgres schema applied');
   }
   const src = new DatabaseSync(sqliteFile, { readOnly: true });
   let client;
   try {
-    client = await connect(pg, databaseUrl);
+    client = await open(databaseUrl);
     await checkSchema(client);
     log('✓ Postgres schema up to date');
 

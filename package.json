@@ -18,5 +18,8 @@
   "dependencies": {
     "@vercel/functions": "^2.2.13",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10"
   }
 }

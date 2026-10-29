@@ -25,7 +25,7 @@ Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music st
 | `npm start` | Generates the catalog on first run, serves `http://127.0.0.1:4321` |
 | `npm run dev` | Same, with `--watch` |
 | `npm run setup` | Wipes and regenerates `data/` |
-| `npm test` | `node:test` suites in `test/`, run one file at a time |
+| `npm test` | `node:test` suites in `test/`, run one file at a time. `test/postgres.test.js` runs `schema.pg.sql` and `seed-postgres.js` against PGlite (in-process Postgres, a dev dependency that app code must never import); it skips without `npm install`. A preview deploy stays the final check against Supabase itself |
 | `node scripts/smoke.js <url>` | End-to-end check against a running deployment |
 
 ## Layout

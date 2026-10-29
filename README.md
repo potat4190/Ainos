@@ -12,7 +12,7 @@ A Christian faith-based music streaming app dedicated to Christian worship, prai
 
 ## Run it
 
-Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Running locally needs no `npm install`: the two packages in `package.json` (`pg`, `@vercel/functions`) are only used by the hosted deployment.
+Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Running the app locally needs no `npm install`: the two packages in `dependencies` (`pg`, `@vercel/functions`) are only used by the hosted deployment. `npm install` also brings the one dev dependency, [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly), which `npm test` uses to check `server/schema.pg.sql` and the deploy-time catalog sync against real Postgres; without it those tests are skipped.
 
 ```bash
 npm start          # first run generates the catalog (~15 s), then serves http://127.0.0.1:4321
@@ -31,7 +31,7 @@ Because the account is shared, visitors can see each other's changes until the n
 | `npm start` | Start the server (`PORT`, `HOST` env vars; default `127.0.0.1:4321`; `TRUST_PROXY=1` behind an HTTPS proxy or tunnel) |
 | `npm run dev` | Same, restarting on file changes |
 | `npm run setup` | Regenerate the catalog from scratch (wipes `data/`) |
-| `npm test` | Automated test suite: streaming, auth, events, playlists, search, multi-language recommendations, Connect, loudness meter, security |
+| `npm test` | Automated test suite: streaming, auth, events, playlists, search, multi-language recommendations, Connect, loudness meter, security, and the Postgres schema and catalog sync (after `npm install`) |
 
 To use Connect from your phone, start with `HOST=0.0.0.0 npm start` (PowerShell: `$env:HOST="0.0.0.0"; npm start`), open the printed network address, and log in with the same account.
 
