@@ -2,6 +2,9 @@
 Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · smoke test checks the Hymns playlist, finds Amazing Grace, streams its audio · commit ad243a5
+- 2026-10-29 Phase 1 · Node.js pinned to 22.13–24: the first preview build had moved to Node 26, whose render of one hymn differed in the last float bits (inaudible); audio is byte-exact only within one Node version · commit 21d9675
+- 2026-10-29 Phase 1 · pushed `phase-1-catalog`, PR #3; preview build migrated + synced the preview DB; smoke passed (before the hymn checks were added)
 - 2026-10-29 Phase 1 · re-review fix: preview skip only for older branches, prune guard, advisory lock, hymn snapshot update mode, docs · commit b3d93f3
 - 2026-10-29 Phase 1 · re-review (one fresh reviewer, ran the sync against a real Postgres 17): nothing critical/high; lows fixed above or recorded below
 - 2026-10-29 Phase 1 · review fix: docs (sync, separate preview DB, generator-owned songs), Acoustic genre label, Holy Holy Holy note, hymn count · commit 7ac4a2b
