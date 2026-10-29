@@ -12,7 +12,7 @@ A Christian faith-based music streaming app dedicated to Christian worship, prai
 
 ## Run it
 
-Requires **Node.js 22.13 or newer** (it uses the built-in `node:sqlite`). Running the app locally needs no `npm install`: the two packages in `dependencies` (`pg`, `@vercel/functions`) are only used by the hosted deployment. `npm install` also brings the one dev dependency, [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly), which `npm test` uses to check `server/schema.pg.sql` and the deploy-time catalog sync against real Postgres; without it those tests are skipped.
+Requires **Node.js 24** (it uses the built-in `node:sqlite`; `package.json` pins `engines` to `24.x` so Vercel builds on 24 too, and the version is raised on purpose, not by Vercel’s default). Running the app locally needs no `npm install`: the two packages in `dependencies` (`pg`, `@vercel/functions`) are only used by the hosted deployment. `npm install` also brings the one dev dependency, [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly), which `npm test` uses to check `server/schema.pg.sql` and the deploy-time catalog sync against real Postgres; without it those tests are skipped.
 
 ```bash
 npm start          # first run generates the catalog (~15 s), then serves http://127.0.0.1:4321

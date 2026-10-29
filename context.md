@@ -13,7 +13,7 @@ Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music st
 
 ## Stack
 
-- **Node.js ≥ 22.13, ES modules, no framework, no build step.** Uses built-in `node:sqlite`, `node:test`, `node:http`.
+- **Node.js 24.x (pinned in `engines`, so Vercel builds on 24; upgrade deliberately), ES modules, no framework, no build step.** Uses built-in `node:sqlite`, `node:test`, `node:http`.
 - **Local:** zero dependencies; data is SQLite in `data/` (gitignored).
 - **Production:** Vercel (one Function for `/api/*`, static files for app/audio/art, middleware for signed media) + Supabase Postgres. Only `pg` and `@vercel/functions` are npm dependencies, and only production uses them.
 - **Frontend:** vanilla JS ES modules in `public/js/`, DOM built with the `h()` helper in `ui.js`. A strict CSP means **no inline scripts or styles**.
