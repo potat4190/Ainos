@@ -49,11 +49,11 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - Q6 HSTS: rely on Vercel's platform header (smoke checks it) or add our own? → waiting
 - Q7 GitHub Actions CI (`npm test` + `npm audit`)? → waiting
 - Q8 Global admin: `is_admin` column or env allowlist of user ids? → waiting (needed by Phase 2)
-- Q9 New catalog names: I draft `scripts/catalog-names.js` or owner supplies? → waiting
-- Q10 Hymn list (Amazing Grace, Be Thou My Vision, It Is Well, Holy Holy Holy, Come Thou Fount, All Hail the Power, Rock of Ages, Abide with Me); translations English-only? → waiting
-- Q11 Hymn length: ~2 verses (90–120 s) or full? → waiting
-- Q12 Cover art shows new names; rename editorial playlists too? → waiting
-- Q13 Who reviews new hi/ne/zh/ja/es strings? → waiting
+- Q9 New catalog names: I draft `scripts/catalog-names.js` or owner supplies? → (2026-10-29) Claude drafts it for approval. Brief: titles from Scripture and worship themes (psalms, Gospels, grace, light, the cross); artist names clearly fictional and never close to real worship bands; 2 options per item so the owner picks. Do not deploy until approved.
+- Q10 Hymn list (Amazing Grace, Be Thou My Vision, It Is Well, Holy Holy Holy, Come Thou Fount, All Hail the Power, Rock of Ages, Abide with Me); translations English-only? → (2026-10-29) All 8 approved. Use the original public-domain tune for each, not a modern hymnal arrangement or harmonization; check each melody against a scan of an old public-domain hymnal (e.g. Hymnary.org), not memory alone; record the source for each in `scripts/hymns.js`. Owner listens before they ship. English only for now.
+- Q11 Hymn length: ~2 verses (90–120 s) or full? → (2026-10-29) Two verses of audio per hymn, but store ALL public-domain verses as lyrics (sections + arrangement) so churches can project the full hymn in manual mode; automatic mode covers only the verses with audio and timings. Same audio encoding settings as the existing catalog.
+- Q12 Cover art shows new names; rename editorial playlists too? → (2026-10-29) Keep editorial playlist names and ids; only clean their descriptions per spec 1.3. Add one new "Hymns" playlist containing the new hymn album.
+- Q13 Who reviews new hi/ne/zh/ja/es strings? → (2026-10-29) Claude translates and flags every new key for native review, and keeps a running list in `docs/i18n-review.md` (per language: key, English, translation).
 - Q14 YouVersion key and default version per language; fallback WEB or KJV; English-only book names in search? → waiting
 - Q15 Playlist schema: `source_id` on `playlist_tracks` + `liked_sources` table, or separate table? → waiting
 - Q16 Official YouTube channel handles per language → waiting
@@ -87,6 +87,8 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 - `str()` NFC also maps CJK compatibility ideographs to unified forms (standard trade-off).
 
 ## Notes for the next session
+- Every new UI string: add it to all six languages in `public/js/i18n.js` AND a row per language in `docs/i18n-review.md` (Q13).
+- New "Hymns" editorial playlist (Q12): its id must come from its own seed (like the hymn tracks), not the global `rnd`, so existing editorial ids stay unchanged (snapshot test).
 - Baseline before any spec work: `npm test` = 57 tests, all pass (Node 24.22). After Phase 0 tasks: 86.
 - `church-demo` is the assumed church demo username (Q20 pending); it is a constant in `server/demo.js` and reserved at signup.
 - P0.14 (CI) not done; the plan's other Phase 0 tasks are committed.
