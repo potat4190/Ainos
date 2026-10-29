@@ -31,6 +31,9 @@ test('audit() records who did what to which org, when', () => withStore(async (s
 }));
 
 test('audit() commits and rolls back with the transaction it is part of', () => withStore(async (store) => {
+  const kept = await store.tx((t) => audit(t, { orgId: 'org1', action: 'org.create' }));
+  assert.ok(await store.get('SELECT 1 AS x FROM audit_log WHERE id = ?', [kept]), 'committed with its transaction');
+  await store.run('DELETE FROM audit_log');
   await assert.rejects(store.tx(async (t) => {
     await audit(t, { orgId: 'org1', action: 'org.rename' });
     throw new Error('the change failed');
@@ -46,6 +49,17 @@ test('audit() keeps entries small and refuses malformed action names', () => wit
   assert.equal(details.lines.length, 50, 'long lists clipped');
   const huge = await audit(store, { action: 'lyrics.update', details: Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`k${i}`, 'y'.repeat(200)])) });
   assert.deepEqual(JSON.parse((await store.get('SELECT details FROM audit_log WHERE id = ?', [huge])).details), { truncated: true });
+  // Nothing in details can fail the action it records.
+  let deep = 'bottom';
+  for (let i = 0; i < 20_000; i++) deep = [deep];
+  const circular = { name: 'loop' };
+  circular.self = circular;
+  for (const details of [{ body: deep }, circular, { n: 10n }]) {
+    const entry = await audit(store, { action: 'lyrics.update', details });
+    assert.ok(JSON.parse((await store.get('SELECT details FROM audit_log WHERE id = ?', [entry])).details));
+  }
+  const clipped = await audit(store, { action: 'lyrics.update', targetType: 't'.repeat(500), targetId: 'i'.repeat(500), orgId: 'o'.repeat(500) });
+  assert.deepEqual({ ...(await store.get('SELECT length(target_type) AS a, length(target_id) AS b, length(org_id) AS c FROM audit_log WHERE id = ?', [clipped])) }, { a: 100, b: 100, c: 100 });
   for (const action of ['', 'Setlist.Create', 'setlist create', 'setlist..create', '.x', 'x.', `a${'b'.repeat(64)}`, null, 5]) {
     await assert.rejects(audit(store, { action }), /bad action name/, String(action));
   }

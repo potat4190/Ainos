@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 );
 
 -- Who did what to a church's data (audit.js). No foreign keys: rows outlive
--- the users and orgs they mention, and deleting an account anonymizes them.
+-- the users and orgs they mention (account deletion, Phase 5, will anonymize them).
 CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   org_id      TEXT,

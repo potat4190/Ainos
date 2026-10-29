@@ -7,22 +7,39 @@ import { randomId } from './util.js';
 const ACTION = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const MAX_DETAILS = 4096; // bytes of JSON
 const MAX_TEXT = 200; // characters per string value in details
+const MAX_DEPTH = 4;
 
-/** Shorten long strings (user-supplied names, pasted text) so an entry stays small. */
-function clip(value) {
+/**
+ * Shorten long strings (user-supplied names, pasted text), long lists and deep
+ * nesting, so an entry stays small and a strange value can't fail the action.
+ */
+function clip(value, depth = 0) {
   if (typeof value === 'string') return value.length > MAX_TEXT ? `${value.slice(0, MAX_TEXT)}…` : value;
-  if (Array.isArray(value)) return value.slice(0, 50).map(clip);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 50).map(([k, v]) => [k, clip(v)]));
+  if (value && typeof value === 'object') {
+    if (depth >= MAX_DEPTH) return '…';
+    if (Array.isArray(value)) return value.slice(0, 50).map((v) => clip(v, depth + 1));
+    return Object.fromEntries(Object.entries(value).slice(0, 50).map(([k, v]) => [k.slice(0, 64), clip(v, depth + 1)]));
+  }
   return value;
 }
+
+function detailsJson(details) {
+  if (details == null) return null;
+  try {
+    const json = JSON.stringify(clip(details));
+    return Buffer.byteLength(json) > MAX_DETAILS ? JSON.stringify({ truncated: true }) : json;
+  } catch {
+    return JSON.stringify({ unserializable: true }); // e.g. a BigInt; never fail the action over its log entry
+  }
+}
+
+const shortText = (v) => (v == null ? null : String(v).slice(0, 100));
 
 /** Write one audit entry and return its id. */
 export async function audit(store, { orgId = null, userId = null, action, targetType = null, targetId = null, details = null, now = Date.now() }) {
   if (typeof action !== 'string' || action.length > 64 || !ACTION.test(action)) throw new Error(`audit: bad action name ${JSON.stringify(action)}`);
-  let json = details == null ? null : JSON.stringify(clip(details));
-  if (json && Buffer.byteLength(json) > MAX_DETAILS) json = JSON.stringify({ truncated: true });
   const id = randomId();
   await store.run('INSERT INTO audit_log (id, org_id, user_id, action, target_type, target_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, orgId, userId, action, targetType, targetId, json, now]);
+    [id, shortText(orgId), userId, action, shortText(targetType), shortText(targetId), detailsJson(details), now]);
   return id;
 }
