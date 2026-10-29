@@ -71,8 +71,10 @@ check(art.status === 200 && /svg/.test(art.headers.get('content-type') || ''), `
 const doc = await fetch(base + '/docs/HOW-SPOTIFY-WORKS.md');
 check(doc.status === 200, `evidence report -> ${doc.status}`);
 
-// Writes: like/unlike, follow/unfollow, a temporary playlist, events.
-// Only undo what this script changed, so the demo account keeps its own likes and follows.
+// Writes: like/unlike, follow/unfollow, a temporary playlist, an event, the language.
+// Only undo what this script changed, so the demo account keeps its own likes,
+// follows and language. The one event sent is a pause with no track, which
+// stays out of recently played, stats and recommendations.
 const likedBefore = (await call('GET', '/api/me/liked/ids')).json.ids.includes(track.id);
 const followedBefore = (await call('GET', `/api/artists/${track.artist.id}`)).json.following;
 await call('PUT', `/api/me/liked/${track.id}`);

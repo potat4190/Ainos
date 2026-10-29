@@ -42,6 +42,16 @@ export function hashSeed(str) {
 
 export const toUri = (kind, id) => `ainos:${kind}:${id}`;
 
+/**
+ * Fold text for search: unify compatibility forms (full-width letters,
+ * ligatures) and case, and drop accents from Latin, Greek and Cyrillic letters.
+ * Marks that change a word (Devanagari vowel signs, Japanese dakuten) are kept.
+ */
+export const fold = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').normalize('NFC').toLowerCase();
+
+/** The folded text stored in search_index.folded, which search filters on in SQL. */
+export const searchText = (title, subtitle) => `${fold(title || '')} ${fold(subtitle || '')}`;
+
 /** ISO-8601 week label, e.g. "2026-W43". Discover Weekly refreshes per week. */
 export function isoWeek(date = new Date()) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));

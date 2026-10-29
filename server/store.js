@@ -18,10 +18,15 @@ import { openDb } from './db.js';
 /** @returns {Store} */
 export function sqliteStore(file) {
   const db = openDb(file);
+  // Least-recently-used statement cache. Much of the SQL is built per call
+  // (IN lists, multi-row inserts), so an unbounded cache would keep growing.
   const cache = new Map();
   const prep = (sql) => {
     let s = cache.get(sql);
-    if (!s) cache.set(sql, (s = db.prepare(sql)));
+    if (s) cache.delete(sql);
+    else s = db.prepare(sql);
+    cache.set(sql, s);
+    if (cache.size > 200) cache.delete(cache.keys().next().value);
     return s;
   };
   // Transactions run one at a time. Queries are synchronous underneath, so a
@@ -30,7 +35,6 @@ export function sqliteStore(file) {
   let inner;
   const store = {
     kind: 'sqlite',
-    db,
     async all(sql, params = []) { return prep(sql).all(...params); },
     async get(sql, params = []) { return prep(sql).get(...params); },
     async run(sql, params = []) { const r = prep(sql).run(...params); return { changes: Number(r.changes) }; },
@@ -66,6 +70,18 @@ export function toPg(sql) {
   return out;
 }
 
+/**
+ * pg connection options, shared by the app and scripts/seed-postgres.js.
+ * TLS checks the server's certificate, except for a database on this machine.
+ * Supabase signs its certificates with its own CA: put that certificate (PEM)
+ * in DATABASE_CA_CERT. An sslmode in the URL itself takes precedence.
+ */
+export function pgConnection(databaseUrl, caCert = process.env.DATABASE_CA_CERT) {
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(databaseUrl).hostname);
+  const ca = caCert?.replace(/\\n/g, '\n'); // also accept a PEM pasted on one line with literal \n
+  return { connectionString: databaseUrl, ssl: local ? false : ca ? { ca } : true };
+}
+
 /** @returns {Promise<Store>} */
 export async function postgresStore(databaseUrl, { max = 5 } = {}) {
   const { default: pg } = await import('pg');
@@ -73,14 +89,7 @@ export async function postgresStore(databaseUrl, { max = 5 } = {}) {
   // only ever stores values well inside Number's safe range.
   pg.types.setTypeParser(20, (v) => Number(v));
   pg.types.setTypeParser(1700, (v) => Number(v));
-  const url = new URL(databaseUrl);
-  const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  const pool = new pg.Pool({
-    connectionString: databaseUrl,
-    max,
-    idleTimeoutMillis: 10_000,
-    ssl: local ? false : { rejectUnauthorized: false },
-  });
+  const pool = new pg.Pool({ ...pgConnection(databaseUrl), max, idleTimeoutMillis: 10_000 });
   pool.on('error', () => {}); // an idle client dropped by the pooler; the next query reconnects
   const mk = (q) => ({
     kind: 'postgres',

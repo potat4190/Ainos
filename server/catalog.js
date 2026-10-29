@@ -1,6 +1,6 @@
 // Read models for the catalog. Shapes are loosely modelled on the Spotify Web
 // API (id + uri + nested simplified artist/album objects).
-import { toUri } from './util.js';
+import { toUri, fold, searchText } from './util.js';
 import { inList } from './store.js';
 
 const TRACK_SELECT = `
@@ -35,8 +35,8 @@ export function trackDto(r) {
 const round = (v, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
 
 // ---- search: prefix matching over title/subtitle words, titles weigh 5x ----
-const fold = (s) => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
-const words = (s) => fold(s || '').match(/[\p{L}\p{N}]+/gu) || [];
+// Marks belong to their word: Devanagari vowel signs are marks, for example.
+const words = (s) => fold(s || '').match(/[\p{L}\p{M}\p{N}]+/gu) || [];
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 /** Score one document for the query terms; 0 = not every term matched. */
@@ -217,7 +217,12 @@ export class Catalog {
   async search(q, limit = 8) {
     const terms = [...new Set(words(q.normalize('NFKC')))].slice(0, 8);
     if (!terms.length) return { tracks: [], artists: [], albums: [], playlists: [], top: null };
-    const docs = await this.store.all('SELECT kind, ref_id, title, subtitle FROM search_index');
+    // Only rows containing every term leave the database; searchScore then
+    // checks for word prefixes. Terms are letters, marks and digits only, so
+    // they hold no LIKE wildcards. Rows not folded yet are always candidates.
+    const docs = await this.store.all(
+      `SELECT kind, ref_id, title, subtitle FROM search_index WHERE folded = '' OR (${terms.map(() => 'folded LIKE ?').join(' AND ')})`,
+      terms.map((t) => `%${t}%`));
     const hits = docs
       .map((d) => ({ kind: d.kind, ref_id: d.ref_id, score: searchScore(terms, d.title, d.subtitle) }))
       .filter((h) => h.score > 0)
@@ -237,5 +242,15 @@ export class Catalog {
     const best = hits.find((h) => ids[h.kind]);
     result.top = best ? { kind: best.kind, item: (result[best.kind + 's'] || []).find((x) => x.id === best.ref_id) || null } : null;
     return result;
+  }
+
+  /** Fill in folded text for search rows written without it (by older versions). */
+  async foldMissing() {
+    const rows = await this.store.all("SELECT kind, ref_id, title, subtitle FROM search_index WHERE folded = ''");
+    for (const r of rows) {
+      // folded = '' again: a row rewritten in the meantime already has the newer text.
+      await this.store.run("UPDATE search_index SET folded = ? WHERE kind = ? AND ref_id = ? AND folded = ''", [searchText(r.title, r.subtitle), r.kind, r.ref_id]);
+    }
+    return rows.length;
   }
 }

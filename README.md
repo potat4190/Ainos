@@ -33,19 +33,23 @@ To use Connect from your phone, start with `HOST=0.0.0.0 npm start` (PowerShell:
 
 Locally everything lives in SQLite under `data/`. In production the same code runs on Vercel with its data in Supabase Postgres:
 
-- **Database:** `server/store.js` gives the app one async query interface. Without `DATABASE_URL` it uses SQLite; with it, Postgres. The Postgres schema is in `server/schema.pg.sql` (row-level security is on with no policies, so Supabase's public Data API can read nothing; the app connects as its own role).
+- **Database:** `server/store.js` gives the app one async query interface. Without `DATABASE_URL` it uses SQLite; with it, Postgres. The Postgres schema is in `server/schema.pg.sql` (row-level security is on with no policies, so Supabase's public Data API can read nothing; the app connects as its own role). The connection uses TLS and checks the server's certificate.
 - **API:** `api/index.js` is a Vercel Function that serves every `/api/*` route.
 - **Audio and art:** the catalog generator is deterministic, so `scripts/vercel-build.js` regenerates the same WAV and SVG files on every build and Vercel serves them as static files. `middleware.js` checks the HMAC signature on every `/media/` request, as the local server does.
-- **First deploy:** the build seeds an empty database from the generated catalog (`scripts/seed-postgres.js`). Later builds only check that the track ids still match the files.
+- **Schema and migrations:** `server/schema.pg.sql` creates missing tables and migrates existing ones, so every statement in it must be safe to re-run. The app's database role (`ainos_app`) can only read and write rows, so the file is applied by the tables' owner: paste it into the Supabase SQL editor, or set `DATABASE_MIGRATION_URL` and the build applies it. **Every deploy** then checks, as the app's role, that every table and column in the file exists, and stops with a list of what is missing if not. On the first deploy it seeds the empty database from the generated catalog (`scripts/seed-postgres.js`); later builds only check that the track ids still match the files.
 
 Environment variables on Vercel:
 
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | Supabase **Transaction pooler** connection string (port 6543) |
+| `DATABASE_CA_CERT` | The CA certificate that signs your database's TLS certificate, as PEM text. Supabase uses its own CA: download it from *Project Settings → Database → SSL configuration* and paste the file's contents. Not needed for a database whose certificate is signed by a public CA. |
 | `AINOS_SECRET` | A long random string; signs media URLs |
+| `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
 
-`node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy.
+`node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy. It leaves the demo account's likes, follows, language and listening history as it found them.
+
+Running `npm start` with `DATABASE_URL` set uses that database instead of SQLite (it prints which host), while audio and art still come from `data/`.
 
 **Connect on serverless:** devices are tracked in each server instance's memory, so on Vercel two devices only see each other when their requests reach the same instance. It works fully when running locally.
 
@@ -78,7 +82,7 @@ scripts/
   generate.js    builds the Christian worship catalog across 6 languages, synthesizes audio, measures loudness, seeds users
   synth.js       procedural music synthesizer (8 styles) + WAV encoder
   art.js         generated SVG cover art
-  seed-postgres.js  copies a generated catalog into an empty Postgres database
+  seed-postgres.js  applies the Postgres schema, then copies a generated catalog into an empty database
   vercel-build.js   Vercel build: generate catalog, seed/verify Postgres, assemble dist/
   smoke.js       end-to-end check against a running deployment
 api/index.js     Vercel Function for /api/*

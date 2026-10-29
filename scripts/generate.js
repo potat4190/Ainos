@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, tx } from '../server/db.js';
 import { hashPasswordSync as hashPassword } from '../server/auth.js';
 import { integratedLoudness, samplePeakDb } from '../server/loudness.js';
-import { mulberry32, seededId, hashSeed, clamp } from '../server/util.js';
+import { mulberry32, seededId, hashSeed, clamp, searchText } from '../server/util.js';
 import { renderTrack, master, downsample2, encodeWav16 } from './synth.js';
 import { albumCover, artistImage, hexFromHsl } from './art.js';
 
@@ -105,7 +105,8 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   const insTrack = db.prepare(`INSERT INTO tracks (id, album_id, artist_id, title, track_no, duration_ms, genre, language, loudness_lufs, peak_db,
     tempo, key, mode, energy, valence, danceability, acousticness, instrumentalness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insFile = db.prepare('INSERT INTO track_files (track_id, quality, file, mime, bytes, sample_rate, bitrate_kbps, header_bytes) VALUES (?,?,?,?,?,?,?,?)');
-  const insFts = db.prepare('INSERT INTO search_index (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)');
+  const insDoc = db.prepare('INSERT INTO search_index (kind, ref_id, title, subtitle, folded) VALUES (?, ?, ?, ?, ?)');
+  const addSearchDoc = (kind, id, title, subtitle) => insDoc.run(kind, id, title, subtitle, searchText(title, subtitle));
 
   const tracks = [];
   let totalBytes = 0;
@@ -114,7 +115,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
     const artistImg = `art/artist-${artistId}.svg`;
     fs.writeFileSync(path.join(dataDir, artistImg), artistImage({ name: artist.name, hue: artist.hue, seed: hashSeed(artist.name) }));
     insArtist.run(artistId, artist.name, artist.genre, artist.language || 'en', artist.bio, artistImg, hexFromHsl(artist.hue, 55, 32));
-    insFts.run('artist', artistId, artist.name, artist.genre);
+    addSearchDoc('artist', artistId, artist.name, artist.genre);
 
     for (const [ai, album] of artist.albums.entries()) {
       const albumId = seededId(rnd);
@@ -123,7 +124,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
       fs.writeFileSync(path.join(dataDir, cover), albumCover({ title: album.title, artist: artist.name, style: artist.style, hue, seed: hashSeed(album.title) }));
       const releasedAt = album.year === 2026 ? now - Math.floor(rnd() * 20) * 86400000 : Date.UTC(album.year, Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 27));
       insAlbum.run(albumId, artistId, album.title, album.year, album.type || 'album', cover, hexFromHsl(hue, 55, 32), releasedAt);
-      insFts.run('album', albumId, album.title, `${artist.name} ${album.year}`);
+      addSearchDoc('album', albumId, album.title, `${artist.name} ${album.year}`);
 
       for (const [ti, title] of album.tracks.entries()) {
         const trackId = seededId(rnd);
@@ -168,7 +169,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
           features.energy, features.valence, features.danceability, features.acousticness, 0.95);
         insFile.run(trackId, 'high', hiFile, 'audio/wav', hi.length, SR, Math.round((SR * 16) / 1000), 44);
         insFile.run(trackId, 'low', loFile, 'audio/wav', lo.length, SR / 2, Math.round(((SR / 2) * 16) / 1000), 44);
-        insFts.run('track', trackId, title, `${artist.name} ${album.title}`);
+        addSearchDoc('track', trackId, title, `${artist.name} ${album.title}`);
         tracks.push({ id: trackId, artistId, albumId, style: artist.style, language: artist.language || 'en', title, ...features, tempo: bpm, mode, loud, firstOnAlbum: ti === 0 });
         say(`  ♪ ${artist.name} – ${title}  (${artist.style}, ${bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)  ${Date.now() - tStart} ms`);
       }
@@ -191,7 +192,7 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
       const id = seededId(rnd);
       insPlaylist.run(id, null, p.name, p.desc, p.color, now, now);
       tracks.filter(p.pick).sort(p.sort).slice(0, 12).forEach((t, i) => insPT.run(id, t.id, i, now));
-      insFts.run('playlist', id, p.name, p.desc);
+      addSearchDoc('playlist', id, p.name, p.desc);
     }
   });
 

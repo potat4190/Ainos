@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS artists (
   id     TEXT PRIMARY KEY,
@@ -87,6 +88,9 @@ CREATE TABLE IF NOT EXISTS playlists (
 );
 CREATE INDEX IF NOT EXISTS playlists_owner ON playlists(owner_id);
 
+-- Positions are not declared unique here: SQLite checks uniqueness row by row
+-- during an UPDATE, which would reject reorders. Transactions run one at a
+-- time on SQLite (store.js), so two edits cannot pick the same position.
 CREATE TABLE IF NOT EXISTS playlist_tracks (
   id          INTEGER PRIMARY KEY,
   playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
@@ -126,6 +130,7 @@ CREATE TABLE IF NOT EXISTS events (
   payload     TEXT
 );
 CREATE INDEX IF NOT EXISTS events_user_ts ON events(user_id, server_ts);
+CREATE INDEX IF NOT EXISTS events_type ON events(type, id);
 
 -- Derived: a "stream" is a play of 30 seconds or more.
 CREATE TABLE IF NOT EXISTS streams (
@@ -153,12 +158,21 @@ CREATE TABLE IF NOT EXISTS generated_playlists (
 
 -- Search documents (tracks, artists, albums, public playlists). Ranking is done
 -- in the app (catalog.js), so the same code works on SQLite and Postgres.
+-- folded = searchText(title, subtitle) (util.js); '' until it is filled in.
 CREATE TABLE IF NOT EXISTS search_index (
   kind     TEXT NOT NULL,
   ref_id   TEXT NOT NULL,
   title    TEXT NOT NULL,
   subtitle TEXT NOT NULL DEFAULT '',
+  folded   TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (kind, ref_id)
+);
+
+-- Fixed-window rate limits (auth.js), shared by every server process.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key          TEXT PRIMARY KEY,
+  window_start INTEGER NOT NULL,
+  hits         INTEGER NOT NULL
 );
 `;
 
@@ -195,6 +209,8 @@ function migrate(db) {
     db.exec("INSERT OR IGNORE INTO search_index (kind, ref_id, title, subtitle) SELECT kind, ref_id, title, COALESCE(subtitle, '') FROM search_fts");
     db.exec('DROP TABLE search_fts');
   }
+  // The app fills in folded for these rows when it starts (Catalog.foldMissing).
+  if (!columns(db, 'search_index').includes('folded')) db.exec("ALTER TABLE search_index ADD COLUMN folded TEXT NOT NULL DEFAULT ''");
 }
 
 export function openDb(file) {
@@ -203,17 +219,6 @@ export function openDb(file) {
   db.exec(SCHEMA);
   migrate(db);
   return db;
-}
-
-// Prepared-statement cache, so hot paths don't re-compile the same SQL per request.
-const stmtCache = new WeakMap();
-/** db.prepare(sql), compiled once per database connection. */
-export function stmt(db, sql) {
-  let m = stmtCache.get(db);
-  if (!m) stmtCache.set(db, (m = new Map()));
-  let s = m.get(sql);
-  if (!s) m.set(sql, (s = db.prepare(sql)));
-  return s;
 }
 
 /** Run fn inside a transaction; rolls back on throw. */

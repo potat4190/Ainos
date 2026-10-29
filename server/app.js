@@ -6,14 +6,14 @@ import { sqliteStore, postgresStore, inList } from './store.js';
 import { Router, HttpError, sendJson, readJson, serveFile, serveRange, safeJoin } from './http.js';
 import {
   hashPassword, verifyPassword, validateCredentials, createSession, destroySession, purgeExpiredSessions, sessionCookie, clearCookie,
-  userFromRequest, rateLimiter, signMediaPath, verifyMediaSignature,
+  userFromRequest, rateLimiter, purgeRateLimits, signMediaPath, verifyMediaSignature,
 } from './auth.js';
 import { Catalog } from './catalog.js';
 import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { randomId, toUri } from './util.js';
+import { randomId, toUri, searchText } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QUALITIES = ['low', 'high'];
@@ -56,12 +56,14 @@ export async function createApp({
   const recommender = new Recommender(store);
   const events = new EventPipeline(store, eventLogDir, { onStreams: (n) => recommender.noteNewStreams(n) });
   const hub = new ConnectHub();
-  const loginLimiter = rateLimiter({ limit: authAttemptsPerMinute, windowMs: 60_000 });
-  const retrainLimiter = rateLimiter({ limit: 2, windowMs: 60_000 });
+  const loginLimiter = rateLimiter(store, { name: 'auth', limit: authAttemptsPerMinute, windowMs: 60_000 });
+  const retrainLimiter = rateLimiter(store, { name: 'retrain', limit: 2, windowMs: 60_000 });
   const metrics = { started_at: Date.now(), requests: 0, media_range_requests: 0, media_full_requests: 0, media_bytes_requested: 0 };
 
-  // Housekeeping: expired sessions and old mix snapshots are never read again.
-  const housekeeping = () => Promise.all([purgeExpiredSessions(store), recommender.pruneSnapshots()]).catch((err) => log('[housekeeping]', err.message));
+  // Housekeeping: expired sessions, old mix snapshots and old rate-limit windows
+  // are never read again; search rows written by older versions get folded text.
+  const housekeeping = () => Promise.all([purgeExpiredSessions(store), recommender.pruneSnapshots(), purgeRateLimits(store), catalog.foldMissing()])
+    .catch((err) => log('[housekeeping]', err.message));
   housekeeping();
   const housekeepingTimer = setInterval(housekeeping, 6 * 3600 * 1000);
   housekeepingTimer.unref?.();
@@ -78,7 +80,7 @@ export async function createApp({
 
   // ---------------- auth ----------------
   r.post('/api/auth/signup', async ({ req, res }) => {
-    if (!loginLimiter(clientIp(req))) throw new HttpError(429, 'Too many attempts, wait a minute');
+    if (!(await loginLimiter(clientIp(req)))) throw new HttpError(429, 'Too many attempts, wait a minute', 'rate_limited');
     const { username, password, display_name, language } = await readJson(req);
     validateCredentials(username, password);
     const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
@@ -98,7 +100,7 @@ export async function createApp({
   });
 
   r.post('/api/auth/login', async ({ req, res }) => {
-    if (!loginLimiter(clientIp(req))) throw new HttpError(429, 'Too many attempts, wait a minute');
+    if (!(await loginLimiter(clientIp(req)))) throw new HttpError(429, 'Too many attempts, wait a minute', 'rate_limited');
     const { username, password } = await readJson(req);
     const row = typeof username === 'string' ? await store.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?) AND is_simulated = 0', [username]) : null;
     if (!row || typeof password !== 'string' || !(await verifyPassword(password, row.password_hash))) throw new HttpError(401, 'Wrong username or password', 'bad_credentials');
@@ -325,7 +327,7 @@ export async function createApp({
 
   r.get('/api/me/recent', auth(async ({ res, user }) => sendJson(res, 200, { tracks: await recentTracks(user.id, 30) })));
 
-  r.get('/api/me/stats', auth(async ({ res, user }) => {
+  r.get('/api/me/stats', auth(async ({ res, user, query }) => {
     const since = Date.now() - 365 * 86400000;
     const args = [user.id, since];
     const [totals, topTracks, topArtists, genres, times, skips] = await Promise.all([
@@ -336,8 +338,10 @@ export async function createApp({
       store.all('SELECT ended_at FROM streams WHERE user_id = ? AND ended_at > ?', args),
       store.get("SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND type = 'play_end' AND ms_played < ?", [user.id, STREAM_THRESHOLD_MS]),
     ]);
+    // Bucket by the listener's clock (?tz=), not the server's: hosted servers run in UTC.
+    const hourOf = hourIn(query.get('tz'));
     const hours = new Array(24).fill(0);
-    for (const row of times) hours[new Date(row.ended_at).getHours()]++;
+    for (const row of times) hours[hourOf(row.ended_at)]++;
     const trackPlays = new Map(topTracks.map((x) => [x.track_id, x.n]));
     const artistPlays = new Map(topArtists.map((x) => [x.artist_id, x.n]));
     const [tt, ta] = await Promise.all([catalog.tracksByIds([...trackPlays.keys()]), catalog.artistsByIds([...artistPlays.keys()])]);
@@ -356,6 +360,10 @@ export async function createApp({
     if (p.owner_id !== user.id) throw new HttpError(403, 'Not your playlist');
     return p;
   };
+  // Call first in any transaction that changes a playlist's tracks: on Postgres
+  // the UPDATE locks the playlist row, so concurrent edits to one playlist run
+  // one after another instead of picking the same positions. (SQLite runs
+  // transactions one at a time anyway.)
   const touch = (s, id) => s.run('UPDATE playlists SET updated_at = ? WHERE id = ?', [Date.now(), id]);
   const cleanName = (s, max) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f]/g, '').trim().slice(0, max) : '');
 
@@ -426,7 +434,10 @@ export async function createApp({
   async function syncPlaylistSearch(t, id) {
     const p = await t.get('SELECT * FROM playlists WHERE id = ?', [id]);
     await t.run('DELETE FROM search_index WHERE kind = ? AND ref_id = ?', ['playlist', id]);
-    if (p && p.is_public) await t.run('INSERT INTO search_index (kind, ref_id, title, subtitle) VALUES (?, ?, ?, ?)', ['playlist', id, p.name, p.description]);
+    if (p && p.is_public) {
+      await t.run('INSERT INTO search_index (kind, ref_id, title, subtitle, folded) VALUES (?, ?, ?, ?, ?)',
+        ['playlist', id, p.name, p.description, searchText(p.name, p.description)]);
+    }
   }
 
   r.post('/api/playlists/:id/tracks', auth(async ({ req, res, user, params }) => {
@@ -434,21 +445,24 @@ export async function createApp({
     const { track_ids } = await readJson(req);
     if (!Array.isArray(track_ids) || !track_ids.length) throw new HttpError(400, 'track_ids required');
     const added = await store.tx(async (t) => {
-      const n = await addTracks(t, params.id, track_ids);
       await touch(t, params.id);
-      return n;
+      return addTracks(t, params.id, track_ids);
     });
     sendJson(res, 200, { added });
   }));
 
   r.delete('/api/playlists/:id/tracks/:position', auth(async ({ res, user, params }) => {
     await ownPlaylist(user, params.id);
+    if (!/^\d{1,9}$/.test(params.position)) throw new HttpError(400, 'Bad position');
     const pos = Number(params.position);
     await store.tx(async (t) => {
-      await t.run('DELETE FROM playlist_tracks WHERE playlist_id = ? AND position = ?', [params.id, pos]);
-      const rows = await t.all('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id', [params.id]);
-      await setPositions(t, params.id, rows.map((x) => x.id));
       await touch(t, params.id);
+      const rows = await t.all('SELECT id, position FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id', [params.id]);
+      const i = rows.findIndex((x) => x.position === pos);
+      if (i < 0) return; // already gone, e.g. a double click
+      await t.run('DELETE FROM playlist_tracks WHERE id = ?', [rows[i].id]);
+      rows.splice(i, 1);
+      await setPositions(t, params.id, rows.map((x) => x.id));
     });
     sendJson(res, 200, { ok: true });
   }));
@@ -457,12 +471,12 @@ export async function createApp({
     await ownPlaylist(user, params.id);
     const { from, to } = await readJson(req);
     await store.tx(async (t) => {
+      await touch(t, params.id);
       const rows = (await t.all('SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position, id', [params.id])).map((x) => x.id);
       if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= rows.length || to >= rows.length) throw new HttpError(400, 'Bad positions');
       const [moved] = rows.splice(from, 1);
       rows.splice(to, 0, moved);
       await setPositions(t, params.id, rows);
-      await touch(t, params.id);
     });
     sendJson(res, 200, await catalog.playlist(params.id));
   }));
@@ -516,8 +530,8 @@ export async function createApp({
 
   // A full retrain is CPU-heavy, so it is rate-limited across all users.
   r.post('/api/internals/retrain', auth(async ({ res }) => {
-    if (!retrainLimiter('global')) throw new HttpError(429, 'The recommender was just retrained, try again in a minute');
-    sendJson(res, 200, await recommender.train());
+    if (!(await retrainLimiter('global'))) throw new HttpError(429, 'The recommender was just retrained, try again in a minute');
+    sendJson(res, 200, await recommender.train({ fresh: true }));
   }));
 
   // ---------------- request handling ----------------
@@ -601,6 +615,17 @@ export async function createApp({
   }
 
   return { server, handler, store, recommender, hub, events, close };
+}
+
+/** Hour of day (0-23) of an epoch-ms time in an IANA time zone, or in the server's zone if tz is missing or unknown. */
+function hourIn(tz) {
+  let fmt;
+  try {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz?.slice(0, 64) || undefined, hour: 'numeric', hourCycle: 'h23' });
+  } catch {
+    fmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23' });
+  }
+  return (ms) => Number(fmt.formatToParts(ms).find((p) => p.type === 'hour').value) % 24;
 }
 
 function isSecure(req) {

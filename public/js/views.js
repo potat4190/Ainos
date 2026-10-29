@@ -441,7 +441,7 @@ export async function downloads(el, _p, app) {
 }
 
 export async function stats(el, _p, app) {
-  const s = await api.get('/api/me/stats');
+  const s = await api.get(`/api/me/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`);
   el.append(h('h1', { style: { margin: '8px 0 4px', 'font-size': '34px' } }, t('statsTitle', { name: app.me.display_name })));
   el.append(h('p', { class: 'muted' }, t('statsSub')));
   el.append(h('div', { class: 'stat-grid section' },

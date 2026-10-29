@@ -9,10 +9,13 @@ const dataDir = process.env.AINOS_DATA || path.join(ROOT, 'data');
 const PORT = Number(process.env.PORT || 4321);
 const HOST = process.env.HOST || '127.0.0.1';
 
-const usePostgres = !!process.env.DATABASE_URL; // data lives in Postgres; nothing to generate locally
+const usePostgres = !!process.env.DATABASE_URL;
 const hasDb = fs.existsSync(path.join(dataDir, 'ainos.db'));
 const hasMedia = fs.existsSync(path.join(dataDir, 'media'));
-if (!usePostgres && (!hasDb || !hasMedia)) {
+// Audio, art and the media signing key are always served from dataDir, so they
+// are needed with Postgres too. The catalog is deterministic, so the generated
+// files match the track ids that scripts/seed-postgres.js put in Postgres.
+if (!hasMedia || (!usePostgres && !hasDb)) {
   // A database without its media/ folder (e.g. copied without data/media) means every song and cover would 404.
   console.log(hasDb
     ? `Catalog database found but ${path.join(dataDir, 'media')} is missing — regenerating the catalog (old database kept as ainos.db.bak; takes ~15 seconds)...\n`
@@ -27,6 +30,11 @@ if (!usePostgres && (!hasDb || !hasMedia)) {
   const { generateCatalog } = await import('../scripts/generate.js');
   await generateCatalog({ dataDir });
   console.log('');
+}
+
+if (usePostgres) {
+  console.log(`DATABASE_URL is set: accounts, playlists and plays are read from and written to the Postgres database at ${new URL(process.env.DATABASE_URL).host}.`);
+  console.log('Unset DATABASE_URL to use the local SQLite database instead.\n');
 }
 
 const app = await createApp({ dataDir });

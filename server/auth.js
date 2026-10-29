@@ -78,20 +78,26 @@ export async function userFromRequest(store, req) {
   return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token };
 }
 
-/** Tiny fixed-window rate limiter (per key), e.g. login attempts per IP. */
-export function rateLimiter({ limit, windowMs }) {
-  const hits = new Map();
-  return (key) => {
+/**
+ * Fixed-window rate limiter (per key), e.g. login attempts per IP. Counts live
+ * in the database, so serverless instances share one limit instead of each
+ * allowing `limit` on its own. Resolves to false once the key is over it.
+ */
+export function rateLimiter(store, { name, limit, windowMs }) {
+  return async (key) => {
     const now = Date.now();
-    const h = hits.get(key);
-    if (!h || now - h.start > windowMs) {
-      hits.set(key, { start: now, count: 1 });
-      return true;
-    }
-    h.count++;
-    if (hits.size > 10000) for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k);
-    return h.count <= limit;
+    const row = await store.get(`INSERT INTO rate_limits (key, window_start, hits) VALUES (?, ?, 1)
+      ON CONFLICT (key) DO UPDATE SET
+        hits = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.hits + 1 ELSE 1 END,
+        window_start = CASE WHEN rate_limits.window_start >= ? THEN rate_limits.window_start ELSE excluded.window_start END
+      RETURNING hits`, [`${name}:${key}`, now, now - windowMs, now - windowMs]);
+    return row.hits <= limit;
   };
+}
+
+/** Delete rate-limit windows that ended long ago. */
+export function purgeRateLimits(store, olderThanMs = 3600 * 1000) {
+  return store.run('DELETE FROM rate_limits WHERE window_start < ?', [Date.now() - olderThanMs]);
 }
 
 /** HMAC-signed, expiring media URLs (like a CDN's signed URLs). */

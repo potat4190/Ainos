@@ -157,6 +157,21 @@ test('a play counts as a stream only at 30 seconds or more', async () => {
   assert.equal(stats.short_plays, 1);
 });
 
+test('listening hours follow the listener’s time zone', async () => {
+  const c = await signup(srv.base, 'nightowl');
+  const t = await firstTrack(c);
+  const before = Date.now();
+  await c.post('/api/events', { events: [{ type: 'play_end', track_id: t.id, device_id: 'd', ms_played: 40_000, reason: 'trackdone' }] });
+  const after = Date.now();
+  const hourIn = (tz, ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(ms)) % 24;
+  for (const tz of ['UTC', 'Asia/Kathmandu', 'America/New_York']) {
+    const { hours } = (await c.get(`/api/me/stats?tz=${encodeURIComponent(tz)}`)).json;
+    assert.ok(hours[hourIn(tz, before)] === 1 || hours[hourIn(tz, after)] === 1, tz);
+  }
+  const unknown = (await c.get('/api/me/stats?tz=Not%2FA_Zone')).json;
+  assert.equal(unknown.hours.reduce((s, n) => s + n, 0), 1, 'an unknown zone falls back to the server clock');
+});
+
 test('events are also written to hourly NDJSON buckets', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
@@ -202,6 +217,17 @@ test('playlist lifecycle: create, add, reorder, remove, rename, delete', async (
   assert.equal((await other.get(`/api/playlists/${p.id}`)).status, 404, 'private playlists are hidden');
   assert.equal((await c.del(`/api/playlists/${p.id}`)).status, 200);
   assert.equal((await c.get(`/api/playlists/${p.id}`)).status, 404);
+});
+
+test('removing a playlist track checks the position', async () => {
+  const c = await signup(srv.base, 'tidy');
+  const tracks = (await c.get('/api/home')).json.popular.slice(0, 2);
+  const p = (await c.post('/api/playlists', { name: 'Tidy', track_ids: tracks.map((t) => t.id) })).json;
+  for (const bad of ['abc', '1.5', '-1', '99999999999']) assert.equal((await c.del(`/api/playlists/${p.id}/tracks/${bad}`)).status, 400, bad);
+  assert.equal((await c.del(`/api/playlists/${p.id}/tracks/7`)).status, 200, 'a position that is already gone is a no-op');
+  assert.equal((await c.del(`/api/playlists/${p.id}/tracks/0`)).status, 200);
+  const got = (await c.get(`/api/playlists/${p.id}`)).json;
+  assert.deepEqual(got.tracks.map((t) => [t.id, t.position]), [[tracks[1].id, 0]]);
 });
 
 test('likes and follows', async () => {
@@ -256,6 +282,13 @@ test('item similarity follows co-listening: most neighbours share the seed genre
   assert.ok(same / tracks.length >= 1.5, `avg same-genre neighbours ${(same / tracks.length).toFixed(2)}`);
 });
 
+test('retraining is rate-limited across all users', async () => {
+  const other = await signup(srv.base, 'tinkerer');
+  assert.equal((await demo.post('/api/internals/retrain')).status, 200);
+  assert.equal((await other.post('/api/internals/retrain')).status, 200);
+  assert.equal((await demo.post('/api/internals/retrain')).status, 429);
+});
+
 test('home is personalized and includes made-for-you mixes', async () => {
   const h = (await demo.get('/api/home')).json;
   assert.ok(h.made_for_you.some((m) => m.kind === 'discover-weekly'));
@@ -283,9 +316,18 @@ test('security headers are set', async () => {
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
 });
 
+test('vercel.json gives static files the same security headers as the app', async () => {
+  const fs = await import('node:fs');
+  const { SECURITY_HEADERS } = await import('../server/app.js');
+  const config = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const all = config.headers.find((x) => x.source === '/(.*)');
+  assert.deepEqual(Object.fromEntries(all.headers.map((x) => [x.key, x.value])), SECURITY_HEADERS);
+});
+
 test('unknown routes 404, wrong methods 405, bad JSON 400', async () => {
   assert.equal((await demo.get('/api/nope')).status, 404);
   assert.equal((await demo.put('/api/home')).status, 405);
   const bad = await fetch(srv.base + '/api/playlists', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: demo.cookie }, body: '{nope' });
   assert.equal(bad.status, 400);
 });
+
