@@ -669,7 +669,8 @@ function hourIn(tz) {
  */
 export function clientAddress(req, { trustProxy = false } = {}) {
   const forwarded = trustProxy ? String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean).pop() : '';
-  const ip = forwarded || req.socket?.remoteAddress || '';
+  // Some proxies write "1.2.3.4:5678" or "[2001:db8::1]:5678".
+  const ip = (forwarded || req.socket?.remoteAddress || '').replace(/^\[([^\]]+)\](?::\d+)?$|^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, '$1$2');
   return net.isIP(ip) ? ip : 'unknown';
 }
 

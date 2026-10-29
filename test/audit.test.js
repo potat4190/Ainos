@@ -69,8 +69,10 @@ test('audit() keeps entries small and refuses malformed action names', () => wit
   assert.equal(oddDetails.at, '1970-01-01T00:00:00.000Z');
   assert.equal(oddDetails.text, '\u{1f64f}'.repeat(200) + '…');
   assert.equal(oddDetails.text.isWellFormed(), true);
-  const noUser = await audit(store, { action: 'x', userId: 'not-a-number' });
-  assert.equal((await store.get('SELECT user_id FROM audit_log WHERE id = ?', [noUser])).user_id, null);
+  for (const userId of ['not-a-number', true, '', [], '0x1f', ' 7 ', 1.5, -1.5]) {
+    const noUser = await audit(store, { action: 'x', userId });
+    assert.equal((await store.get('SELECT user_id FROM audit_log WHERE id = ?', [noUser])).user_id, null, JSON.stringify(userId));
+  }
   for (const action of ['', 'Setlist.Create', 'setlist create', 'setlist..create', '.x', 'x.', `a${'b'.repeat(64)}`, null, 5]) {
     await assert.rejects(audit(store, { action }), /bad action name/, String(action));
   }

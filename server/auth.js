@@ -92,7 +92,7 @@ export function rateLimiter(store, { name, limit, windowMs }) {
 // A typo or a missing setting must fail loudly, not silently allow everything.
 function checkLimit(fn, limit, windowMs, maxWindowMs) {
   if (!Number.isInteger(limit) || limit < 1) throw new Error(`${fn}: limit must be a positive integer, got ${limit}`);
-  if (!Number.isInteger(windowMs) || windowMs < 1000) throw new Error(`${fn}: window must be a whole number of seconds, at least 1, got ${windowMs} ms`);
+  if (!Number.isInteger(windowMs) || windowMs < 1000 || windowMs % 1000) throw new Error(`${fn}: window must be a whole number of seconds, at least 1, got ${windowMs} ms`);
   if (windowMs > maxWindowMs) throw new Error(`${fn}: windows longer than ${maxWindowMs / 1000} s would be purged early`);
 }
 

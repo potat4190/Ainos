@@ -42,7 +42,8 @@ function cut(s, n, marker = '') {
 
 // Postgres TEXT cannot hold NUL, and an INSERT that fails would roll back the action being recorded.
 const shortText = (v) => (v == null ? null : cut(String(v).replace(/\u0000/g, ''), 100));
-const userIdOf = (v) => (v == null || !Number.isSafeInteger(Number(v)) ? null : Number(v));
+// user.id is a number (SQLite) or a digit string (Postgres BIGINT); anything else is not a user.
+const userIdOf = (v) => (Number.isSafeInteger(v) || (typeof v === 'string' && /^\d{1,15}$/.test(v)) ? Number(v) : null);
 
 /** Write one audit entry and return its id. */
 export async function audit(store, { orgId = null, userId = null, action, targetType = null, targetId = null, details = null, now = Date.now() }) {

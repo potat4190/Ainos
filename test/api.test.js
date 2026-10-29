@@ -371,6 +371,10 @@ test('rate limits key on the address the proxy saw, not one the client wrote int
   assert.equal(clientAddress(req(undefined), { trustProxy: true }), '10.0.0.1', 'no header: the socket address');
   assert.equal(clientAddress(req(`1.1.1.1, ${'x'.repeat(5000)}`), { trustProxy: true }), 'unknown', 'not an address: one shared bucket');
   assert.equal(clientAddress(req(undefined, null)), 'unknown', 'no address at all');
+  // Some proxies add the client's port.
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.9:51234'), { trustProxy: true }), '203.0.113.9');
+  assert.equal(clientAddress(req('[2001:db8::1]:443'), { trustProxy: true }), '2001:db8::1');
+  assert.equal(clientAddress(req('[2001:db8::1]'), { trustProxy: true }), '2001:db8::1');
 });
 
 test('CSRF: behind the proxy, the forwarded host and scheme are the app origin', async () => {
