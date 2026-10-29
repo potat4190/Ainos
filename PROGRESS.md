@@ -2,6 +2,25 @@
 Last updated: 2026-10-29 · Current phase: 0 · Branch: phase-0-baseline
 
 ## Done (newest first)
+- 2026-10-29 Phase 0 · final-review fix: forwarded addresses with ports; strict audit user ids; whole-second limiter windows · commit 49b86bf
+- 2026-10-29 Phase 0 · final-review fix: `str()` keeps Hebrew CGJ, emoji flag tags, Mongolian/braille separators; non-empty text must show something · commit 1e14afb
+- 2026-10-29 Phase 0 · review round 3 (one fresh reviewer, correctness + security, on the round-2 fixes): nothing medium or higher; lows fixed above
+- 2026-10-29 Phase 0 · re-review fix: header check refuses unsafe script-src-elem/-attr/default-src · commit 260d79e
+- 2026-10-29 Phase 0 · re-review fix: option checks for both limiters; windows capped at one day · commit 1a20051
+- 2026-10-29 Phase 0 · re-review fix: `audit()` drops NUL, cuts by code point, keeps Dates, numeric user ids · commit b760da3
+- 2026-10-29 Phase 0 · re-review fix: `str()` normalizes after stripping; fuller invisible list (fillers, tags); VT/FF/NEL; collapse spaces · commit 374552f
+- 2026-10-29 Phase 0 · re-review fix (medium): per-IP limits use the rightmost X-Forwarded-For entry, validated · commit 9199a2b
+- 2026-10-29 Phase 0 · re-review fix (medium): full-length audio hashes for one track per style (`renderMastered()`) · commit c56ebf8
+- 2026-10-29 Phase 0 · reviews round 2 (fresh subagents): correctness found no defects, one coverage gap; security found one medium (introduced by the TRUST_PROXY fix); all fixed above
+- 2026-10-29 Phase 0 · review fix: smoke header check tolerates duplicate headers, checks frame-ancestors + COOP · commit 4ec7c62
+- 2026-10-29 Phase 0 · review fix: refuse cross-site (Sec-Fetch-Site) API requests on every method; text/plain only on /api/events · commit c5df342
+- 2026-10-29 Phase 0 · review fix: forwarded headers trusted only behind a proxy; `TRUST_PROXY=1` for self-hosting; README leaked-secret note · commit e2d1e30
+- 2026-10-29 Phase 0 · review fix: `audit()` survives any details value; clipped fields; commit-path test · commit df801bf
+- 2026-10-29 Phase 0 · review fix: canonical `usfmRef`; `str()` strips invisible/bidi chars, NFC, line breaks → spaces · commit 48112b8
+- 2026-10-29 Phase 0 · review fix: `noDemo` fails closed without a user · commit b92ff29
+- 2026-10-29 Phase 0 · review fix: `rateLimit()` refuses bad options; purge per window type · commit 57ccef7
+- 2026-10-29 Phase 0 · review fix: snapshot full-length audio inputs (`trackParams()`) + exact test WAV hashes · commit bf3b4b7
+- 2026-10-29 Phase 0 · reviews round 1: correctness + security (fresh subagents); findings fixed above
 - 2026-10-29 Phase 0 · P0.13 env vars + helpers documented in context.md / README · commit 6f9a00b
 - 2026-10-29 Phase 0 · P0.12 smoke test checks security headers; smoke script tested locally · commit 0fffcf6
 - 2026-10-29 Phase 0 · P0.11 media secret rotation (`AINOS_SECRET_PREVIOUS`, server + middleware), README plan · commit 91bba0e
@@ -18,7 +37,7 @@ Last updated: 2026-10-29 · Current phase: 0 · Branch: phase-0-baseline
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Phase 0 end: correctness review + security review (fresh subagents), fix findings, then preview deploy + smoke (blocked on Q3–Q5).
+- Phase 0: reviews done and findings fixed (89 tests pass). Remaining: push `phase-0-baseline`, run `node scripts/smoke.js <preview url>` against the Vercel preview (blocked on Q3–Q5), then the owner reviews and merges (see "Before merging Phase 0" below). Then Phase 1 on `phase-1-catalog`, starting with P1.1 (song tables); P1.3/P1.7 need Q9/Q10 answers.
 
 ## Open questions and answers
 Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary here).
@@ -52,11 +71,27 @@ Numbers match the batch asked on 2026-10-29 (full wording in that chat; summary 
 ## Blocked / skipped
 - P0.14 CI workflow — waiting on Q7
 - Phase 0 preview deploy + smoke run — waiting on Q3, Q4, Q5
+- Before merging Phase 0 to `main` (owner):
+  1. `audit_log` must exist in the live database first, or the production build's schema check fails: either `DATABASE_MIGRATION_URL` is set for Production builds, or run `server/schema.pg.sql` in the Supabase SQL editor (safe to re-run).
+  2. Check no real user already has the name `church-demo` (read-only: `SELECT id FROM users WHERE lower(username) = 'church-demo'`); this branch treats that name as a demo account (Q20).
+
+## Review follow-ups deliberately left for later
+- `audit_log` keeps DELETE in its grant: the spec's church-demo reset (5.7) deletes the demo org's audit rows. Revisit in Phase 5 (e.g. column grants) if that changes.
+- `errRateLimited` says "wait a minute", and the client ignores `Retry-After`; fix when Phase 2 adds per-day limits.
+- Per-IP limits treat each IPv6 address separately (a /64 gives many); consider keying IPv6 by /64 when per-IP limits matter (Phase 3 path B, Phase 5 invites).
+- Any demo visitor can trigger `/api/internals/retrain` (global 2/min); restricting it is a user-facing change, so not in Phase 0.
+- `usfmRef` accepts the 66 Protestant books only (no deuterocanon); revisit if a Bible version needs them (Phase 2).
+- Local dev: DNS rebinding could let a page reach `127.0.0.1:4321` with matching Host/Origin; it gets no victim cookie. Optional host allowlist later.
+- Pre-existing, noted by review, not changed in Phase 0: media URL `exp` has no upper bound (a leaked URL could be signed far ahead only by someone holding the secret); `demo` / `ainos-demo` works in production because `seed-postgres.js` copies the generated demo password hash (README documents the password login as intended; owner may want it off in prod); `/api/internals` shows Node version and uptime to any signed-in user; the media middleware's 403 has no security headers (JSON body).
+- Old browsers without `Sec-Fetch-Site` (Safari < 16.4) still let a cross-site link open `GET /api/connect/dealer` with the Lax cookie (nuisance only: a ghost Connect device).
+- `str()` NFC also maps CJK compatibility ideographs to unified forms (standard trade-off).
 
 ## Notes for the next session
 - Baseline before any spec work: `npm test` = 57 tests, all pass (Node 24.22). After Phase 0 tasks: 86.
 - `church-demo` is the assumed church demo username (Q20 pending); it is a constant in `server/demo.js` and reserved at signup.
 - P0.14 (CI) not done; the plan's other Phase 0 tasks are committed.
+- Tooling gotcha: the Write/Edit tools can turn backslash-u escapes for invisible characters (e.g. the one for U+200B) into the literal characters, which then break regex literals or hide in strings. After writing such escapes, run a scan for literal U+0080–U+009F, U+00AD, U+0300–U+036F, U+061C, U+200B–U+200F, U+2028–U+2029, U+202A–U+202E, U+2060–U+206F, U+3164, U+FEFF, U+E0000–U+E007F in changed files (not i18n.js, whose Indic strings may legitimately contain ZWJ/ZWNJ).
+- Commit only through a "run `npm test`, commit only if it exits 0" step; one commit (P0.8) was briefly made red and amended before anything was pushed.
 - `PLAN.md` lists every task (P0.1 … P6.6), the spec-vs-code conflicts and how each is resolved.
 - The deploy schema check (`schemaColumns()` in `scripts/seed-postgres.js`) reads the first word of every line inside `CREATE TABLE IF NOT EXISTS x (...)` as a column name. Never put table-level `UNIQUE`/`CHECK` lines in a table body until P0.9 lands.
 - New Postgres tables need a `GRANT` to `ainos_app` and an entry in the RLS array in `schema.pg.sql`, or the deploy check fails.
