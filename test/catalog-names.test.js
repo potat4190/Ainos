@@ -77,6 +77,31 @@ test('no option echoes a real worship act or a well-known worship song title', (
   }
 });
 
+// Draft options the 2026-10-29 check found too close to an existing song
+// (the song in the comment). They stay in the file as options but are never shown.
+const FLAGGED = [
+  'morning by morning', // Pat Barrett, 2019
+  'consider the lilies', // several hymns and choral songs
+  'deep calls to deep', // Matt Redman
+  'from the rising of the sun', // Paul Deming; Paul Baloche's "Rising"
+  'streets of gold', 'the narrow way', // Jordan Feliz, 2018; Steffany Gretzinger
+  'आशीष की वर्षा', 'showers of blessing', // the 1883 hymn
+  'más blanco que la nieve', 'whiter than snow', // the 1872 hymn
+  'un corazón limpio', 'a clean heart', // "Crea en mí un corazón limpio"; "Create in Me a Clean Heart"
+  '新造的人', 'new creation', '生命河', 'river of life', // common worship titles
+];
+
+test('the chosen names avoid the titles the owner’s check flagged, and every entry has one', () => {
+  for (const [kind, list] of Object.entries(keys)) {
+    for (const key of list) {
+      const e = tables[kind][key];
+      assert.ok(e.pick || e.custom, `${key}: picked`);
+      const name = displayName(kind, key, null);
+      assert.ok(!FLAGGED.includes(name.toLowerCase()), `${key}: "${name}" was flagged`);
+    }
+  }
+});
+
 test('the display name is the owner’s custom name, else the picked option, else the old name', () => {
   for (const [kind, list] of Object.entries(keys)) {
     for (const key of list) {

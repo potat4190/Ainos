@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { generateCatalog, HYMN_IDS } from '../scripts/generate.js';
 import { seedPostgres, schemaColumns } from '../scripts/seed-postgres.js';
+import { ARTISTS, ALBUMS, TRACKS } from '../scripts/catalog-names.js';
 
 const PGlite = await import('@electric-sql/pglite').then((m) => m.PGlite, () => null);
 const SKIP = !PGlite && 'needs npm install (@electric-sql/pglite, a dev dependency)';
@@ -43,12 +44,23 @@ const seed = (pg, sqliteFile, opts = {}) => seedPostgres({ sqliteFile, databaseU
 const rows = async (pg, sql, params) => (await pg.db.query(sql, params)).rows;
 const count = async (pg, sql, params) => Number((await rows(pg, sql, params))[0].n);
 
-let dir, full, noHymns;
+let dir, full, noHymns, oldNames;
 before(async () => {
   if (SKIP) return;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-pg-'));
   await generateCatalog({ dataDir: dir, quick: true, quiet: true, simulatedUsers: 5 });
   full = path.join(dir, 'ainos.db');
+  // The catalog under its original names, as production had it before the owner's picks.
+  const entries = [ARTISTS, ALBUMS, TRACKS].flatMap((t) => Object.values(t));
+  const saved = entries.map((e) => ({ pick: e.pick, custom: e.custom }));
+  try {
+    for (const e of entries) Object.assign(e, { pick: null, custom: null });
+    const old = path.join(dir, 'old-names');
+    await generateCatalog({ dataDir: old, quick: true, quiet: true, simulatedUsers: 5 });
+    oldNames = path.join(old, 'ainos.db');
+  } finally {
+    entries.forEach((e, i) => Object.assign(e, saved[i]));
+  }
   // The catalog as production has it before Phase 1: no hymns, songs or Hymns playlist.
   noHymns = path.join(dir, 'no-hymns.db');
   fs.copyFileSync(full, noHymns);
@@ -182,6 +194,28 @@ test('a build missing tracks the database has: production refuses, preview skips
     db.prepare('UPDATE search_index SET ref_id = ? WHERE ref_id = ?').run(to, id);
   });
   await assert.rejects(seed(pg, renamed, { lostTracks: 'warn' }), /refusing to continue/, 'a changed id is refused even in preview');
+});
+
+test('renaming the catalog: a database seeded under the old names takes the new ones, search included, ids unchanged', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, oldNames);
+  const before = await rows(pg, "SELECT id, title FROM tracks WHERE genre <> 'Hymn' ORDER BY id");
+  const r = await seed(pg, full);
+  assert.equal(r.added ?? 0, 0, 'no tracks added');
+  const src = new DatabaseSync(full, { readOnly: true });
+  try {
+    for (const [table, cols] of [['artists', 'id, name'], ['albums', 'id, title'], ['tracks', 'id, title'], ['search_index', 'kind, ref_id, title, subtitle, folded']]) {
+      const order = table === 'search_index' ? 'kind, ref_id' : 'id';
+      const want = src.prepare(`SELECT ${cols} FROM ${table} ORDER BY ${order}`).all().map((o) => ({ ...o }));
+      assert.deepEqual(await rows(pg, `SELECT ${cols} FROM ${table} ORDER BY ${order}`), want, `${table} has the new names`);
+    }
+  } finally {
+    src.close();
+  }
+  const after = await rows(pg, "SELECT id, title FROM tracks WHERE genre <> 'Hymn' ORDER BY id");
+  assert.deepEqual(after.map((t) => t.id), before.map((t) => t.id), 'same ids');
+  assert.ok(after.every((t, i) => t.title !== before[i].title), 'every original track renamed');
+  assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {

@@ -162,3 +162,40 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | Himnos | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | Himnos de dominio público, tocados tal como se escribieron, con la letra para cantar. | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | Adoración Acústica | 1 |
+
+## Catalog display names (Phase 1)
+
+Chosen 2026-10-29 from `scripts/catalog-names.js`. To correct one, edit its option (or `custom`) there; ids and audio never change. Singles share a name with their only track and are listed once.
+
+| Done | Language | Kind | Catalog key | Name | Meaning | Scripture |
+| --- | --- | --- | --- | --- | --- | --- |
+| [ ] | Hindi (hi) | artist | Copper Fox | दीपक धुन | lamp melody | PSA.119.105 |
+| [ ] | Chinese (zh) | artist | Velvet Static | 麦田之光 | light of the wheat fields | JHN.4.35 |
+| [ ] | Japanese (ja) | artist | Kite Theory | ひかりの子ら | children of light | EPH.5.8 |
+| [ ] | Nepali (ne) | artist | Ossa | शान्त जल | still water | PSA.23.2 |
+| [ ] | Spanish (es) | artist | Polar Bloom | Diez Lámparas | ten lamps | MAT.25.1 |
+| [ ] | Hindi (hi) | album | Copper Fox/Rainy Window Tapes | बारिश की तरह | like the rain | HOS.6.3 |
+| [ ] | Hindi (hi) | album | Copper Fox/Paper Moon | चाँद और तारे | moon and stars | PSA.8.3 |
+| [ ] | Chinese (zh) | album | Velvet Static/Floor Theory | 在祂面前跳舞 | Dance Before the Lord | 2SA.6.14 |
+| [ ] | Chinese (zh) | album | Velvet Static/Sunrise Set | 公义的日头 | Sun of Righteousness | MAL.4.2 |
+| [ ] | Japanese (ja) | album | Kite Theory/Pixel Weather | 空の鳥を見よ | Birds of the Air | MAT.6.26 |
+| [ ] | Nepali (ne) | album | Ossa/Low Tide | गहिराइबाट | Out of the Depths | PSA.130.1 |
+| [ ] | Spanish (es) | album | Polar Bloom/Ice Engine | Como Blanca Lana | as white wool | ISA.1.18 |
+| [ ] | Hindi (hi) | track | Copper Fox/Steam & Paper | रोज़ की रोटी | daily bread | MAT.6.11 |
+| [ ] | Hindi (hi) | track | Copper Fox/Corner Café | कुएँ पर | at the well | JHN.4.6 |
+| [ ] | Hindi (hi) | track | Copper Fox/Sunday Static | विश्राम का दिन | day of rest | HEB.4.9 |
+| [ ] | Hindi (hi) | track | Copper Fox/Late Bus Home | घर वापसी | homecoming | LUK.15.20 |
+| [ ] | Chinese (zh) | track | Velvet Static/Pulse Garden | 一粒芥菜种 | a grain of mustard seed | MAT.13.31 |
+| [ ] | Chinese (zh) | track | Velvet Static/Mirrorball Heart | 清心的人 | Pure in Heart | MAT.5.8 |
+| [ ] | Chinese (zh) | track | Velvet Static/Deep Current | 河水渐深 | the river grows deeper | EZK.47.5 |
+| [ ] | Chinese (zh) | track | Velvet Static/Open Air | 风随着意思吹 | the wind blows where it wills | JHN.3.8 |
+| [ ] | Japanese (ja) | track | Kite Theory/Cloud Runner | 雲の柱 | Pillar of Cloud | EXO.13.21 |
+| [ ] | Japanese (ja) | track | Kite Theory/Save Point | 避け所 | refuge | PSA.46.1 |
+| [ ] | Japanese (ja) | track | Kite Theory/Boss Rush | なめらかな石五つ | Five Smooth Stones | 1SA.17.40 |
+| [ ] | Japanese (ja) | track | Kite Theory/Credits Roll | いのちの書 | book of life | REV.20.12 |
+| [ ] | Nepali (ne) | track | Ossa/Salt Lines | पृथ्वीको नुन | Salt of the Earth | MAT.5.13 |
+| [ ] | Nepali (ne) | track | Ossa/Undertow | शान्त हो | be still | MRK.4.39 |
+| [ ] | Nepali (ne) | track | Ossa/Harbor Lights | चाहेको बन्दरगाह | the desired harbour | PSA.107.30 |
+| [ ] | Spanish (es) | track | Polar Bloom/Frostbite | Un Espíritu Recto | a right spirit | PSA.51.10 |
+| [ ] | Spanish (es) | track | Polar Bloom/Aurora Rush | Como el Alba | Like the Dawn | HOS.6.3 |
+| [ ] | Spanish (es) | track | Polar Bloom/Glacier Run | Corred para Ganar | Run to Win | 1CO.9.24 |
