@@ -104,7 +104,7 @@ export function likedArt(cls = 'art') {
 }
 
 // ---------- toasts ----------
-export function toast(message, { error = false, ms = 2800 } = {}) {
+export function toast(message, { error = false, ms = error ? 6000 : 2800 } = {}) {
   const root = document.getElementById('toasts');
   const t = h('div', { class: `toast${error ? ' error' : ''}`, role: error ? 'alert' : 'status' }, message);
   root.append(t);
@@ -113,23 +113,36 @@ export function toast(message, { error = false, ms = 2800 } = {}) {
 
 // ---------- context menus ----------
 let openMenu = null;
-export function closeMenu() {
+let menuOpener = null;
+export function closeMenu({ restoreFocus = false } = {}) {
   if (openMenu) {
     openMenu.remove();
     openMenu = null;
+    if (restoreFocus && menuOpener?.isConnected) menuOpener.focus();
+    menuOpener = null;
   }
 }
 document.addEventListener('pointerdown', (e) => {
   if (openMenu && !openMenu.contains(e.target)) closeMenu();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeMenu();
+  if (!openMenu) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeMenu({ restoreFocus: true }); return; }
+  if (e.key === 'Tab') { closeMenu({ restoreFocus: true }); return; }
+  const items = [...openMenu.querySelectorAll('button:not(:disabled)')];
+  const i = items.indexOf(document.activeElement);
+  const go = (n) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
+  if (e.key === 'ArrowDown') go(i + 1);
+  else if (e.key === 'ArrowUp') go(i < 0 ? items.length - 1 : i - 1);
+  else if (e.key === 'Home') go(0);
+  else if (e.key === 'End') go(items.length - 1);
 });
 window.addEventListener('hashchange', closeMenu);
 
 /** items: [{label, icon, onClick, disabled} | 'sep' | {label, submenu: [...]}] */
 export function showMenu(anchorOrEvent, items) {
   closeMenu();
+  const opener = anchorOrEvent?.currentTarget || anchorOrEvent?.target || anchorOrEvent;
   const menu = h('div', { class: 'menu', role: 'menu' });
   const build = (list) => {
     clear(menu);
@@ -138,9 +151,9 @@ export function showMenu(anchorOrEvent, items) {
       const b = h('button', { role: 'menuitem', disabled: it.disabled }, it.icon ? icon(it.icon) : null, it.label, it.submenu ? h('span', { class: 'dim', style: { 'margin-left': 'auto' } }, '›') : null);
       b.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (it.submenu) return build(it.submenu);
-        closeMenu();
-        it.onClick?.();
+        if (it.submenu) { build(it.submenu); menu.querySelector('button')?.focus(); return; }
+        closeMenu({ restoreFocus: true });
+        it.onClick?.(e);
       });
       menu.append(b);
     }
@@ -148,6 +161,7 @@ export function showMenu(anchorOrEvent, items) {
   build(items);
   document.getElementById('menu-root').append(menu);
   openMenu = menu;
+  menuOpener = opener instanceof HTMLElement ? opener.closest('button, a, [tabindex]') || opener : null;
   let x, y;
   if (anchorOrEvent instanceof MouseEvent && anchorOrEvent.type === 'contextmenu') {
     x = anchorOrEvent.clientX; y = anchorOrEvent.clientY;
@@ -217,13 +231,18 @@ export function bindSlider(el, { onInput, onCommit, step = 0.05 }) {
     const cur = Number(el.getAttribute('aria-valuenow') || 0) / 100;
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onCommit?.(Math.min(1, cur + step)); }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onCommit?.(Math.max(0, cur - step)); }
+    if (e.key === 'Home') { e.preventDefault(); onCommit?.(0); }
+    if (e.key === 'End') { e.preventDefault(); onCommit?.(1); }
   });
   return { isDragging: () => dragging };
 }
 
-export function setSlider(el, fillEl, thumbEl, fraction) {
+export function setSlider(el, fillEl, thumbEl, fraction, valueText) {
   const pct = `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`;
   fillEl.style.width = pct;
   if (thumbEl) thumbEl.style.left = pct;
-  el.setAttribute('aria-valuenow', Math.round(fraction * 100));
+  const now = String(Math.round(fraction * 100));
+  // Called every frame: only touch the attributes when they change.
+  if (el.getAttribute('aria-valuenow') !== now) el.setAttribute('aria-valuenow', now);
+  if (valueText && el.getAttribute('aria-valuetext') !== valueText) el.setAttribute('aria-valuetext', valueText);
 }

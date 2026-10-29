@@ -31,6 +31,7 @@ class App {
       await this.loadMe();
     } catch (err) {
       if (err.status === 401) return this.showLogin();
+      $('boot').hidden = true;
       const retry = h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
       retry.addEventListener('click', () => location.reload());
       document.body.append(h('div', { class: 'empty boot-error', role: 'alert' }, h('h2', {}, t('cantReachAinos')), h('p', {}, errorText(err)), retry));
@@ -102,6 +103,8 @@ class App {
     setTxt('lbl-displayname', 'displayName');
     setTxt('lbl-password', 'password');
     setTxt('demo-login', 'demoBtn');
+    setTxt('skip-link', 'skipToContent');
+    setTxt('boot-text', 'loadingApp');
     setTxt('demo-hint', 'demoHint');
     setTxt('login-or', 'orDivider');
     setTxt('nav-home-text', 'navHome');
@@ -132,6 +135,7 @@ class App {
   }
 
   showLogin() {
+    $('boot').hidden = true;
     this.applyI18n();
     $('app').hidden = true;
     $('login').hidden = false;
@@ -179,6 +183,7 @@ class App {
 
   async start() {
     this.started = true;
+    $('boot').hidden = true;
     $('login').hidden = true;
     $('app').hidden = false;
     const identity = deviceIdentity();
@@ -198,7 +203,7 @@ class App {
     this.bindChrome();
     this.renderDemoBanner();
     await Promise.all([this.refreshLibrary(), this.loadLiked()]);
-    addEventListener('hashchange', () => this.route());
+    addEventListener('hashchange', () => this.route({ focus: true }));
     addEventListener('offline', () => toast(t('offlineToast')));
     addEventListener('online', () => toast(t('onlineToast')));
     setInterval(() => this.loadMe().catch(() => {}), 120_000);
@@ -212,11 +217,19 @@ class App {
   renderDemoBanner() {
     const bar = $('demo-banner');
     if (!bar) return;
-    bar.hidden = !this.me?.is_demo;
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem('ainos.demoBanner') === 'hidden'; } catch { /* storage blocked */ }
+    bar.hidden = !this.me?.is_demo || dismissed;
     if (bar.hidden) return;
     const signup = h('button', { type: 'button', class: 'link' }, t('demoBannerAction'));
     signup.addEventListener('click', () => this.logout({ signup: true }));
-    clear(bar).append(icon('sparkle'), h('span', {}, t('demoBanner')), signup);
+    const close = h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('closePanel') }, icon('close'));
+    close.addEventListener('click', () => {
+      try { sessionStorage.setItem('ainos.demoBanner', 'hidden'); } catch { /* storage blocked */ }
+      bar.hidden = true;
+      $('main').focus({ preventScroll: true });
+    });
+    clear(bar).append(icon('sparkle'), h('div', { class: 'demo-banner-text' }, h('span', {}, t('demoBanner')), ' ', signup), close);
   }
 
   // --------------------------------------------------------------- router
@@ -227,7 +240,7 @@ class App {
     return { name: parts[0] || 'home', id: parts[1] ? decodeURIComponent(parts.slice(1).join('/')) : undefined, params: Object.fromEntries(new URLSearchParams(qs || '')) };
   }
 
-  async route({ keepScroll = false } = {}) {
+  async route({ keepScroll = false, focus = false } = {}) {
     const seq = ++this.renderSeq;
     this.cleanup?.();
     this.cleanup = null;
@@ -251,11 +264,13 @@ class App {
       main.scrollTop = keepScroll ? scroll : 0;
       document.title = this.titleFor(name, container);
       this.highlightPlaying();
+      // Not while typing in search: that also changes the hash.
+      if (focus && document.activeElement?.id !== 'search-input') main.focus({ preventScroll: true });
     } catch (err) {
       clearTimeout(slow);
       if (seq !== this.renderSeq) return;
       const retry = err.status === 404 ? null : h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, t('tryAgain'));
-      retry?.addEventListener('click', () => this.route());
+      retry?.addEventListener('click', () => this.route({ focus: true }));
       clear(container).append(h('div', { class: 'empty', role: 'alert' }, h('h2', {}, err.status === 404 ? t('pageNotFound') : t('somethingWentWrong')), h('p', {}, err.status === 404 ? err.message : errorText(err)),
         h('div', { class: 'empty-actions' }, retry, h('a', { class: 'btn btn-ghost btn-sm', href: '#/' }, t('goHome')))));
     }
@@ -349,7 +364,7 @@ class App {
     return p;
   }
 
-  trackMenu(track, e, { playlist, position } = {}) {
+  trackMenu(track, e, { playlist, position, count = 0 } = {}) {
     const p = this.player;
     const items = [
       { label: t('addToQueue'), icon: 'queue', onClick: () => { p.addToQueue(track); toast(t('addedToQueueToast')); } },
@@ -370,6 +385,9 @@ class App {
       { label: this.isLiked(track.id) ? t('removeFromLiked') : t('saveToLiked'), icon: this.isLiked(track.id) ? 'heart-fill' : 'heart', onClick: () => this.toggleLike(track) },
     ];
     if (playlist?.is_owner && Number.isInteger(position)) {
+      const move = (to) => safely(async () => { await api.post(`/api/playlists/${playlist.id}/move`, { from: position, to }); this.refresh(); });
+      if (position > 0) items.push({ label: t('moveUp'), onClick: move(position - 1) });
+      if (position < count - 1) items.push({ label: t('moveDown'), onClick: move(position + 1) });
       items.push({ label: t('removeFromPlaylist'), icon: 'close', onClick: safely(async () => { await api.del(`/api/playlists/${playlist.id}/tracks/${position}`); this.refresh(); this.refreshLibrary(); }) });
     }
     items.push(p.downloads[track.id]
@@ -445,6 +463,7 @@ class App {
   renderPlayerBar() {
     const v = this.player.view();
     const left = clear($('np-left'));
+    if (!v.track) left.append(h('div', { class: 'np-hint dim small' }, t('pickSongHint')));
     if (v.track) {
       const tr = v.track;
       const like = h('button', { class: `icon-btn${this.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': this.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(this.isLiked(tr.id) ? 'heart-fill' : 'heart'));
@@ -480,12 +499,12 @@ class App {
       const v = this.player.view();
       if (!this.seekSlider.isDragging()) {
         const f = v.durationMs ? v.positionMs / v.durationMs : 0;
-        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f);
+        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f, t('timeOf', { cur: fmtTime(v.positionMs), dur: fmtTime(v.durationMs) }));
         $('time-cur').textContent = fmtTime(v.positionMs);
         $('seek-buffer').style.width = `${v.durationMs && v.bufferedMs ? Math.min(100, (v.bufferedMs / v.durationMs) * 100) : 0}%`;
       }
       $('time-dur').textContent = fmtTime(v.durationMs);
-      if (!this.volSlider.isDragging()) setSlider($('volume'), $('volume-fill'), $('volume-thumb'), v.muted ? 0 : v.volume ?? 1);
+      if (!this.volSlider.isDragging()) { const vol = v.muted ? 0 : v.volume ?? 1; setSlider($('volume'), $('volume-fill'), $('volume-thumb'), vol, `${Math.round(vol * 100)}%`); }
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);

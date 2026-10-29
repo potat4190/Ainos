@@ -13,8 +13,8 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 export function trackList(app, tracks, ctx, opts = {}) {
   const { showAlbum = true, showCover = true, playlist = null, extra = null } = opts;
   rememberTracks(tracks);
-  const root = h('div', { class: `tracklist${showAlbum ? '' : ' no-album'}`, role: 'grid', 'aria-label': ctx.title || 'Tracks' });
-  root.append(h('div', { class: 'tl-head', role: 'row' },
+  const root = h('div', { class: `tracklist${showAlbum ? '' : ' no-album'}`, role: 'list', 'aria-label': ctx.title || t('songs') });
+  root.append(h('div', { class: 'tl-head', 'aria-hidden': 'true' },
     h('div', { class: 'tl-num' }, '#'), h('div', {}, t('titleCol')), showAlbum ? h('div', { class: 'tl-album' }, extra?.header || t('albumCol')) : null,
     h('div', { class: 'tl-end' }, h('span', { class: 'dur', title: t('durationCol') }, icon('clock')))));
 
@@ -24,9 +24,9 @@ export function trackList(app, tracks, ctx, opts = {}) {
     const likeBtn = h('button', { class: `icon-btn${app.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': app.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(app.isLiked(tr.id) ? 'heart-fill' : 'heart'));
     likeBtn.addEventListener('click', (e) => { e.stopPropagation(); app.toggleLike(tr); });
     const moreBtn = h('button', { class: 'icon-btn', 'aria-label': t('moreOptionsFor', { title: tr.title }) }, icon('more'));
-    moreBtn.addEventListener('click', (e) => { e.stopPropagation(); app.trackMenu(tr, e, { playlist, position: tr.position }); });
+    moreBtn.addEventListener('click', (e) => { e.stopPropagation(); app.trackMenu(tr, e, { playlist, position: tr.position, count: tracks.length }); });
 
-    const row = h('div', { class: 'tl-row', role: 'row', tabindex: '0', dataset: { trackId: tr.id, ctx: ctx.uri || '' } },
+    const row = h('div', { class: 'tl-row', role: 'listitem', tabindex: '0', dataset: { trackId: tr.id, ctx: ctx.uri || '' } },
       h('div', { class: 'tl-num' }, h('span', { class: 'n' }, String(i + 1)), h('button', { class: 'play-small', 'aria-label': t('playTitle', { title: tr.title }), onclick: (e) => { e.stopPropagation(); play(); } }, icon('play'))),
       h('div', { class: 'tl-main' },
         showCover ? img(tr.album.cover, 'art') : null,
@@ -38,8 +38,9 @@ export function trackList(app, tracks, ctx, opts = {}) {
 
     row.addEventListener('dblclick', play);
     if (coarse) row.addEventListener('click', play);
-    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') play(); });
-    row.addEventListener('contextmenu', (e) => { e.preventDefault(); app.trackMenu(tr, e, { playlist, position: tr.position }); });
+    // Only the row itself: Enter on its Like / More buttons must not also start the song.
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) play(); });
+    row.addEventListener('contextmenu', (e) => { e.preventDefault(); app.trackMenu(tr, e, { playlist, position: tr.position, count: tracks.length }); });
 
     if (playlist?.is_owner) {
       row.draggable = true;
@@ -143,7 +144,7 @@ function moreBtn(onClick) {
 const facts = (...parts) => parts.filter(Boolean).flatMap((p, i) => (i ? [' • ', p] : [p]));
 
 function empty(title, text, action) {
-  return h('div', { class: 'empty' }, h('h2', {}, title), h('p', {}, text), action || null);
+  return h('div', { class: 'empty' }, h('h2', {}, title), h('p', {}, text), action ? h('div', { class: 'empty-actions' }, action) : null);
 }
 
 // ------------------------------------------------------------------ views
@@ -281,7 +282,7 @@ export async function library(el, params, app) {
   await app.refreshLibrary();
   const lib = app.library;
   const filter = params.filter || 'all';
-  el.append(h('h1', { style: { margin: '8px 0 12px', 'font-size': '30px' } }, t('navLibrary')));
+  el.append(h('h1', { class: 'page-title' }, t('navLibrary')));
   const chip = (id, label) => h('a', { class: `chip${filter === id ? ' active' : ''}`, href: id === 'all' ? '#/library' : `#/library?filter=${id}` }, label);
   el.append(h('div', { class: 'chips' }, chip('all', t('filterAll')), chip('playlists', t('filterPlaylists')), chip('artists', t('filterArtists')), h('a', { class: 'chip', href: '#/downloads' }, t('downloaded'))));
   const items = [];
@@ -292,7 +293,9 @@ export async function library(el, params, app) {
   if (filter !== 'playlists') for (const a of lib.artists) items.push(card(app, { art: img(a.image), title: a.name, sub: t('artist'), href: `#/artist/${a.id}`, round: true }));
   const create = h('button', { class: 'btn btn-primary btn-sm' }, icon('plus'), t('createPlaylist'));
   create.addEventListener('click', safely(() => app.createPlaylist()));
-  el.append(grid(items), h('div', { style: { 'margin-top': '20px' } }, create));
+  el.append(grid(items));
+  if (!lib.playlists.length && !lib.artists.length) el.append(h('p', { class: 'muted hint' }, t('emptyLibraryHint')));
+  el.append(h('div', { class: 'page-actions' }, create));
 }
 
 export async function album(el, { id }, app) {
@@ -433,14 +436,14 @@ export async function genre(el, { id }, app) {
 
 export async function recent(el, _p, app) {
   const { tracks } = await api.get('/api/me/recent');
-  el.append(h('h1', { style: { margin: '8px 0 16px', 'font-size': '30px' } }, t('recentlyPlayed')));
-  if (!tracks.length) return el.append(empty(t('emptyRecentTitle'), t('emptyRecentSub')));
+  el.append(h('h1', { class: 'page-title' }, t('recentlyPlayed')));
+  if (!tracks.length) return el.append(empty(t('emptyRecentTitle'), t('emptyRecentSub'), h('a', { class: 'btn btn-primary btn-sm', href: '#/search' }, t('browseMusic'))));
   el.append(trackList(app, tracks, { uri: 'ainos:recent', title: t('recentlyPlayed'), tracks }, { extra: { header: t('playedCol'), cell: (tr) => timeAgo(tr.played_at) } }));
 }
 
 export async function downloads(el, _p, app) {
   const items = Object.values(app.player.downloads).sort((a, b) => b.savedAt - a.savedAt);
-  el.append(h('h1', { style: { margin: '8px 0 6px', 'font-size': '30px' } }, t('downloaded')));
+  el.append(h('h1', { class: 'page-title has-sub' }, t('downloaded')));
   const stats = await app.player.cacheStats();
   el.append(h('p', { class: 'muted' }, t('downloadsInfo', { count: items.length, bytes: fmtBytes(stats.offline.bytes), lruFiles: stats.lru.files, lruBytes: fmtBytes(stats.lru.bytes), lruLimit: fmtBytes(stats.lru.limit) })));
   if (!items.length) return el.append(empty(t('emptyDownloadsTitle'), t('emptyDownloadsSub')));
@@ -450,8 +453,12 @@ export async function downloads(el, _p, app) {
 
 export async function stats(el, _p, app) {
   const s = await api.get(`/api/me/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`);
-  el.append(h('h1', { style: { margin: '8px 0 4px', 'font-size': '34px' } }, t('statsTitle', { name: app.me.display_name })));
+  el.append(h('h1', { class: 'page-title has-sub' }, t('statsTitle', { name: app.me.display_name })));
   el.append(h('p', { class: 'muted' }, t('statsSub')));
+  if (!s.streams && !s.short_plays) {
+    el.append(empty(t('emptyStatsTitle'), t('emptyStatsSub'), h('a', { class: 'btn btn-primary btn-sm', href: '#/search' }, t('browseMusic'))));
+    return;
+  }
   el.append(h('div', { class: 'stat-grid section' },
     h('div', { class: 'stat' }, h('div', { class: 'v' }, fmtNumber(s.minutes)), h('div', { class: 'l' }, t('minutesListened'))),
     h('div', { class: 'stat' }, h('div', { class: 'v' }, fmtNumber(s.streams)), h('div', { class: 'l' }, t('streamsLabel'))),
@@ -474,7 +481,7 @@ const median = (a) => { if (!a.length) return null; const s = a.slice().sort((x,
 const ms = (v) => (v == null ? '—' : `${Math.round(v)} ms`);
 
 export async function internals(el, _p, app) {
-  el.append(h('h1', { style: { margin: '8px 0 4px', 'font-size': '30px' } }, 'Under the hood'));
+  el.append(h('h1', { class: 'page-title has-sub' }, t('navInternals')));
   el.append(h('p', { class: 'muted', style: { 'max-width': '80ch' } }, 'Live view of the mechanisms Ainos borrows from Spotify. Each one is linked to the evidence for how Spotify does it. ', h('a', { href: '#/docs', class: 'link' }, 'Read the full evidence report →')));
 
   const live = h('div', { class: 'cards-2 section' });
@@ -594,9 +601,12 @@ export async function docs(el, params) {
 export async function settings(el, _p, app) {
   const s = app.player.settings;
   const me = app.me;
-  el.append(h('h1', { style: { margin: '8px 0 16px', 'font-size': '30px' } }, t('settingsTitle')));
-  const row = (label, desc, control) => h('div', { class: 'box', style: { display: 'flex', 'align-items': 'center', gap: '16px', 'justify-content': 'space-between', 'margin-bottom': '10px' } },
-    h('div', {}, h('div', { style: { 'font-weight': '700' } }, label), h('div', { class: 'muted small' }, desc)), control);
+  el.append(h('h1', { class: 'page-title' }, t('settingsTitle')));
+  const row = (label, desc, control) => {
+    // Selects and On/Off toggles have no name of their own; buttons with text keep theirs.
+    if ((control.tagName === 'SELECT' || control.hasAttribute('aria-pressed')) && !control.hasAttribute('aria-label')) control.setAttribute('aria-label', label);
+    return h('div', { class: 'box setting-row' }, h('div', {}, h('div', { class: 'setting-title' }, label), h('div', { class: 'muted small' }, desc)), control);
+  };
   const select = (value, options, onChange) => {
     const s2 = h('select', { class: 'chip', style: { border: '0' } }, options.map(([v, l, dis]) => h('option', { value: v, selected: v === value, disabled: dis }, l)));
     s2.addEventListener('change', () => onChange(s2.value));
