@@ -14,6 +14,8 @@ export const CHURCH_DEMO_USERNAME = 'church-demo';
 export const DEMO_USERNAMES = [DEMO_USERNAME, CHURCH_DEMO_USERNAME];
 export const DEMO_SESSION_TTL_MS = 24 * 3600 * 1000;
 const DISPLAY_NAME = 'Demo Listener';
+// The genre of the public-domain hymn album (scripts/hymns.js).
+export const HYMN_GENRE = 'Hymn';
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
@@ -43,10 +45,13 @@ export const noDemo = (handler) => async (ctx) => {
  * Which tracks the snapshot uses. Favourites are the first two English artists'
  * tracks (any two artists if there are none), most of the history; "breadth"
  * is one track by each other artist, so recommendations work in each language.
+ * Tracks arrive ordered by artist id, never by name, so renaming an artist
+ * doesn't change the snapshot. Hymns are never favourites (they reach the
+ * snapshot through breadth), so adding the hymnal doesn't change them either.
  */
 function pickTracks(tracks) {
   const firstTwo = (list) => [...new Set(list.map((t) => t.artist_id))].slice(0, 2);
-  const favArtists = firstTwo(tracks.filter((t) => t.language === 'en'));
+  const favArtists = firstTwo(tracks.filter((t) => t.language === 'en' && t.genre !== HYMN_GENRE));
   if (!favArtists.length) favArtists.push(...firstTwo(tracks));
   const favourites = tracks.filter((t) => favArtists.includes(t.artist_id));
   const seen = new Set(favArtists);
@@ -88,8 +93,10 @@ export async function resetDemo(store, { language = 'en', now = Date.now() } = {
       await t.run(`DELETE FROM ${table} WHERE user_id = ?`, [uid]);
     }
 
-    const tracks = await t.all(`SELECT t.id, t.artist_id, t.language, t.duration_ms, a.name AS artist
-      FROM tracks t JOIN artists a ON a.id = t.artist_id ORDER BY a.name, t.album_id, t.track_no`);
+    // Sorted in JS: Postgres orders text by locale, SQLite by bytes.
+    const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    const tracks = (await t.all('SELECT id, artist_id, album_id, track_no, language, genre, duration_ms FROM tracks'))
+      .sort((a, b) => cmp(a.artist_id, b.artist_id) || cmp(a.album_id, b.album_id) || a.track_no - b.track_no);
     if (!tracks.length) return uid;
     const { favourites, breadth } = pickTracks(tracks);
     const rnd = mulberry32(hashSeed('ainos-demo-snapshot-v1'));

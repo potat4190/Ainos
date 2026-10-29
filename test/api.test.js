@@ -540,6 +540,50 @@ test('each demo sign-in puts back the same snapshot, whatever the last visitor d
   assert.deepEqual(await demoState(first), before);
 });
 
+test('the demo snapshot does not depend on artist names, and hymns are never its favourites', async () => {
+  const { store } = demoSrv.app;
+  const { resetDemo } = await import('../server/demo.js');
+  const now = 1_800_000_000_000;
+  const snapshot = async () => {
+    const uid = await resetDemo(store, { now });
+    const rows = async (sql) => (await store.all(sql, [uid])).map((r) => Object.values(r).join(':'));
+    return {
+      // The four most recent likes are favourites; the two oldest come from "breadth".
+      likedFavourites: (await rows('SELECT track_id FROM liked_tracks WHERE user_id = ? ORDER BY added_at DESC')).slice(0, 4),
+      liked: await rows('SELECT track_id, added_at FROM liked_tracks WHERE user_id = ? ORDER BY added_at, track_id'),
+      followed: await rows('SELECT artist_id FROM followed_artists WHERE user_id = ? ORDER BY artist_id'),
+      streams: await rows('SELECT track_id, ended_at FROM streams WHERE user_id = ? ORDER BY ended_at, track_id'),
+      playlists: await rows('SELECT p.name, pt.position, pt.track_id FROM playlists p JOIN playlist_tracks pt ON pt.playlist_id = p.id WHERE p.owner_id = ? ORDER BY p.name, pt.position'),
+    };
+  };
+  const before = await snapshot();
+  const names = await store.all('SELECT id, name FROM artists');
+  const HYMN = { artist: '000000000000000000000A', album: '000000000000000000000B', track: '000000000000000000000C' };
+  try {
+    // Renaming every artist (as the Phase 1 display names will) changes nothing.
+    await store.run("UPDATE artists SET name = 'Zz ' || name");
+    assert.deepEqual(await snapshot(), before, 'renamed artists, same snapshot');
+
+    // An English hymn artist whose id sorts first is never a favourite.
+    await store.run("INSERT INTO artists (id, name, genre, language, image, color) VALUES (?, 'Aaa Hymnal', 'Hymn', 'en', 'x', '#000')", [HYMN.artist]);
+    await store.run("INSERT INTO albums (id, artist_id, title, year, cover, color, released_at) VALUES (?, ?, 'Hymns', 1900, 'x', '#000', 0)", [HYMN.album, HYMN.artist]);
+    await store.run(`INSERT INTO tracks (id, album_id, artist_id, title, track_no, duration_ms, genre, language, loudness_lufs, peak_db, tempo, key, mode,
+      energy, valence, danceability, acousticness, instrumentalness) VALUES (?, ?, ?, 'Hymn', 1, 60000, 'Hymn', 'en', -14, -1, 80, 0, 1, 0.2, 0.5, 0.2, 0.9, 0.95)`,
+    [HYMN.track, HYMN.album, HYMN.artist]);
+    const withHymns = await snapshot();
+    assert.deepEqual(withHymns.likedFavourites, before.likedFavourites, 'the same favourite tracks');
+    assert.ok(!withHymns.likedFavourites.includes(HYMN.track));
+  } finally {
+    for (const table of ['streams', 'liked_tracks', 'playlist_tracks', 'events']) await store.run(`DELETE FROM ${table} WHERE track_id = ?`, [HYMN.track]);
+    await store.run('DELETE FROM followed_artists WHERE artist_id = ?', [HYMN.artist]);
+    await store.run('DELETE FROM tracks WHERE id = ?', [HYMN.track]);
+    await store.run('DELETE FROM albums WHERE id = ?', [HYMN.album]);
+    await store.run('DELETE FROM artists WHERE id = ?', [HYMN.artist]);
+    for (const a of names) await store.run('UPDATE artists SET name = ? WHERE id = ?', [a.name, a.id]);
+    await resetDemo(store);
+  }
+});
+
 test('demo playlists stay private, so visitors cannot put text in everyone’s search', async () => {
   const { c } = await tryDemo();
   const p = (await c.post('/api/playlists', { name: 'Zzyzx demo graffiti', is_public: true })).json;
