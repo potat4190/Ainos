@@ -6,17 +6,25 @@ import { HttpError } from './http.js';
 
 const bad = (message) => new HttpError(400, message, 'invalid_input');
 
-// C0 control characters and DEL; tabs and newlines are allowed only in multiline text.
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
-const CONTROL_ONE_LINE = /[\u0000-\u001f\u007f]/g;
+// Control characters (C0 except tab and newline, DEL, C1).
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+// Invisible characters that can hide text or reverse how it reads to other
+// people: zero-width space, LRM/RLM, bidi embeddings, overrides and isolates,
+// word joiner and friends, BOM. ZWNJ/ZWJ (U+200C/D) stay: Indic scripts and
+// emoji need them.
+const INVISIBLE = /[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
 
 /**
- * A string of min..max characters (counted as Unicode code points, so CJK and
- * emoji count once). Control characters are removed; CRLF becomes LF.
+ * A string of min..max characters (counted as Unicode code points after NFC
+ * normalization, so CJK, emoji and Devanagari count the same however they
+ * were typed). Control and invisible formatting characters are removed;
+ * line breaks become \n in multiline text and spaces otherwise.
  */
 export function str(value, { name = 'value', min = 0, max = 200, trim = true, multiline = false } = {}) {
   if (typeof value !== 'string') throw bad(`${name} must be text`);
-  let s = value.replace(/\r\n?/g, '\n').replace(multiline ? CONTROL : CONTROL_ONE_LINE, '');
+  let s = value.toWellFormed().normalize('NFC').replace(/\r\n?|\u2028|\u2029/g, '\n');
+  if (!multiline) s = s.replace(/[\n\t]+/g, ' ');
+  s = s.replace(CONTROL, '').replace(INVISIBLE, '');
   if (trim) s = s.trim();
   const n = [...s].length;
   if (n < min) throw bad(min === 1 ? `${name} is required` : `${name} must be at least ${min} characters`);
@@ -49,15 +57,17 @@ const USFM_REF = /^([1-3]?[A-Z]{2,3})\.(\d{1,3})(?:\.(\d{1,3})(?:-(\d{1,3}))?)?$
 
 /**
  * A Scripture reference in USFM form: a whole chapter (PSA.23), a verse
- * (ROM.12.1) or a verse range within one chapter (PHP.4.6-7). Book codes are
- * matched case-insensitively and returned upper-case.
+ * (ROM.12.1) or a verse range within one chapter (PHP.4.6-7). Returned in one
+ * canonical spelling (upper-case book, no leading zeros), since references are
+ * stored, used as cache keys and sent upstream.
  */
 export function usfmRef(value, { name = 'reference' } = {}) {
   const m = typeof value === 'string' && value.length <= 20 ? USFM_REF.exec(value.trim().toUpperCase()) : null;
   if (!m || !USFM_BOOKS.includes(m[1])) throw bad(`${name} must look like ROM.12.1 or PSA.23`);
-  const [, , chapter, from, to] = m;
-  if (Number(chapter) < 1 || (from && Number(from) < 1) || (to && Number(to) <= Number(from))) throw bad(`${name} is not a valid passage`);
-  return m[0];
+  const [, book, chapter, from, to] = m;
+  const [c, f, t] = [chapter, from, to].map((x) => (x === undefined ? undefined : Number(x)));
+  if (c < 1 || (f !== undefined && f < 1) || (t !== undefined && t <= f)) throw bad(`${name} is not a valid passage`);
+  return `${book}.${c}${f !== undefined ? `.${f}` : ''}${t !== undefined ? `-${t}` : ''}`;
 }
 
 /** A YouTube video id: exactly 11 characters of [A-Za-z0-9_-]. */

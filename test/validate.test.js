@@ -10,7 +10,20 @@ test('str: trims, removes control characters, counts code points, enforces bound
   assert.equal(str('  Amazing Grace  ', { max: 120 }), 'Amazing Grace');
   assert.equal(str('a\u0000b\u001fc\u007f'), 'abc');
   assert.equal(str('line one\r\nline two\rthree\tend', { multiline: true }), 'line one\nline two\nthree\tend');
-  assert.equal(str('one\ntwo'), 'onetwo', 'single-line text drops newlines');
+  assert.equal(str('Amazing\nGrace'), 'Amazing Grace', 'single-line text: line breaks become spaces');
+  assert.equal(str('a\t\tb'), 'a b');
+  assert.equal(str('a\u2028b', { multiline: true }), 'a\nb', 'Unicode line separators are line breaks');
+  assert.equal(str('a\u0085b\u009fc'), 'abc', 'C1 controls removed');
+  // Invisible text: a name that looks empty, or reads backwards to others.
+  for (const ch of ['\u200b', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069', '\u2060', '\ufeff']) {
+    assert.equal(str(`ab${ch}c`), 'abc', `U+${ch.codePointAt(0).toString(16)}`);
+  }
+  rejects(() => str('\u200b\u202e', { min: 1 }), 'only invisible characters is blank');
+  assert.equal(str('क्\u200dष'), 'क्\u200dष', 'ZWJ stays (Devanagari conjuncts, emoji)');
+  assert.equal(str('क्\u200cष'), 'क्\u200cष', 'ZWNJ stays');
+  assert.equal(str('Café'), 'Café', 'NFC: decomposed accents are composed');
+  assert.equal(str('Café', { max: 4 }), 'Café', 'and counted once');
+  assert.equal(str('a\ud800b'), 'a�b', 'lone surrogates replaced');
   assert.equal(str('  x  ', { trim: false }), '  x  ');
   // Boundaries: exactly max is fine, one more is not; CJK and emoji count once each.
   assert.equal(str('a'.repeat(120), { max: 120 }), 'a'.repeat(120));
@@ -48,6 +61,13 @@ test('usfmRef: chapters, verses and ranges in one chapter, for the 66 book codes
   assert.equal(new Set(USFM_BOOKS).size, 66);
   for (const ok of ['ROM.12.1', 'PSA.23', 'PHP.4.6-7', 'EPH.2.8-9', '1CO.13.4', '3JN.1.2', 'PSA.119.176', 'GEN.1.1']) assert.equal(usfmRef(ok), ok);
   assert.equal(usfmRef(' rom.12.1 '), 'ROM.12.1', 'case-insensitive, trimmed');
+  // One spelling per passage: references are stored, cached and sent upstream.
+  assert.equal(usfmRef('ROM.012.001'), 'ROM.12.1');
+  assert.equal(usfmRef('PSA.023'), 'PSA.23');
+  assert.equal(usfmRef('PHP.04.06-007'), 'PHP.4.6-7');
+  rejects(() => usfmRef('ROM.000'));
+  rejects(() => usfmRef('ROM.12.00'));
+  rejects(() => usfmRef('ROM.12.07-007'), 'range end equal to start after leading zeros');
   const badRefs = [
     'ROM', 'ROM.', 'ROM.12.', 'ROM.0', 'ROM.12.0', 'ROM.12.5-5', 'ROM.12.5-3', 'ROM.1234', 'ROM.12.1-2-3',
     'XYZ.1.1', '4JN.1.1', 'ROM 12:1', 'ROM.12:1', 'ROM.12.1,3', 'ROM.12-13', 'ROM.12.1-ROM.13.2', '../ROM.12.1',
