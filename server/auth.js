@@ -84,7 +84,16 @@ export async function userFromRequest(store, req) {
  * allowing `limit` on its own. Resolves to false once the key is over it.
  */
 export function rateLimiter(store, { name, limit, windowMs }) {
+  checkLimit('rateLimiter', limit, windowMs, 3600 * 1000); // its rows are purged after an hour
+  if (typeof name !== 'string' || !name || name.includes('/')) throw new Error('rateLimiter: name required, without "/"');
   return async (key) => (await hit(store, `${name}:${key}`, windowMs)).hits <= limit;
+}
+
+// A typo or a missing setting must fail loudly, not silently allow everything.
+function checkLimit(fn, limit, windowMs, maxWindowMs) {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`${fn}: limit must be a positive integer, got ${limit}`);
+  if (!Number.isInteger(windowMs) || windowMs < 1000) throw new Error(`${fn}: window must be a whole number of seconds, at least 1, got ${windowMs} ms`);
+  if (windowMs > maxWindowMs) throw new Error(`${fn}: windows longer than ${maxWindowMs / 1000} s would be purged early`);
 }
 
 /** Count one hit on a key's current window (starting a new window if the last one is over). */
@@ -97,8 +106,9 @@ async function hit(store, key, windowMs, now = Date.now()) {
   return { hits: row.hits, windowStart: Number(row.window_start) };
 }
 
-// The longest window any limit uses (a day), plus an hour of slack.
-const LONGEST_WINDOW_MS = 25 * 3600 * 1000;
+// The longest window rateLimit() allows, and how long its rows are kept (an hour more).
+const MAX_WINDOW_SEC = 86_400;
+const KEEP_MS = (MAX_WINDOW_SEC + 3600) * 1000;
 
 /**
  * Rate limit for routes: counts a hit on `key` and throws 429 with a
@@ -108,10 +118,8 @@ const LONGEST_WINDOW_MS = 25 * 3600 * 1000;
  * and a per-day limit.
  */
 export async function rateLimit(store, key, { limit, windowSec, message = 'Too many requests, try again later', now = Date.now() }) {
-  // A typo or a missing setting must fail loudly, not silently allow everything.
-  if (!Number.isInteger(limit) || limit < 1) throw new Error(`rateLimit: limit must be a positive integer, got ${limit}`);
-  if (!Number.isInteger(windowSec) || windowSec < 1) throw new Error(`rateLimit: windowSec must be a positive integer, got ${windowSec}`);
-  if (windowSec * 1000 > LONGEST_WINDOW_MS) throw new Error('rate-limit windows longer than a day would be purged early');
+  if (!Number.isInteger(windowSec)) throw new Error(`rateLimit: windowSec must be a positive integer, got ${windowSec}`);
+  checkLimit('rateLimit', limit, windowSec * 1000, MAX_WINDOW_SEC * 1000);
   if (typeof key !== 'string' || !key) throw new Error('rateLimit: key required');
   const windowMs = windowSec * 1000;
   const { hits, windowStart } = await hit(store, `${key}/${windowSec}s`, windowMs, now);
@@ -128,7 +136,7 @@ export async function rateLimit(store, key, { limit, windowSec, message = 'Too m
  */
 export async function purgeRateLimits(store, now = Date.now()) {
   await store.run("DELETE FROM rate_limits WHERE window_start < ? AND key NOT LIKE '%/%s'", [now - 3600 * 1000]);
-  await store.run('DELETE FROM rate_limits WHERE window_start < ?', [now - LONGEST_WINDOW_MS]);
+  await store.run('DELETE FROM rate_limits WHERE window_start < ?', [now - KEEP_MS]);
 }
 
 /** HMAC-signed, expiring media URLs (like a CDN's signed URLs). */

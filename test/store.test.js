@@ -74,6 +74,13 @@ test('rateLimit throws 429 with Retry-After, keeps per-minute and per-day window
       await assert.rejects(rateLimit(store, 'k', opts), /rateLimit: /, JSON.stringify(opts));
     }
     await assert.rejects(rateLimit(store, '', perMinute), /key required/);
+    await rateLimit(store, 'user:9:daily', { limit: 1, windowSec: 86_400 }); // a day is the longest window
+    await assert.rejects(rateLimit(store, 'user:9:daily', { limit: 1, windowSec: 86_401 }), /purged early/);
+    // The per-minute limiters check their options the same way.
+    for (const opts of [{ name: 'auth', windowMs: 60_000 }, { name: 'auth', limit: 3 }, { name: 'auth', limit: 3, windowMs: 2 * 3600_000 },
+      { name: 'a/b', limit: 3, windowMs: 60_000 }, { limit: 3, windowMs: 60_000 }]) {
+      assert.throws(() => rateLimiter(store, opts), /rateLimiter: /, JSON.stringify(opts));
+    }
 
     // Housekeeping: the per-minute limiters' rows (no "/" in the key) go after
     // an hour, rateLimit() rows after a day.
