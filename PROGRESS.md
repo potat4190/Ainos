@@ -2,6 +2,10 @@
 Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · P1.7 wiring: generate.js uses picked display names (none picked yet → catalog byte-identical); tests hold for any picks · commit 1651db9
+- 2026-10-29 Phase 1 · catalog sync verified on the preview Postgres with the hymns: 143 rows added, 0 updated; second run 0/0 (idempotent)
+- 2026-10-29 Phase 1 · P1.5 hymn album, songs, lyrics, arrangements, Hymns playlist appended (snapshot: additions only); translations + review rows · commit 59dc01c
+- 2026-10-29 Phase 1 · P1.3 `scripts/hymns.js`: 8 sourced public-domain hymns; `test/hymns.test.js` · commit d24ec99
 - 2026-10-29 Phase 1 · P1.9 "Christian" adjectives removed from UI copy (20 keys × 6 languages, editorial descriptions, index.html); review rows in docs/i18n-review.md; guard test · commit 6e0c7c4
 - 2026-10-29 Phase 1 · P1.6 seed-postgres catalog sync (seed / sync / refuse; display-only upserts); verified on the preview Postgres · commit 9e04e57
 - 2026-10-29 Phase 1 · P1.4 demo snapshot independent of names and the hymnal · commit cd1b3de
@@ -47,8 +51,8 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- P1.3: build `scripts/hymns.js` from the researched hymn JSON files with `node <scratchpad>/hymns/build.mjs`, after checking them with `check.mjs` (same folder). Scratchpad folder of the 2026-10-29 session: C:/Users/rhida/AppData/Local/Temp/claude/C--Users-rhida-Desktop-Ainos/380739b8-4ccb-4a5c-ad81-24b0c36bb2d5/scratchpad/hymns/ (FORMAT.md is the brief). Done and structurally checked: amazing-grace, come-thou-fount, it-is-well, all-hail-the-power, rock-of-ages, abide-with-me. Still being researched when the session hit its usage limit: be-thou-my-vision, holy-holy-holy (check whether their JSON files were written; if not, re-run that research with FORMAT.md). If the scratchpad is gone, redo the research from FORMAT.md's rules (copied in this file's notes below).
-- Then P1.5 (append hymn album + "Hymns" editorial playlist + songs/sections/arrangements in generate.js, ids from hashSeed('hymn:'+slug), album released at a fixed date; update the id snapshot with AINOS_UPDATE_CATALOG_SNAPSHOT=1; add 'Hymns' to EDITORIAL_I18N + review rows), then hymns.test.js, then phase-end reviews, push phase-1-catalog, PR, preview smoke. P1.7/P1.8 wait for the owner's name picks.
+- Phase 1 end: correctness + security reviews (fresh subagents), fixes, push `phase-1-catalog`, PR, preview smoke, stop for owner review.
+- Waiting on the owner: name picks in `scripts/catalog-names.js` (then P1.8: update names in docs/HOW-SPOTIFY-WORKS.md), and listening to the 8 hymns on the preview before they ship.
 
 ## Open questions and answers
 - NEW (2026-10-29) Come, Thou Fount lyrics: the research used Robinson's original 1759 wording (4 stanzas, e.g. "Mount of God's unchanging Love", "Seal it from thy Courts above"); the familiar 3-stanza wording from the 1921 tune source is listed in that hymn's notes. Which should ship? → (2026-10-29) the familiar 3-stanza text, as printed with the tune in The Voice of Thanksgiving No. 3 (1921), No. 258 (transcribed from the page scan); the 1759 original is kept in the hymn's notes
