@@ -26,10 +26,23 @@ test('str: trims, removes control characters, counts code points, enforces bound
   }
   rejects(() => str('\u200b\u202e', { min: 1 }), 'only invisible characters is blank');
   // Characters that make a name look empty, or carry hidden text.
-  for (const ch of ['\u00ad', '\u034f', '\u061c', '\u115f', '\u1160', '\u180e', '\u206a', '\u206f', '\u2800', '\u3164', '\uffa0', '\u{e0001}', '\u{e0041}', '\u{e007f}']) {
+  for (const ch of ['\u00ad', '\u061c', '\u115f', '\u1160', '\u206a', '\u206f', '\u3164', '\uffa0', '\u{e0001}', '\u{e0041}', '\u{e007f}']) {
     assert.equal(str(`ab${ch}c`), 'abc', `U+${ch.codePointAt(0).toString(16)}`);
     rejects(() => str(ch, { min: 1 }), `U+${ch.codePointAt(0).toString(16)} alone is blank`);
   }
+  // Kept inside text, but alone they show nothing.
+  for (const ch of ['\u200d', '\u200c', '\ufe0f', '\u034f', '\u2800', '\u0301', '\u3000', '\u115f\u200d']) {
+    rejects(() => str(ch, { min: 1 }), `${[...ch].map((c) => c.codePointAt(0).toString(16)).join(' ')} alone is blank`);
+  }
+  // Real text that needs characters that are otherwise invisible.
+  assert.equal(str('\u05d1\u05b8\u034f\u05b7'), '\u05d1\u05b8\u034f\u05b7', 'Biblical Hebrew pointing keeps the combining grapheme joiner');
+  const england = '\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}';
+  assert.equal(str(`Go ${england}`), `Go ${england}`, 'emoji subdivision flags keep their tag characters');
+  assert.equal(str(`a\u{e0041}\u{e0042}b ${england}`), `ab ${england}`, 'stray tag characters still go');
+  assert.equal(str('\u1820\u180e\u1821'), '\u1820\u180e\u1821', 'Mongolian vowel separator');
+  assert.equal(str('\u2801\u2800\u2803'), '\u2801\u2800\u2803', 'braille blank between braille words');
+  assert.equal(str('\u092e\u0938\u0940\u0939\u0940', { min: 1 }), '\u092e\u0938\u0940\u0939\u0940');
+  assert.equal(str('\u8d5e\u7f8e', { min: 1 }), '\u8d5e\u7f8e');
   assert.equal(str('\u2764\ufe0f'), '\u2764\ufe0f', 'emoji variation selectors stay');
   // One spelling per text: removing a character between a letter and its accent still yields NFC.
   assert.equal(str('Gra\u200b\u0301ce'), str('Gr\u00e1ce'));
