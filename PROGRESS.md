@@ -1,7 +1,8 @@
 # Progress
-Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
+Last updated: 2026-10-29 · Current phase: 1 done (PR #3 awaiting owner review) · Branch: phase-1-catalog
 
 ## Done (newest first)
+- 2026-10-29 Phase 1 · DONE (pending owner name picks for P1.7/P1.8 and the hymn listen): PR #3; preview 416ff23 synced the preview DB (8 hymn rows updated once for the rounding) and passed the smoke test incl. the hymn checks; result posted on the PR
 - 2026-10-29 Phase 1 · smoke test checks the Hymns playlist, finds Amazing Grace, streams its audio · commit ad243a5
 - 2026-10-29 Phase 1 · Node.js pin (21d9675) REVERTED (1421b97): its premise was wrong. Every WAV checked (8 hymns, 11 originals) is byte-identical between local Windows/Node 24 and Vercel Linux on Node 24 and 26; only one hymn's stored loudness double differed by ~1e-11 between Windows and Linux. Hymn loudness/peak now rounded to 6 decimals so syncs agree across platforms · commit e7ed4a7
 - 2026-10-29 Phase 1 · pushed `phase-1-catalog`, PR #3; preview build migrated + synced the preview DB; smoke passed (before the hymn checks were added)
@@ -59,8 +60,8 @@ Last updated: 2026-10-29 · Current phase: 1 · Branch: phase-1-catalog
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Phase 1 end: correctness + security reviews (fresh subagents), fixes, push `phase-1-catalog`, PR, preview smoke, stop for owner review.
-- Waiting on the owner: name picks in `scripts/catalog-names.js` (then P1.8: update names in docs/HOW-SPOTIFY-WORKS.md), and listening to the 8 hymns on the preview before they ship.
+- Owner: review PR #3; listen to the hymns on the preview; pick names in `scripts/catalog-names.js`; do the "Before merging Phase 1" steps; answer the open questions marked waiting (PGlite dev dependency, Node pin; Q7, Q8, Q14 before Phase 2).
+- After the picks: P1.8 (names in docs/HOW-SPOTIFY-WORKS.md), on phase-1-catalog. Then Phase 2 (Scripture) on `phase-2-scripture`, which needs Q8 (admin model) and Q14 (YouVersion key, versions, fallback text).
 
 ## Open questions and answers
 - NEW (2026-10-29) Vercel builds use Node 26 because `engines: "node": ">=22.13"` overrides the project setting (24.x) whenever a new major ships. The generated audio was identical on 24 and 26 (checked), so nothing is broken; pin `engines` to your project's 24.x (`>=22.13 <25`) so upgrades are deliberate, or keep auto-upgrading? → waiting
