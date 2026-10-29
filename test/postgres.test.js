@@ -194,6 +194,10 @@ test('a generated file that lost a table’s rows does not wipe the lyrics', { s
   assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM song_sections'), before);
 });
 
+test('CI runs these tests instead of skipping them', { skip: !process.env.CI && 'not in CI' }, () => {
+  assert.ok(PGlite, 'npm ci installs PGlite');
+});
+
 test('production code never imports PGlite', () => {
   const offenders = [];
   const walk = (d) => {
