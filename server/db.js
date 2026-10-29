@@ -174,6 +174,20 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   window_start INTEGER NOT NULL,
   hits         INTEGER NOT NULL
 );
+
+-- Who did what to a church's data (audit.js). No foreign keys: rows outlive
+-- the users and orgs they mention, and deleting an account anonymizes them.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT,
+  user_id     INTEGER,
+  action      TEXT NOT NULL,
+  target_type TEXT,
+  target_id   TEXT,
+  details     TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS audit_log_org ON audit_log(org_id, created_at);
 `;
 
 // Language tags for the artists of the original (pre-language) seed catalog,
