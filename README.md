@@ -53,6 +53,14 @@ Environment variables on Vercel:
 | `AINOS_SECRET` | A long random string; signs media URLs |
 | `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
 
+### Rotating secrets
+
+Rotate a secret when it may have leaked, and otherwise about once a year. Change it in the Vercel project settings and redeploy; secrets never go in the repo.
+
+- **`AINOS_SECRET`** (signs media URLs, which live for up to an hour). Set `AINOS_SECRET_PREVIOUS` to the current value and `AINOS_SECRET` to a new long random string, then redeploy. The app and `middleware.js` accept both for now, so audio already queued in open tabs keeps playing. After at least an hour, delete `AINOS_SECRET_PREVIOUS` and redeploy.
+- **`CRON_SECRET`** (Vercel sends it to cron routes, from Phase 3). Vercel reads the new value from project settings, so set it and redeploy; nothing else holds the old one.
+- **API keys** (`YOUVERSION_APP_KEY` from Phase 2, `YOUTUBE_API_KEY` from Phase 3). Create a new key in the provider's console (for YouTube, restricted to the YouTube Data API), set it and redeploy, then delete the old key in the console. Without a key the app falls back (public-domain Scripture text, local-only search) rather than failing.
+
 `node scripts/smoke.js https://<your-deployment>` runs an end-to-end check (login, every API route, signed audio, a temporary playlist) against any running copy. It signs in with *Try the demo*, so it resets the demo account.
 
 Running `npm start` with `DATABASE_URL` set uses that database instead of SQLite (it prints which host), while audio and art still come from `data/`.

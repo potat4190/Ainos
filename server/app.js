@@ -36,6 +36,7 @@ export async function createApp({
   dataDir = path.join(ROOT, 'data'),
   databaseUrl = process.env.DATABASE_URL,
   secret = process.env.AINOS_SECRET,
+  previousSecret = process.env.AINOS_SECRET_PREVIOUS, // accepted for media URLs during a rotation
   publicDir = path.join(ROOT, 'public'),
   docsDir = path.join(ROOT, 'docs'),
   eventLogDir = databaseUrl ? null : path.join(dataDir, 'events'),
@@ -580,7 +581,7 @@ export async function createApp({
     // Audio files: signed URL required; served with byte-range support.
     const media = /^\/media\/(low|high)\/([A-Za-z0-9]{22})\.wav$/.exec(pathname);
     if (media) {
-      if (!verifyMediaSignature(secret, pathname, url.searchParams.get('exp'), url.searchParams.get('sig'))) throw new HttpError(403, 'Invalid or expired media signature');
+      if (!verifyMediaSignature([secret, previousSecret], pathname, url.searchParams.get('exp'), url.searchParams.get('sig'))) throw new HttpError(403, 'Invalid or expired media signature');
       const file = path.join(dataDir, 'media', media[1], media[2] + '.wav');
       if (!fs.existsSync(file)) throw new HttpError(404, 'Not found');
       if (req.headers.range) {

@@ -129,11 +129,19 @@ export function signMediaPath(secret, pathname, ttlSec = 3600) {
   return `${pathname}?exp=${exp}&sig=${sig}`;
 }
 
-export function verifyMediaSignature(secret, pathname, exp, sig) {
+/**
+ * secrets: the current secret, or [current, previous] while a rotation is in
+ * progress, so URLs signed just before the switch keep working until they
+ * expire (see "Rotating secrets" in README.md). New URLs are always signed
+ * with the current one.
+ */
+export function verifyMediaSignature(secrets, pathname, exp, sig) {
   if (!exp || !sig || !/^\d+$/.test(exp)) return false;
   if (Number(exp) < Date.now() / 1000) return false;
-  const expected = crypto.createHmac('sha256', secret).update(`${pathname}:${exp}`).digest();
   let given;
   try { given = Buffer.from(sig, 'base64url'); } catch { return false; }
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  return [secrets].flat().filter(Boolean).some((secret) => {
+    const expected = crypto.createHmac('sha256', secret).update(`${pathname}:${exp}`).digest();
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  });
 }
