@@ -13,16 +13,31 @@ test('str: trims, removes control characters, counts code points, enforces bound
   assert.equal(str('Amazing\nGrace'), 'Amazing Grace', 'single-line text: line breaks become spaces');
   assert.equal(str('a\t\tb'), 'a b');
   assert.equal(str('a\u2028b', { multiline: true }), 'a\nb', 'Unicode line separators are line breaks');
-  assert.equal(str('a\u0085b\u009fc'), 'abc', 'C1 controls removed');
+  assert.equal(str('a\u0080b\u009fc'), 'abc', 'C1 controls removed');
+  for (const br of ['\u000b', '\u000c', '\u0085', '\u2028', '\u2029', '\r']) {
+    assert.equal(str(`Amazing${br}Grace`), 'Amazing Grace', `U+${br.codePointAt(0).toString(16)} is a line break`);
+    assert.equal(str(`a${br}b`, { multiline: true }), 'a\nb');
+  }
+  assert.equal(str('a \n\u200b\n  b'), 'a b', 'single-line: runs of spaces become one');
+  assert.equal(str('a  b\n\nc', { multiline: true }), 'a  b\n\nc', 'multiline text keeps its spacing');
   // Invisible text: a name that looks empty, or reads backwards to others.
   for (const ch of ['\u200b', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069', '\u2060', '\ufeff']) {
     assert.equal(str(`ab${ch}c`), 'abc', `U+${ch.codePointAt(0).toString(16)}`);
   }
   rejects(() => str('\u200b\u202e', { min: 1 }), 'only invisible characters is blank');
+  // Characters that make a name look empty, or carry hidden text.
+  for (const ch of ['\u00ad', '\u034f', '\u061c', '\u115f', '\u1160', '\u180e', '\u206a', '\u206f', '\u2800', '\u3164', '\uffa0', '\u{e0001}', '\u{e0041}', '\u{e007f}']) {
+    assert.equal(str(`ab${ch}c`), 'abc', `U+${ch.codePointAt(0).toString(16)}`);
+    rejects(() => str(ch, { min: 1 }), `U+${ch.codePointAt(0).toString(16)} alone is blank`);
+  }
+  assert.equal(str('\u2764\ufe0f'), '\u2764\ufe0f', 'emoji variation selectors stay');
+  // One spelling per text: removing a character between a letter and its accent still yields NFC.
+  assert.equal(str('Gra\u200b\u0301ce'), str('Gr\u00e1ce'));
+  assert.equal(str('Gra\u200b\u0301ce'), 'Gr\u00e1ce');
   assert.equal(str('क्\u200dष'), 'क्\u200dष', 'ZWJ stays (Devanagari conjuncts, emoji)');
   assert.equal(str('क्\u200cष'), 'क्\u200cष', 'ZWNJ stays');
-  assert.equal(str('Café'), 'Café', 'NFC: decomposed accents are composed');
-  assert.equal(str('Café', { max: 4 }), 'Café', 'and counted once');
+  assert.equal(str('Cafe\u0301'), 'Café', 'NFC: decomposed accents are composed');
+  assert.equal(str('Cafe\u0301', { max: 4 }), 'Café', 'and counted once');
   assert.equal(str('a\ud800b'), 'a�b', 'lone surrogates replaced');
   assert.equal(str('  x  ', { trim: false }), '  x  ');
   // Boundaries: exactly max is fine, one more is not; CJK and emoji count once each.

@@ -6,26 +6,33 @@ import { HttpError } from './http.js';
 
 const bad = (message) => new HttpError(400, message, 'invalid_input');
 
+// Every way of breaking a line: CRLF, CR, LF, VT, FF, NEL, LS, PS.
+const LINE_BREAK = /\r\n?|[\n\u000b\u000c\u0085\u2028\u2029]/g;
 // Control characters (C0 except tab and newline, DEL, C1).
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
-// Invisible characters that can hide text or reverse how it reads to other
-// people: zero-width space, LRM/RLM, bidi embeddings, overrides and isolates,
-// word joiner and friends, BOM. ZWNJ/ZWJ (U+200C/D) stay: Indic scripts and
-// emoji need them.
-const INVISIBLE = /[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
+// Invisible characters that can hide text, make a name look empty, or
+// reverse how it reads to other people: soft hyphen, combining grapheme
+// joiner, Arabic letter mark, Hangul fillers, Mongolian vowel separator,
+// zero-width space, LRM/RLM, bidi embeddings, overrides and isolates, word
+// joiner and other invisible operators, braille blank, BOM, tag characters.
+// ZWNJ/ZWJ (U+200C/D) and variation selectors stay: Indic scripts and emoji
+// need them.
+const INVISIBLE = /[\u00ad\u034f\u061c\u115f\u1160\u180e\u200b\u200e\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164\ufeff\uffa0\u{e0000}-\u{e007f}]/gu;
 
 /**
- * A string of min..max characters (counted as Unicode code points after NFC
- * normalization, so CJK, emoji and Devanagari count the same however they
- * were typed). Control and invisible formatting characters are removed;
- * line breaks become \n in multiline text and spaces otherwise.
+ * A string of min..max characters, counted as Unicode code points in NFC (so
+ * CJK, emoji and Devanagari count the same however they were typed). Control
+ * and invisible formatting characters are removed. In multiline text line
+ * breaks become \n; otherwise they, tabs and runs of spaces become one space.
  */
 export function str(value, { name = 'value', min = 0, max = 200, trim = true, multiline = false } = {}) {
   if (typeof value !== 'string') throw bad(`${name} must be text`);
-  let s = value.toWellFormed().normalize('NFC').replace(/\r\n?|\u2028|\u2029/g, '\n');
-  if (!multiline) s = s.replace(/[\n\t]+/g, ' ');
-  s = s.replace(CONTROL, '').replace(INVISIBLE, '');
-  if (trim) s = s.trim();
+  let s = value.toWellFormed().replace(LINE_BREAK, '\n');
+  if (!multiline) s = s.replace(/[\n\t]/g, ' ');
+  // Normalize after removing: a character removed between a letter and its
+  // accent would otherwise leave two spellings of the same text.
+  s = s.replace(CONTROL, '').replace(INVISIBLE, '').normalize('NFC');
+  if (trim) s = (multiline ? s : s.replace(/ {2,}/g, ' ')).trim();
   const n = [...s].length;
   if (n < min) throw bad(min === 1 ? `${name} is required` : `${name} must be at least ${min} characters`);
   if (n > max) throw bad(`${name} must be at most ${max} characters`);
