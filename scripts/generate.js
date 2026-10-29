@@ -344,8 +344,12 @@ function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFi
       for (const v of samples) peak = Math.max(peak, Math.abs(v));
       for (let k = 0; k < samples.length; k++) samples[k] /= peak || 1;
       master(samples, Math.pow(10, (HYMN_TARGET_LUFS - integratedLoudness(samples, SR)) / 20));
-      const loud = integratedLoudness(samples, SR);
-      const peakDb = samplePeakDb(samples);
+      // Rounded: the last bits of these doubles differ between platforms (Windows
+      // vs Linux), though the audio is byte-identical, and a deploy's catalog
+      // sync refreshes hymn measurements whenever they differ.
+      const round6 = (v) => Math.round(v * 1e6) / 1e6;
+      const loud = round6(integratedLoudness(samples, SR));
+      const peakDb = round6(samplePeakDb(samples));
       const hi = encodeWav16(samples, SR);
       const lo = encodeWav16(downsample2(samples), SR / 2);
       fs.writeFileSync(path.join(dataDir, `media/high/${trackId}.wav`), hi);
