@@ -12,8 +12,9 @@ export const onUnauthorized = (fn) => listeners.add(fn);
 // Give up on a request after this long, so a stalled connection ends in a message instead of a spinner forever.
 const TIMEOUT_MS = 20_000;
 
-async function request(method, url, body) {
-  const opts = { method, headers: {}, credentials: 'same-origin', signal: AbortSignal.timeout(TIMEOUT_MS) };
+async function request(method, url, body, { timeout = TIMEOUT_MS } = {}) {
+  const opts = { method, headers: {}, credentials: 'same-origin' };
+  if (timeout && typeof AbortSignal.timeout === 'function') opts.signal = AbortSignal.timeout(timeout); // missing before Safari 16
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -39,7 +40,7 @@ async function request(method, url, body) {
 
 export const api = {
   get: (u) => request('GET', u),
-  post: (u, b = {}) => request('POST', u, b),
+  post: (u, b = {}, opts) => request('POST', u, b, opts),
   put: (u, b) => request('PUT', u, b),
   patch: (u, b) => request('PATCH', u, b),
   del: (u) => request('DELETE', u),

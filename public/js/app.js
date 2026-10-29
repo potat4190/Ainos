@@ -25,6 +25,8 @@ class App {
 
   // ----------------------------------------------------------------- boot
   async boot() {
+    // The router owns the hash, so the skip link moves focus instead of navigating to "#main".
+    $('skip-link').addEventListener('click', (e) => { e.preventDefault(); $('main').focus(); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('[ainos] SW registration failed', e));
     onUnauthorized(() => { if (!this.loggingIn) this.showLogin(); });
     try {
@@ -499,8 +501,10 @@ class App {
       const v = this.player.view();
       if (!this.seekSlider.isDragging()) {
         const f = v.durationMs ? v.positionMs / v.durationMs : 0;
-        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f, t('timeOf', { cur: fmtTime(v.positionMs), dur: fmtTime(v.durationMs) }));
-        $('time-cur').textContent = fmtTime(v.positionMs);
+        const cur = fmtTime(v.positionMs), dur = fmtTime(v.durationMs);
+        if (cur + dur !== this.seekText?.key) this.seekText = { key: cur + dur, text: t('timeOf', { cur, dur }) };
+        setSlider($('seek'), $('seek-fill'), $('seek-thumb'), f, this.seekText.text);
+        $('time-cur').textContent = cur;
         $('seek-buffer').style.width = `${v.durationMs && v.bufferedMs ? Math.min(100, (v.bufferedMs / v.durationMs) * 100) : 0}%`;
       }
       $('time-dur').textContent = fmtTime(v.durationMs);

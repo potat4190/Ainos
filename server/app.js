@@ -13,7 +13,7 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo } from './demo.js';
+import { resetDemo, isDemo, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -120,9 +120,10 @@ export async function createApp({
     if (!(await demoLimiter(clientIp(req))) || !(await demoLimiterAll('all'))) throw new HttpError(429, 'Too many demo sign-ins, wait a minute', 'rate_limited');
     const { language } = await readJson(req);
     const userId = await resetDemo(store, { language: LANGUAGES.includes(language) ? language : 'en' });
-    recommender.noteNewStreams(5); // the snapshot replaced its history; retrain soon
-    const token = await createSession(store, userId);
-    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req) }) });
+    // One day, not 30: every click makes a session for the shared account, and
+    // expired ones are purged by housekeeping.
+    const token = await createSession(store, userId, { ttlMs: DEMO_SESSION_TTL_MS });
+    sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req), maxAgeMs: DEMO_SESSION_TTL_MS }) });
   });
 
   r.post('/api/auth/logout', async ({ req, res }) => {

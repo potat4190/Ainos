@@ -774,7 +774,8 @@ export class Player extends EventTarget {
       return;
     }
     try {
-      const res = await api.post('/api/events', { events: batch });
+      // No client timeout: a batch is retried on failure, so giving up while the server is still saving it would store it twice.
+      const res = await api.post('/api/events', { events: batch }, { timeout: 0 });
       if (res.streams_counted) this.#emit('streams', res);
     } catch {
       this.queue.unshift(...batch.slice(-300)); // keep for retry

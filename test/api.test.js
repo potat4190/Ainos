@@ -333,8 +333,9 @@ test('unknown routes 404, wrong methods 405, bad JSON 400', async () => {
 
 // ---------------------------------------------------------------- try the demo
 // Its own server: these tests reset the demo account, which the tests above rely on.
-const DEMO_LIMIT = 6;
+const DEMO_LIMIT = 10;
 let demoSrv;
+after(() => demoSrv?.close());
 const tryDemo = async (body = {}) => {
   const c = client(demoSrv.base);
   const r = await c.post('/api/auth/demo', body);
@@ -357,6 +358,7 @@ test('try the demo: one request signs in, with no password on the client', async
   const { c, r } = await tryDemo({ language: 'es' });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('set-cookie'), /HttpOnly/);
+  assert.match(r.headers.get('set-cookie'), /Max-Age=86400(;|$)/, 'demo sessions last a day, not 30');
   const me = (await c.get('/api/me')).json;
   assert.equal(me.username, 'demo');
   assert.equal(me.is_demo, true);
@@ -422,11 +424,19 @@ test('the demo password still works, and does not reset the account', async () =
   assert.ok((await pw.get('/api/me/library')).json.playlists.some((p) => p.name === 'Kept'));
 });
 
+test('the demo account is created on first use, even by two sign-ins at once', async () => {
+  const { store } = demoSrv.app;
+  await store.run("DELETE FROM users WHERE lower(username) = 'demo'");
+  const [a, b] = await Promise.all([tryDemo(), tryDemo()]);
+  assert.deepEqual([a.r.status, b.r.status], [200, 200]);
+  assert.equal((await store.get("SELECT COUNT(*) AS n FROM users WHERE lower(username) = 'demo'")).n, 1);
+  assert.ok((await demoState(b.c)).streams >= 40);
+});
+
 test('demo sign-ins are rate-limited', async () => {
   // Earlier tests used some of this minute's allowance.
   let status = 200;
   for (let i = 0; i < DEMO_LIMIT + 1 && status === 200; i++) status = (await tryDemo()).r.status;
   assert.equal(status, 429);
-  assert.equal((await login(demoSrv.base)).cookie ? 200 : 0, 200, 'password sign-in has its own limit');
-  await demoSrv.close();
+  assert.ok((await signup(demoSrv.base, 'afterdemo')).cookie, 'sign-up has its own limit');
 });

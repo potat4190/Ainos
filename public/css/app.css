@@ -407,7 +407,6 @@ dialog h2 { margin-bottom: 16px; }
   .np-center { grid-column: 1 / -1; grid-row: 2; }
   .np-right { grid-row: 1; grid-column: 2; }
   #btn-nowplaying { display: none; }
-  .controls { gap: 14px; }
   .mobile-nav { display: grid; grid-area: nav; grid-template-columns: repeat(4, 1fr); background: #000; padding-bottom: env(safe-area-inset-bottom); }
   .mobile-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; color: var(--text-3); }
   .mobile-nav a.active { color: var(--text); }

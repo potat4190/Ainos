@@ -41,10 +41,10 @@ export function validateCredentials(username, password) {
   }
 }
 
-export async function createSession(store, userId) {
+export async function createSession(store, userId, { ttlMs = SESSION_TTL_MS } = {}) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
-  await store.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [sha256(token), userId, now, now + SESSION_TTL_MS]);
+  await store.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [sha256(token), userId, now, now + ttlMs]);
   return token;
 }
 
@@ -57,8 +57,8 @@ export function purgeExpiredSessions(store) {
   return store.run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
 }
 
-export function sessionCookie(token, { secure = false } = {}) {
-  const parts = [`${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${SESSION_TTL_MS / 1000}`];
+export function sessionCookie(token, { secure = false, maxAgeMs = SESSION_TTL_MS } = {}) {
+  const parts = [`${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.round(maxAgeMs / 1000)}`];
   if (secure) parts.push('Secure');
   return parts.join('; ');
 }

@@ -7,6 +7,7 @@ import { randomId, mulberry32, hashSeed } from './util.js';
 import { inList } from './store.js';
 
 export const DEMO_USERNAME = 'demo';
+export const DEMO_SESSION_TTL_MS = 24 * 3600 * 1000;
 const DISPLAY_NAME = 'Demo Listener';
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -15,16 +16,23 @@ export const isDemo = (user) => user?.username?.toLowerCase() === DEMO_USERNAME;
 
 /**
  * Which tracks the snapshot uses. Favourites are the first two English artists'
- * tracks (most of the history); "breadth" is one track per artist in every
- * other language, so recommendations work in each language.
+ * tracks (any two artists if there are none), most of the history; "breadth"
+ * is one track by each other artist, so recommendations work in each language.
  */
 function pickTracks(tracks) {
-  const enArtists = [...new Set(tracks.filter((t) => t.language === 'en').map((t) => t.artist))].slice(0, 2);
-  const favourites = tracks.filter((t) => enArtists.includes(t.artist));
-  const seen = new Set();
-  const breadth = tracks.filter((t) => t.language !== 'en' && !seen.has(t.artist_id) && seen.add(t.artist_id));
+  const firstTwo = (list) => [...new Set(list.map((t) => t.artist_id))].slice(0, 2);
+  const favArtists = firstTwo(tracks.filter((t) => t.language === 'en'));
+  if (!favArtists.length) favArtists.push(...firstTwo(tracks));
+  const favourites = tracks.filter((t) => favArtists.includes(t.artist_id));
+  const seen = new Set(favArtists);
+  const breadth = tracks.filter((t) => !seen.has(t.artist_id) && seen.add(t.artist_id));
   return { favourites, breadth };
 }
+
+/** Multi-row INSERT; does nothing for no rows. */
+const insertRows = (t, sql, rows) => (rows.length
+  ? t.run(`${sql} VALUES ${rows.map((r) => `(${r.map(() => '?').join(', ')})`).join(', ')}`, rows.flat())
+  : null);
 
 /**
  * Put the demo account back to its snapshot (creating the account if needed)
@@ -33,11 +41,14 @@ function pickTracks(tracks) {
  */
 export async function resetDemo(store, { language = 'en', now = Date.now() } = {}) {
   return store.tx(async (t) => {
-    let user = await t.get('SELECT id FROM users WHERE lower(username) = ? AND is_simulated = 0', [DEMO_USERNAME]);
+    const find = () => t.get('SELECT id FROM users WHERE lower(username) = ? AND is_simulated = 0', [DEMO_USERNAME]);
+    let user = await find();
     if (!user) {
       // No password: the account is only reachable through the demo sign-in.
-      user = await t.get('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, NULL, ?, ?) RETURNING id',
+      // DO NOTHING: a sign-in running at the same moment may have created it.
+      await t.run('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, NULL, ?, ?) ON CONFLICT DO NOTHING',
         [DEMO_USERNAME, DISPLAY_NAME, language, now]);
+      user = await find();
     }
     const uid = Number(user.id);
     await t.run('UPDATE users SET display_name = ?, language = ? WHERE id = ?', [DISPLAY_NAME, language, uid]);
@@ -67,17 +78,15 @@ export async function resetDemo(store, { language = 'en', now = Date.now() } = {
       streams.push([uid, tr.id, Math.min(tr.duration_ms, 35_000 + Math.floor(rnd() * 60_000)), null, at]);
       at -= 4 * HOUR + Math.floor(rnd() * 8 * HOUR);
     }
-    await t.run(`INSERT INTO streams (user_id, track_id, ms_played, context_uri, ended_at) VALUES ${streams.map(() => '(?, ?, ?, ?, ?)').join(', ')}`, streams.flat());
+    await insertRows(t, 'INSERT INTO streams (user_id, track_id, ms_played, context_uri, ended_at)', streams);
     // A few skips, so the stats page has short plays to show.
     const skips = [0, 1, 2].map((i) => [uid, 'demo-seed', 'play_end', pick(favourites).id, 8000 + i * 4000, 'fwdbtn', now - (i + 1) * DAY, now - (i + 1) * DAY]);
-    await t.run(`INSERT INTO events (user_id, device_id, type, track_id, ms_played, reason, client_ts, server_ts) VALUES ${skips.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`, skips.flat());
+    await insertRows(t, 'INSERT INTO events (user_id, device_id, type, track_id, ms_played, reason, client_ts, server_ts)', skips);
 
     const liked = [...favourites.slice(0, 4), ...breadth.slice(0, 2)];
-    await t.run(`INSERT INTO liked_tracks (user_id, track_id, added_at) VALUES ${liked.map(() => '(?, ?, ?)').join(', ')}`,
-      liked.flatMap((tr, i) => [uid, tr.id, now - (i + 1) * DAY]));
+    await insertRows(t, 'INSERT INTO liked_tracks (user_id, track_id, added_at)', liked.map((tr, i) => [uid, tr.id, now - (i + 1) * DAY]));
     const followed = [...new Set([...favourites, ...breadth.slice(0, 1)].map((tr) => tr.artist_id))];
-    await t.run(`INSERT INTO followed_artists (user_id, artist_id, added_at) VALUES ${followed.map(() => '(?, ?, ?)').join(', ')}`,
-      followed.flatMap((a, i) => [uid, a, now - (i + 2) * DAY]));
+    await insertRows(t, 'INSERT INTO followed_artists (user_id, artist_id, added_at)', followed.map((a, i) => [uid, a, now - (i + 2) * DAY]));
 
     // Demo playlists are private, so nothing a visitor names them reaches search.
     const lists = [
@@ -89,8 +98,7 @@ export async function resetDemo(store, { language = 'en', now = Date.now() } = {
       const created = now - (10 - n * 3) * DAY;
       await t.run('INSERT INTO playlists (id, owner_id, name, description, color, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
         [id, uid, p.name, p.description, p.color, created, created]);
-      await t.run(`INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at) VALUES ${p.tracks.map(() => '(?, ?, ?, ?)').join(', ')}`,
-        p.tracks.flatMap((tr, i) => [id, tr.id, i, created]));
+      await insertRows(t, 'INSERT INTO playlist_tracks (playlist_id, track_id, position, added_at)', p.tracks.map((tr, i) => [id, tr.id, i, created]));
     }
     return uid;
   });
