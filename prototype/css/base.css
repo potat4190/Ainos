@@ -110,3 +110,9 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   .right { max-height: 45dvh; }
   .proto-badge { top: auto; bottom: calc(var(--player-h) + 14px); left: auto; right: 10px; translate: none; }
 }
+
+/* Phone: the now-playing panel only appears once something is playing. */
+@media (max-width: 760px) {
+  .right:has(.np-empty) { display: none; }
+  .right { max-height: 42dvh; }
+}
