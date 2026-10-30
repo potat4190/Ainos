@@ -457,3 +457,50 @@ dialog h2 { margin-bottom: 16px; }
 .votd .passage-text { font-size: 15px; margin: 6px 0 8px; }
 .votd-label { text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
 .votd-ref { font-weight: 600; }
+
+/* YouTube (Phase 3): the official embed stays visible, at least 200 x 200 px;
+   anything about it (the fallback link, its title) sits below it, never over it. */
+.yt-box { margin: 0 0 14px; }
+.yt-frame-wrap { width: 100%; min-width: 200px; border-radius: 8px; overflow: hidden; background: #000; }
+.yt-frame-wrap > div, .yt-frame { display: block; width: 100%; height: 240px; min-height: 200px; border: 0; }
+.yt-fallback { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.yt-fallback a { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.yt-meta { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.yt-badge { align-self: flex-start; padding: 2px 8px; border-radius: 999px; background: var(--panel-3); color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.yt-title { font-weight: 700; }
+/* Thumbnails are shown whole (YouTube's image, unmodified), letterboxed rather than cropped. */
+.yt-thumb { width: 96px; height: 72px; flex: none; object-fit: contain; background: #000; border-radius: 6px; }
+.np-left .yt-thumb-sm { width: 64px; height: 48px; }
+.song-results { display: flex; flex-direction: column; gap: 8px; }
+.song-result { display: flex; align-items: flex-start; gap: 14px; padding: 10px; border-radius: 8px; background: var(--panel-2); }
+.song-result .art { width: 72px; height: 72px; flex: none; border-radius: 6px; }
+.song-result-main { flex: 1; min-width: 0; }
+.song-result-name { font-size: 16px; font-weight: 700; }
+.song-sources { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.source-btn { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 4px 8px; border-radius: 6px; text-align: left; }
+.source-btn:hover { background: var(--panel-3); }
+.source-btn .source-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-btn .dim { flex: none; font-size: 12.5px; white-space: nowrap; }
+
+/* Synced lyrics (Phase 4). */
+#btn-lyrics[aria-disabled="true"] { opacity: .4; cursor: default; }
+.lyrics { padding-bottom: 40vh; }
+.lyrics-head { margin-bottom: 8px; }
+.lyrics-head .rp-title { margin-top: 0; }
+.lyrics-sec { margin: 12px 0 4px; }
+.lyrics-sec-label { display: inline-block; margin: 0 0 6px 8px; padding: 1px 7px; border-radius: 4px; background: rgb(255 255 255 / .05); color: var(--text-3); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.lyric-line { display: block; width: 100%; margin: 1px 0; padding: 5px 8px; border-radius: 6px; color: var(--text-3); font-size: 18px; font-weight: 700; line-height: 1.35; text-align: left; transition: color .3s ease, opacity .3s ease; }
+.lyric-line:hover { background: rgb(255 255 255 / .05); color: var(--text-2); }
+.lyric-line.past { color: var(--text-2); opacity: .5; }
+.lyric-line.current { color: var(--text); opacity: 1; }
+.lyric-static { margin: 0; padding: 3px 8px; color: var(--text-2); font-size: 16px; line-height: 1.45; }
+.lyrics-more { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); }
+.lyrics-more h3 { margin: 0 0 4px 8px; color: var(--text-3); font-size: 13px; }
+.lyrics-more .lyric-static { color: var(--text-3); }
+@media (max-width: 680px) {
+  .yt-frame-wrap > div, .yt-frame { height: 220px; }
+  .lyric-line { font-size: 17px; }
+  .song-result .yt-thumb { width: 80px; height: 60px; }
+  .source-btn { min-height: 44px; flex-wrap: wrap; row-gap: 0; }
+  .source-btn .dim { flex: 1 1 100%; padding-left: 28px; white-space: normal; }
+}

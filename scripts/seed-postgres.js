@@ -40,6 +40,7 @@ const TABLES = [
   'artists', 'albums', 'tracks', 'track_files', 'users', 'playlists', 'playlist_tracks',
   'liked_tracks', 'followed_artists', 'streams', 'events', 'search_index',
   'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture',
+  'youtube_video_cache', 'lyric_timings',
 ];
 
 // The rows the generator owns, in foreign-key order: what a catalog sync may
@@ -69,6 +70,13 @@ export const CATALOG_SYNC = [
   { table: 'song_sources', key: ['id'], where: GLOBAL_SONG, target: `song_sources.${GLOBAL_SONG}`, update: ['kind'] },
   { table: 'song_sections', key: ['id'], where: 'org_id IS NULL', target: 'song_sections.org_id IS NULL', update: ['lines', 'folded'] },
   { table: 'song_arrangements', key: ['id'], where: 'org_id IS NULL', target: 'song_arrangements.org_id IS NULL', update: ['name', 'section_order'] },
+  // The curated YouTube videos' cached data (scripts/youtube-videos.js). Every
+  // deploy rewrites fetched_at: YouTube's terms want it refreshed within 30 days.
+  { table: 'youtube_video_cache', key: ['video_id'], where: `video_id IN (SELECT youtube_video_id FROM song_sources WHERE source = 'youtube' AND ${GLOBAL_SONG})`,
+    target: `youtube_video_cache.video_id IN (SELECT youtube_video_id FROM song_sources WHERE source = 'youtube' AND ${GLOBAL_SONG})`,
+    update: ['title', 'channel_title', 'thumbnail_url', 'embeddable', 'default_language', 'fetched_at'] },
+  // Hymn line timings, from the melody the audio is rendered from.
+  { table: 'lyric_timings', key: ['id'], where: 'org_id IS NULL', target: 'lyric_timings.org_id IS NULL', update: ['language', 'offset_ms', 'timings', 'updated_at'] },
 ];
 
 // Lyrics, arrangements and themes of the generator's own songs follow its

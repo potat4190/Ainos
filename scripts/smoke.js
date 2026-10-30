@@ -111,6 +111,20 @@ if (hymn) {
     check(!!p?.reference && (p.text === null || !!p.version?.abbreviation), `its passage answers, with attribution when there is text (${p?.source})`);
   }
 }
+// Phases 3-4: songs in search (the curated official video, from the local
+// index only) and a hymn's lyrics with their synced timings.
+const carry = (await call('GET', '/api/search?q=carry%20my%20cross')).json?.songs?.items?.find((x) => x.name === 'Carry My Cross');
+const video = carry?.sources?.find((x) => x.source === 'youtube');
+check(video?.youtube?.videoId === 'eov9K7ALYKk' && video.youtube.title === 'Carry My Cross - Official Lyric Video' && video.youtube.channelTitle === 'Victory Worship'
+  && /^https:\/\/i\.ytimg\.com\//.test(video.youtube.thumbnail || ''), 'search "carry my cross" finds the official Victory Worship video');
+const csp = (await get('/')).headers.get('content-security-policy') || '';
+check(/frame-src https:\/\/www\.youtube\.com/.test(csp) && /script-src 'self' https:\/\/www\.youtube\.com/.test(csp), 'the CSP allows the YouTube embed');
+if (hymn?.song_id) {
+  const lyrics = (await call('GET', `/api/songs/${hymn.song_id}`)).json;
+  const rec = lyrics?.sources?.find((x) => x.source === 'ainos');
+  check(lyrics?.sections?.length > 0 && rec?.timings?.[0]?.timings?.length > 0, 'the hymn has lyrics and synced timings');
+  if (rec) check((await call('GET', `/api/sources/${rec.id}/timings?lang=en`)).json?.timings?.length > 0, 'its recording’s timings route answers');
+}
 const votd = (await call('GET', '/api/scripture/votd')).json;
 check(!!votd?.reference, `Verse of the Day (${votd?.source})`);
 await call('GET', '/api/scripture/NOPE.1', undefined, { expect: 400 });

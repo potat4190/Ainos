@@ -5,6 +5,7 @@ import { Connect, deviceIdentity } from './connect.js';
 import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
 import * as views from './views.js';
 import * as church from './church.js';
+import { watchUrl } from './youtube.js';
 
 const $ = (id) => document.getElementById(id);
 const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist'];
@@ -21,6 +22,8 @@ class App {
     this.cleanup = null;
     this.artistCache = new Map();
     this.scriptureCards = new Map(); // song id → its Scripture card, kept across re-renders so an open passage stays open
+    this.songDetails = new Map(); // song id → { at, promise } of GET /api/songs/:id (lyrics, sources, timings)
+    this.lyrics = null; // { key, view } of the lyrics view in the right panel, kept so its scroll position survives re-renders
     let mode = null;
     try { mode = localStorage.getItem('ainos.right'); } catch { /* ignore */ }
     this.rightMode = mode === 'none' ? null : mode || (innerWidth > 960 ? 'now' : null);
@@ -211,6 +214,7 @@ class App {
     this.connect.addEventListener('change', () => { this.renderPlayerBar(); this.scheduleRight(); });
     this.connect.addEventListener('error', (e) => toast(e.detail.message || t('remoteCommandFailed'), { error: true }));
 
+    this.buildRightPanel();
     this.bindChrome();
     this.renderDemoBanner();
     await Promise.all([this.refreshLibrary(), this.loadLiked()]);
@@ -417,6 +421,11 @@ class App {
     $('btn-repeat').addEventListener('click', () => p.cycleRepeat());
     $('btn-mute').addEventListener('click', () => p.toggleMute());
     $('btn-nowplaying').addEventListener('click', () => this.setRight(this.rightMode === 'now' ? null : 'now'));
+    $('btn-lyrics').addEventListener('click', () => {
+      if ($('btn-lyrics').getAttribute('aria-disabled') === 'true' && this.rightMode !== 'lyrics') return;
+      // Closing the lyrics while a video plays goes back to now playing: the video's panel stays.
+      this.setRight(this.rightMode === 'lyrics' ? (this.player.yt ? 'now' : null) : 'lyrics');
+    });
     $('btn-queue').addEventListener('click', () => this.setRight(this.rightMode === 'queue' ? null : 'queue'));
     $('btn-devices').addEventListener('click', () => this.setRight(this.rightMode === 'devices' ? null : 'devices'));
     $('nav-back').addEventListener('click', () => history.back());
@@ -463,6 +472,7 @@ class App {
   }
 
   onPlayerChange() {
+    this.syncYouTubeBox();
     this.renderPlayerBar();
     this.highlightPlaying();
     this.renderLibrary();
@@ -475,7 +485,13 @@ class App {
     const v = this.player.view();
     const left = clear($('np-left'));
     if (!v.track) left.append(h('div', { class: 'np-hint dim small' }, t('pickSongHint')));
-    if (v.track) {
+    if (v.track?.youtube) {
+      // The song record ("Carry My Cross · Victory Worship"); the video's own title shows with the player.
+      const tr = v.track;
+      left.append(
+        h('img', { class: 'yt-thumb yt-thumb-sm', src: tr.youtube.thumbnail, alt: '', decoding: 'async' }),
+        h('div', { class: 'meta' }, h('div', { class: 'title' }, h('a', { href: `#/song/${tr.song_id}` }, tr.title)), h('div', { class: 'sub' }, `${tr.artist.name} · ${t('sourceYouTube')}`)));
+    } else if (v.track) {
       const tr = v.track;
       const like = h('button', { class: `icon-btn${this.isLiked(tr.id) ? ' on' : ''}`, 'aria-label': this.isLiked(tr.id) ? t('removeFromLiked') : t('saveToLiked'), dataset: { likeId: tr.id } }, icon(this.isLiked(tr.id) ? 'heart-fill' : 'heart'));
       like.addEventListener('click', () => this.toggleLike(tr));
@@ -497,6 +513,7 @@ class App {
     $('btn-next').disabled = !v.track;
     $('btn-prev').disabled = !v.track;
     $('btn-nowplaying').setAttribute('aria-pressed', String(this.rightMode === 'now'));
+    this.renderLyricsButton(v);
     $('btn-queue').setAttribute('aria-pressed', String(this.rightMode === 'queue'));
     $('btn-devices').setAttribute('aria-pressed', String(this.rightMode === 'devices' || v.remote));
     const app = $('app');
@@ -517,6 +534,7 @@ class App {
         $('seek-buffer').style.width = `${v.durationMs && v.bufferedMs ? Math.min(100, (v.bufferedMs / v.durationMs) * 100) : 0}%`;
       }
       $('time-dur').textContent = fmtTime(v.durationMs);
+      if (this.rightMode === 'lyrics') this.lyrics?.view.tick(v);
       if (!this.volSlider.isDragging()) { const vol = v.muted ? 0 : v.volume ?? 1; setSlider($('volume'), $('volume-fill'), $('volume-thumb'), vol, `${Math.round(vol * 100)}%`); }
       requestAnimationFrame(step);
     };
@@ -543,6 +561,8 @@ class App {
 
   // ---------------------------------------------------------- right panel
   setRight(mode) {
+    // The video is never hidden while it plays: closing its panel stops it.
+    if (!mode && this.player?.yt) this.player.stopYouTube();
     this.rightMode = mode;
     try { localStorage.setItem('ainos.right', mode || 'none'); } catch { /* ignore */ }
     this.renderRight();
@@ -557,9 +577,11 @@ class App {
   async renderRight() {
     const panel = $('rightpanel');
     const app = $('app');
-    panel.hidden = !this.rightMode;
-    app.classList.toggle('no-right', !this.rightMode);
+    const open = !!this.rightMode || !!this.player?.yt;
+    panel.hidden = !open;
+    app.classList.toggle('no-right', !open);
     if (!this.rightMode) return;
+    if (this.rightMode === 'lyrics' && this.lyrics?.key === this.lyricsKey() && this.rp.body.contains(this.lyrics.view.el)) return; // rebuilding would lose the scroll position
     const seq = (this.rightSeq = (this.rightSeq || 0) + 1);
     const content = h('div');
     const head = (title) => {
@@ -586,6 +608,25 @@ class App {
       content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('tryIt')), h('p', { class: 'muted small', style: { margin: 0 } },
         t('connectHelp'),
         h('br'), h('br'), h('code', { class: 'mono' }, 'HOST=0.0.0.0'))));
+    } else if (this.rightMode === 'lyrics') {
+      content.append(head(t('lyricsTitle')));
+      const tr = v.track;
+      if (!tr) content.append(h('p', { class: 'muted' }, t('lyricsNothing')));
+      else if (!tr.song_id) content.append(h('p', { class: 'muted' }, t('lyricsNone')));
+      else {
+        const key = this.lyricsKey();
+        const holder = h('div', {}, h('p', { class: 'muted small' }, t('lyricsLoading')));
+        content.append(holder);
+        this.songDetail(tr.song_id).then((detail) => {
+          if (key !== this.lyricsKey()) return;
+          clear(holder);
+          if (!views.hasLyrics(detail)) { holder.append(h('p', { class: 'muted' }, t('lyricsNone'))); return; }
+          const view = views.lyricsView(this, { track: tr, detail, scroller: panel });
+          this.lyrics = { key, view };
+          holder.append(view.el);
+          view.tick(this.player.view());
+        }).catch(() => { clear(holder).append(h('p', { class: 'muted small' }, t('lyricsUnavailable'))); });
+      }
     } else if (this.rightMode === 'queue') {
       content.append(head(t('queue')));
       if (!v.track) content.append(h('p', { class: 'muted' }, t('nothingPlaying')));
@@ -611,6 +652,14 @@ class App {
       content.append(head(v.contextTitle || t('nowPlaying')));
       if (!v.track) {
         content.append(h('p', { class: 'muted' }, t('pickSomething')));
+      } else if (v.track.youtube) {
+        // The video itself is in the YouTube box above; this is the song record.
+        const tr = v.track;
+        content.append(h('div', { class: 'rp-title' }, h('a', { href: `#/song/${tr.song_id}` }, tr.title)), h('div', { class: 'muted' }, tr.artist.name),
+          h('p', { class: 'dim small' }, t('ytPlaysFrom')));
+        if (!this.scriptureCards.has(tr.song_id)) this.scriptureCards.set(tr.song_id, views.scriptureCard(tr.song_id, { link: true }));
+        const card = this.scriptureCards.get(tr.song_id);
+        if (!card.hidden) content.append(card);
       } else {
         const tr = v.track;
         content.append(img(tr.album.cover, 'rp-cover'), h('div', { class: 'rp-title' }, h('a', { href: `#/album/${tr.album.id}` }, tr.title)), h('div', { class: 'muted' }, h('a', { href: `#/artist/${tr.artist.id}` }, tr.artist.name)));
@@ -656,7 +705,94 @@ class App {
       }
     }
     if (seq !== this.rightSeq) return;
-    clear(panel).append(...content.childNodes);
+    const nodes = [...content.childNodes];
+    const headNode = nodes[0]?.classList?.contains('rp-head') ? nodes.shift() : null;
+    clear(this.rp.head);
+    if (headNode) this.rp.head.append(headNode);
+    clear(this.rp.body).append(...nodes);
+  }
+
+  // ------------------------------------------------- YouTube and lyrics (Phases 3-4)
+  /** The right panel: a head and body that re-render, and between them the YouTube box, which never moves. */
+  buildRightPanel() {
+    const fallbackLink = h('a', { target: '_blank', rel: 'noopener' });
+    const fallbackText = h('span');
+    const yt = {
+      frame: h('div', { class: 'yt-frame-wrap' }),
+      fallback: h('p', { class: 'yt-fallback', role: 'status', hidden: true }, fallbackText, ' ', fallbackLink),
+      fallbackText, fallbackLink,
+      badge: h('span', { class: 'yt-badge' }),
+      title: h('div', { class: 'yt-title' }),
+      channel: h('div', { class: 'dim small' }),
+    };
+    yt.el = h('div', { class: 'yt-box', hidden: true }, yt.frame, yt.fallback, h('div', { class: 'yt-meta' }, yt.badge, yt.title, yt.channel));
+    this.rp = { head: h('div'), yt, body: h('div') };
+    clear($('rightpanel')).append(this.rp.head, yt.el, this.rp.body);
+  }
+
+  /** Play an official YouTube video (a song source from search) in the visible embed; native audio pauses. */
+  playYouTube(song, source) {
+    const y = source.youtube;
+    const track = {
+      id: `yt:${source.id}`, title: song.name, artist: { id: null, name: song.artist.name }, album: { id: null, title: '', cover: y.thumbnail },
+      duration_ms: y.duration_ms || 0, song_id: song.id, language: song.language, youtube: { ...y, sourceId: source.id },
+    };
+    if (!this.rightMode || this.rightMode === 'lyrics') this.rightMode = 'now'; // the panel holds the player; not saved as the user's choice
+    const host = h('div');
+    clear(this.rp.yt.frame).append(host);
+    this.player.playYouTube(track, host, { title: t('ytFrameTitle', { title: y.title }) });
+    this.renderRight();
+  }
+
+  /** Show the YouTube box (player, fallback below it, YouTube's own title and channel) while a video is the current item. */
+  syncYouTubeBox() {
+    const yt = this.rp?.yt;
+    if (!yt) return;
+    const v = this.player.view();
+    const y = v.youtube ? v.track.youtube : null;
+    if (!y) {
+      if (!yt.el.hidden) { yt.el.hidden = true; clear(yt.frame); this.scheduleRight(); }
+      return;
+    }
+    if (yt.el.hidden) { yt.el.hidden = false; this.scheduleRight(); }
+    yt.fallback.hidden = !v.problem;
+    yt.fallbackText.textContent = t('ytFallback');
+    yt.fallbackLink.textContent = t('ytWatch');
+    yt.fallbackLink.href = watchUrl(y.videoId);
+    yt.badge.textContent = t('ytVideoLabel');
+    yt.title.textContent = y.title; // YouTube's title, unmodified
+    yt.channel.textContent = y.channelTitle;
+  }
+
+  lyricsKey() {
+    const v = this.player.view();
+    return `${v.track?.id || ''}|${getLang()}`;
+  }
+
+  /** GET /api/songs/:id, cached for a few minutes (lyrics, arrangements, sources and timings). */
+  songDetail(songId) {
+    const hit = this.songDetails.get(songId);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.promise;
+    const entry = { at: Date.now(), value: hit?.value, promise: api.get(`/api/songs/${encodeURIComponent(songId)}`) };
+    this.songDetails.set(songId, entry);
+    entry.promise.then((d) => { entry.value = d; }, () => { if (this.songDetails.get(songId) === entry) this.songDetails.delete(songId); });
+    return entry.promise;
+  }
+
+  /** The player bar's Lyrics button: disabled, with a tooltip, when the song has no lyrics. */
+  renderLyricsButton(v) {
+    const btn = $('btn-lyrics');
+    const songId = v.track?.song_id;
+    let has = false;
+    if (songId) {
+      const hit = this.songDetails.get(songId);
+      if (hit?.value) has = views.hasLyrics(hit.value);
+      else if (!hit) this.songDetail(songId).then(() => this.renderPlayerBar(), () => {}); // once: the entry exists from now on
+    }
+    btn.setAttribute('aria-disabled', String(!has));
+    btn.setAttribute('aria-pressed', String(this.rightMode === 'lyrics'));
+    btn.setAttribute('aria-label', t('lyricsBtn'));
+    btn.title = has ? t('lyricsBtn') : t('lyricsNone');
   }
 
   queueItem(tr, { current = false, onPlay, onRemove } = {}) {

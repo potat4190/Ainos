@@ -219,7 +219,7 @@ export class Catalog {
   /** Search with prefix matching; every term must match the title or subtitle. */
   async search(q, limit = 8) {
     const terms = [...new Set(words(q.normalize('NFKC')))].slice(0, 8);
-    if (!terms.length) return { tracks: [], artists: [], albums: [], playlists: [], top: null };
+    if (!terms.length) return { songs: { items: [] }, tracks: [], artists: [], albums: [], playlists: [], top: null };
     // Only rows containing every term leave the database; searchScore then
     // checks for word prefixes. Terms are letters, marks and digits only, so
     // they hold no LIKE wildcards. Rows not folded yet are always candidates.
@@ -232,8 +232,11 @@ export class Catalog {
       .sort((a, b) => b.score - a.score);
     const ids = { track: [], artist: [], album: [], playlist: [] };
     for (const h of hits) if (ids[h.kind] && ids[h.kind].length < limit) ids[h.kind].push(h.ref_id);
+    // Songs (what is sung) with the ways to play them; a separate list, so `top` keeps its kinds.
+    const songIds = hits.filter((h) => h.kind === 'song').map((h) => h.ref_id);
 
-    const [tracks, artists, albumRows, playlistRows] = await Promise.all([
+    const [songs, tracks, artists, albumRows, playlistRows] = await Promise.all([
+      this.songsByIds(songIds, { limit }),
       this.tracksByIds(ids.track),
       this.artistsByIds(ids.artist),
       ids.album.length ? this.store.all(`${ALBUM_SELECT} WHERE al.id IN (${inList(ids.album)})`, ids.album) : [],
@@ -241,10 +244,48 @@ export class Catalog {
     ]);
     const albums = new Map(albumRows.map((r) => [r.id, this.albumSummary(r)]));
     const playlists = await this.playlistSummaries(ids.playlist.map((id) => playlistRows.find((r) => r.id === id)).filter(Boolean));
-    const result = { tracks, artists, albums: ids.album.map((id) => albums.get(id)).filter(Boolean), playlists };
+    const result = { songs: { items: songs }, tracks, artists, albums: ids.album.map((id) => albums.get(id)).filter(Boolean), playlists };
     const best = hits.find((h) => ids[h.kind]);
     result.top = best ? { kind: best.kind, item: (result[best.kind + 's'] || []).find((x) => x.id === best.ref_id) || null } : null;
     return result;
+  }
+
+  /**
+   * How each song plays, by song id: native tracks and available, embeddable
+   * YouTube videos (with YouTube's own title and thumbnail, unmodified).
+   * Spec 3.3 response shape.
+   */
+  async sourcesBySong(songIds) {
+    const bySong = new Map(songIds.map((id) => [id, []]));
+    if (!songIds.length) return bySong;
+    const rows = await this.store.all(
+      `SELECT ss.id, ss.song_id, ss.source, ss.track_id, ss.youtube_video_id, ss.kind, ss.available,
+              y.title AS yt_title, y.channel_title AS yt_channel, y.thumbnail_url AS yt_thumb, y.duration_ms AS yt_duration, y.embeddable AS yt_embeddable
+       FROM song_sources ss LEFT JOIN youtube_video_cache y ON y.video_id = ss.youtube_video_id
+       WHERE ss.song_id IN (${inList(songIds)}) ORDER BY ss.song_id, ss.source, ss.id`, songIds);
+    const tracks = new Map((await this.tracksByIds([...new Set(rows.filter((r) => r.track_id).map((r) => r.track_id))])).map((t) => [t.id, t]));
+    for (const r of rows) {
+      if (r.source === 'ainos' && tracks.has(r.track_id)) {
+        bySong.get(r.song_id).push({ id: r.id, source: 'ainos', playback: 'native', kind: r.kind, track: tracks.get(r.track_id) });
+      } else if (r.source === 'youtube' && r.available === 1 && r.yt_embeddable === 1 && r.yt_title) {
+        // No cached YouTube data (refreshed or deleted within 30 days) means nothing of YouTube's to show.
+        bySong.get(r.song_id).push({
+          id: r.id, source: 'youtube', playback: 'embed', kind: r.kind,
+          youtube: { videoId: r.youtube_video_id, title: r.yt_title, channelTitle: r.yt_channel, thumbnail: r.yt_thumb, duration_ms: r.yt_duration ?? null },
+        });
+      }
+    }
+    return bySong;
+  }
+
+  /** Global songs by id, in order, each with its playable sources; songs with none are left out. */
+  async songsByIds(ids, { limit = 8 } = {}) {
+    if (!ids.length) return [];
+    const rows = await this.store.all(`SELECT id, title, artist, language FROM songs WHERE org_id IS NULL AND id IN (${inList(ids)})`, ids);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const sources = await this.sourcesBySong(rows.map((r) => r.id));
+    return ids.map((id) => byId.get(id)).filter((r) => r && sources.get(r.id).length).slice(0, limit)
+      .map((r) => ({ id: r.id, uri: toUri('song', r.id), name: r.title, artist: { name: r.artist }, language: r.language, sources: sources.get(r.id) }));
   }
 
   /** Fill in folded text for search rows written without it (by older versions). */

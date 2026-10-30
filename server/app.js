@@ -23,7 +23,7 @@ import { parseAdminIds, assertAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
 import { SECTION_LABEL } from './songs.js';
-import { register as registerListenerRoutes } from './listener-routes.js';
+import { register as registerListenerRoutes, songLyrics, langParam } from './listener-routes.js';
 import { register as registerChurchRoutes } from './church-routes.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,8 +31,10 @@ const QUALITIES = ['low', 'high'];
 export const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
 const TARGET_LUFS = -14;
 
+// YouTube (Phase 3): the IFrame Player API script and its embed (www.youtube.com),
+// and video thumbnails (i.ytimg.com). Keep in sync with vercel.json.
 export const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https://i.ytimg.com; media-src 'self' blob:; style-src 'self'; script-src 'self' https://www.youtube.com; frame-src https://www.youtube.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -264,11 +266,15 @@ export async function createApp({
     }
     return { song_id: songId, groups: [...groups].map(([section_label, references]) => ({ section_label, references })) };
   }
-  r.get('/api/songs/:id', auth(async ({ res, params }) => {
+  // A song with its native recordings, plus (Phase 4) the lyrics the user may
+  // see: global sections and arrangements and their own orgs', and every
+  // source with its timings.
+  r.get('/api/songs/:id', auth(async ({ res, user, params, query }) => {
     const song = await globalSong(params.id);
     const row = await store.get('SELECT id, title, artist, language, public_domain FROM songs WHERE id = ?', [song.id]);
     const ids = (await store.all("SELECT track_id FROM song_sources WHERE song_id = ? AND source = 'ainos' AND track_id IS NOT NULL ORDER BY id", [song.id])).map((r) => r.track_id);
-    sendJson(res, 200, { ...row, public_domain: row.public_domain === 1, tracks: ids.length ? await catalog.tracksByIds(ids) : [] });
+    const lyrics = await songLyrics(store, catalog, song.id, user, langParam(query));
+    sendJson(res, 200, { ...row, public_domain: row.public_domain === 1, tracks: ids.length ? await catalog.tracksByIds(ids) : [], ...lyrics });
   }));
   r.get('/api/songs/:id/scripture', auth(async ({ res, params }) => {
     const song = await globalSong(params.id);

@@ -14,8 +14,9 @@ import { openDb, tx } from '../server/db.js';
 import { hashPasswordSync as hashPassword } from '../server/auth.js';
 import { integratedLoudness, samplePeakDb } from '../server/loudness.js';
 import { mulberry32, seededId, hashSeed, clamp, searchText, fold } from '../server/util.js';
-import { renderTrack, renderMelody, master, downsample2, encodeWav16 } from './synth.js';
+import { renderTrack, renderMelody, melodyTimeline, master, downsample2, encodeWav16 } from './synth.js';
 import { HYMNS, HYMN_ARTIST, HYMN_ALBUM } from './hymns.js';
+import { YOUTUBE_VIDEOS, YOUTUBE_ADDED, thumbnailUrl } from './youtube-videos.js';
 import { displayName } from './catalog-names.js';
 import { albumCover, artistImage, hexFromHsl } from './art.js';
 
@@ -282,6 +283,8 @@ export async function generateCatalog({ dataDir = path.join(ROOT, 'data'), quick
   // a "Hymns" playlist holds them instead.
   const hymnCount = addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFile, insPlaylist, insPT, addSearchDoc, say });
   totalBytes += hymnCount.bytes;
+  // Curated YouTube videos (scripts/youtube-videos.js): ids from their video ids, after everything else.
+  addYouTube(db, { addSearchDoc, now });
 
   db.close();
   const ms = Date.now() - t0;
@@ -304,7 +307,50 @@ export const HYMN_IDS = {
   source: (slug) => hymnId(`source:${slug}`),
   section: (slug, label) => hymnId(`section:${slug}:en:${label}`),
   arrangement: (slug, name) => hymnId(`arrangement:${slug}:${name}`),
+  timings: (slug) => hymnId(`timings:${slug}:en`),
 };
+// Curated YouTube songs: ids from the video id, never from the shared rnd.
+export const YOUTUBE_IDS = {
+  song: (videoId) => hymnId(`youtube-song:${videoId}`),
+  source: (videoId) => hymnId(`youtube-source:${videoId}`),
+};
+
+/**
+ * When each sung line of the recording starts: [{ label, line, ms }] for the
+ * recorded passes (audioVerses), each pass a verse then the refrain's lines.
+ * From the same melody timeline the audio is rendered from.
+ */
+export function hymnTimings(hymn) {
+  const [beatsPerBar] = hymn.timeSignature;
+  const { events } = melodyTimeline(hymn.melody, { bpm: hymn.bpm, passes: hymn.audioVerses, beatsPerBar, pickupBeats: hymn.pickupBeats });
+  const at = new Map(events.map((e) => [`${e.pass}/${e.index}`, e.t]));
+  const verses = hymn.sections.filter((s) => s.label.startsWith('V'));
+  const chorus = hymn.cycle.includes('C') ? hymn.sections.find((s) => s.label === 'C') : null;
+  const out = [];
+  for (let pass = 0; pass < hymn.audioVerses; pass++) {
+    const lines = [...verses[pass].lines.map((_, line) => ({ label: verses[pass].label, line })), ...(chorus ? chorus.lines.map((_, line) => ({ label: 'C', line })) : [])];
+    if (lines.length !== hymn.lineStarts.length) throw new Error(`${hymn.slug}: ${lines.length} sung lines but ${hymn.lineStarts.length} lineStarts`);
+    lines.forEach((l, i) => out.push({ ...l, ms: Math.round(at.get(`${pass}/${hymn.lineStarts[i]}`) * 1000) }));
+  }
+  return out;
+}
+
+/** Songs, sources, cache rows and search entries for the curated YouTube videos. */
+function addYouTube(db, { addSearchDoc, now }) {
+  const insSong = db.prepare('INSERT INTO songs (id, title, artist, language, ccli_number, public_domain, org_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?)');
+  const insSource = db.prepare("INSERT INTO song_sources (id, song_id, source, track_id, youtube_video_id, kind, available, last_checked_at) VALUES (?, ?, 'youtube', NULL, ?, ?, 1, NULL)");
+  const insCache = db.prepare('INSERT INTO youtube_video_cache (video_id, channel_id, title, channel_title, thumbnail_url, duration_ms, embeddable, default_language, fetched_at) VALUES (?, NULL, ?, ?, ?, NULL, 1, ?, ?)');
+  tx(db, () => {
+    for (const v of YOUTUBE_VIDEOS) {
+      const songId = YOUTUBE_IDS.song(v.videoId);
+      insSong.run(songId, v.songTitle, v.artist, v.language, YOUTUBE_ADDED, YOUTUBE_ADDED);
+      insSource.run(YOUTUBE_IDS.source(v.videoId), songId, v.videoId, v.kind);
+      // fetched_at: YouTube's terms want cached data refreshed within 30 days; every deploy rewrites it.
+      insCache.run(v.videoId, v.title, v.channelTitle, thumbnailUrl(v.videoId), v.language, now);
+      addSearchDoc('song', songId, v.songTitle, `${v.artist} ${v.channelTitle}`);
+    }
+  });
+}
 
 /** Section order for `passes` verses of a hymn (every verse when passes is omitted), with the refrain after each. */
 export function hymnOrder(hymn, passes) {
@@ -323,6 +369,7 @@ function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFi
   const insSource = db.prepare("INSERT INTO song_sources (id, song_id, source, track_id, youtube_video_id, kind, available, last_checked_at) VALUES (?, ?, 'ainos', ?, NULL, NULL, 1, NULL)");
   const insSection = db.prepare('INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES (?, ?, ?, ?, ?, ?, NULL)');
   const insArrangement = db.prepare('INSERT INTO song_arrangements (id, song_id, org_id, name, section_order) VALUES (?, ?, NULL, ?, ?)');
+  const insTimings = db.prepare("INSERT INTO lyric_timings (id, source_id, language, arrangement_id, offset_ms, timings, created_by, org_id, updated_at) VALUES (?, ?, 'en', ?, 0, ?, NULL, NULL, ?)");
   let bytes = 0;
 
   return tx(db, () => {
@@ -377,6 +424,8 @@ function addHymns(db, { dataDir, quick, SR, insArtist, insAlbum, insTrack, insFi
       for (const s of h.sections) insSection.run(HYMN_IDS.section(h.slug, s.label), songId, 'en', s.label, s.lines.join('\n'), searchText(s.lines.join(' '), ''));
       insArrangement.run(HYMN_IDS.arrangement(h.slug, 'all'), songId, 'All verses', JSON.stringify(hymnOrder(h)));
       insArrangement.run(HYMN_IDS.arrangement(h.slug, 'recording'), songId, 'Recording', JSON.stringify(hymnOrder(h, h.audioVerses)));
+      insTimings.run(HYMN_IDS.timings(h.slug), HYMN_IDS.source(h.slug), HYMN_IDS.arrangement(h.slug, 'recording'), JSON.stringify(hymnTimings(h)), created);
+      addSearchDoc('song', songId, h.title, `${A.name} ${firstLine}`);
       say(`  ♪ ${A.name} – ${h.title}  (${h.bpm} BPM, ${(durationMs / 1000).toFixed(0)}s, ${loud.toFixed(1)} LUFS)`);
     }
 

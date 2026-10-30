@@ -19,6 +19,7 @@
 import { api, tracksByIds, rememberTracks } from './api.js';
 import { t } from './i18n.js';
 import { crossfadeMs, shouldStartCrossfade, fadeCurve, equalPowerGains } from './crossfade.js';
+import { mountYouTube, STATE as YT_STATE } from './youtube.js';
 
 export const LOUDNESS_TARGETS = { loud: -11, normal: -14, quiet: -19 };
 const PREFETCH_WINDOW_MS = 30_000;
@@ -85,6 +86,7 @@ export class Player extends EventTarget {
     this.downloads = store.get('ainos.downloads', {});
     this.xfade = null;       // { outgoing deck, ms, timers } while two decks overlap
     this.pendingXfade = null;
+    this.yt = null;          // an official YouTube video playing in its visible embed: { track, ctrl, playing, problem }
 
     setInterval(() => this.flush(), 15_000);
     addEventListener('pagehide', () => {
@@ -218,6 +220,7 @@ export class Player extends EventTarget {
 
   async startTrack(track, { reason = 'clickrow', positionMs = 0, autoplay = true } = {}) {
     if (!track) return;
+    this.stopYouTube({ silent: true }); // a native song replaces the video
     const token = ++this.loadToken;
     const t0 = performance.now();
     const xfade = this.pendingXfade;
@@ -439,6 +442,11 @@ export class Player extends EventTarget {
   }
 
   async next(reason = 'fwdbtn') {
+    if (this.yt) {
+      // The video was played on its own, over the native queue: Next goes on with that queue.
+      this.stopYouTube({ silent: true });
+      if (!this.userQueue.length && !this.context) return this.#changed();
+    }
     if (this.isRemote) return this.connect.command({ type: 'next' });
     if (this.userQueue.length) {
       this.#endSession(reason);
@@ -466,6 +474,7 @@ export class Player extends EventTarget {
   }
 
   async previous() {
+    if (this.yt) return this.seek(0);
     if (this.isRemote) return this.connect.command({ type: 'previous' });
     if (this.positionMs > 3000 || this.index <= 0) return this.seek(0);
     this.#endSession('backbtn');
@@ -474,6 +483,12 @@ export class Player extends EventTarget {
   }
 
   async toggle() {
+    if (this.yt) {
+      const y = this.yt;
+      y.playing = !y.playing;
+      if (y.playing) y.ctrl.play(); else y.ctrl.pause();
+      return this.#changed();
+    }
     if (this.isRemote) return this.connect.command({ type: this.view().isPlaying ? 'pause' : 'resume' });
     if (!this.track) {
       if (this.resumeState) return this.restoreState(this.resumeState, { play: true, reason: 'playbtn' });
@@ -495,11 +510,13 @@ export class Player extends EventTarget {
   }
 
   pause() {
+    if (this.yt) { this.yt.playing = false; this.yt.ctrl.pause(); }
     this.#endCrossfade();
     if (!this.deck.audio.paused) this.deck.audio.pause();
   }
 
   seek(ms) {
+    if (this.yt) { this.yt.ctrl.seekTo(ms); return this.#changed(); }
     if (this.isRemote) return this.connect.command({ type: 'seek', position_ms: Math.round(ms) });
     if (!this.track) return;
     this.#endCrossfade();
@@ -590,11 +607,12 @@ export class Player extends EventTarget {
   }
 
   setVolume(v) {
-    if (this.isRemote) return this.connect.command({ type: 'volume', volume: v });
+    if (this.isRemote && !this.yt) return this.connect.command({ type: 'volume', volume: v });
     this.settings.volume = Math.max(0, Math.min(1, v));
     this.settings.muted = false;
     this.saveSettings();
     this.decks.forEach((d) => this.#applyGain(d));
+    this.yt?.ctrl.setLevel({ volume: this.settings.volume, muted: false });
     this.#changed();
     clearTimeout(this.volTimer);
     this.volTimer = setTimeout(() => this.reportState(true), 300);
@@ -604,6 +622,7 @@ export class Player extends EventTarget {
     this.settings.muted = !this.settings.muted;
     this.saveSettings();
     this.decks.forEach((d) => this.#applyGain(d));
+    this.yt?.ctrl.setLevel({ muted: this.settings.muted });
     this.#changed();
   }
 
@@ -629,8 +648,61 @@ export class Player extends EventTarget {
     return !!(this.remote && this.remote.device_id && this.remote.device_id !== this.deviceId);
   }
 
+  // ------------------------------------------------------------- YouTube
+  /**
+   * Play an official YouTube video (a song_sources row) in YouTube's own
+   * player, mounted in `host`, which the caller keeps visible. Native audio
+   * pauses; the player bar's controls then drive the embed. `track` is the
+   * song record shown in the player bar, with `youtube: { videoId, ... }`.
+   */
+  playYouTube(track, host, { title } = {}) {
+    this.stopYouTube({ silent: true });
+    this.#endCrossfade();
+    this.#endSession('endplay');
+    this.pause();
+    this.loadToken++; // a native song still loading must not start over the video
+    const y = { track, playing: true, problem: null, ctrl: null };
+    this.yt = y;
+    y.ctrl = mountYouTube(host, {
+      videoId: track.youtube.videoId, title, volume: this.settings.volume, muted: this.settings.muted,
+      onProblem: (reason) => {
+        if (this.yt !== y) return;
+        console.info('[ainos] YouTube player:', reason);
+        y.problem = reason;
+        this.#changed();
+      },
+      onState: (state) => {
+        if (this.yt !== y) return;
+        if (state === YT_STATE.PLAYING) { y.playing = true; y.problem = null; }
+        else if (state === YT_STATE.PAUSED) y.playing = false;
+        else if (state === YT_STATE.ENDED) {
+          y.playing = false;
+          if (this.peekNext()) { this.next('trackdone'); return; }
+        }
+        this.#changed();
+      },
+    });
+    this.#changed();
+  }
+
+  /** Remove the embed (it never plays hidden). */
+  stopYouTube({ silent = false } = {}) {
+    if (!this.yt) return;
+    this.yt.ctrl.destroy();
+    this.yt = null;
+    if (!silent) this.#changed();
+  }
+
   /** What the UI should show, whether playback is local or on another device. */
   view() {
+    if (this.yt) {
+      const y = this.yt;
+      return {
+        remote: false, youtube: true, track: y.track, isPlaying: y.playing, problem: y.problem, positionMs: y.ctrl.currentMs(),
+        durationMs: y.ctrl.durationMs() || y.track.duration_ms || 0, bufferedMs: 0,
+        shuffle: this.shuffle, repeat: this.repeat, volume: this.settings.volume, muted: this.settings.muted, contextUri: null, contextTitle: null,
+      };
+    }
     if (this.isRemote) {
       const r = this.remote;
       const pos = r.is_playing ? r.position_ms + (Date.now() - r.receivedAt) : r.position_ms;
@@ -747,6 +819,7 @@ export class Player extends EventTarget {
   }
 
   onRelease() {
+    this.stopYouTube({ silent: true });
     this.#endSession('remote');
     this.pause();
     this.remote = { ...this.snapshot(), device_id: 'pending', track: this.track, receivedAt: Date.now() };
