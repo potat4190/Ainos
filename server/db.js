@@ -264,6 +264,98 @@ CREATE TABLE IF NOT EXISTS song_arrangements (
   section_order TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS song_arrangements_song ON song_arrangements(song_id);
+
+-- Scripture a song draws on, as USFM references (ROM.12.1); section_label
+-- NULL = the whole song. Only references are stored, never verse text.
+CREATE TABLE IF NOT EXISTS song_scripture (
+  song_id       TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  section_label TEXT,
+  usfm_ref      TEXT NOT NULL,
+  position      INTEGER NOT NULL,
+  PRIMARY KEY (song_id, usfm_ref)
+);
+
+-- Per-user settings as key/value pairs (e.g. bible_version), so new settings
+-- need no new users column.
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+
+-- [3] YouTube video data (official worship videos). YouTube's terms: refresh or
+-- delete within 30 days (fetched_at).
+CREATE TABLE IF NOT EXISTS youtube_video_cache (
+  video_id         TEXT PRIMARY KEY,
+  channel_id       TEXT,
+  title            TEXT,
+  channel_title    TEXT,
+  thumbnail_url    TEXT,
+  duration_ms      INTEGER,
+  embeddable       INTEGER,
+  default_language TEXT,
+  fetched_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS youtube_video_cache_fetched ON youtube_video_cache(fetched_at);
+
+-- [4] Time-synced lyrics for ONE recording (song_sources row). timings: JSON
+-- [{ label, line, ms }]. org_id set = a church's private timings.
+CREATE TABLE IF NOT EXISTS lyric_timings (
+  id             TEXT PRIMARY KEY,
+  source_id      TEXT NOT NULL REFERENCES song_sources(id) ON DELETE CASCADE,
+  language       TEXT NOT NULL,
+  arrangement_id TEXT,
+  offset_ms      INTEGER NOT NULL DEFAULT 0,
+  timings        TEXT NOT NULL,
+  created_by     INTEGER,
+  org_id         TEXT,
+  updated_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lyric_timings_source ON lyric_timings(source_id);
+
+-- [5] Churches and their members (roles: admin, leader, operator, member).
+CREATE TABLE IF NOT EXISTS orgs (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  default_language TEXT NOT NULL,
+  bible_version_id INTEGER,
+  created_by       INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS org_members (
+  org_id    TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role      TEXT NOT NULL CHECK (role IN ('admin', 'leader', 'operator', 'member')),
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (org_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS org_members_user ON org_members(user_id);
+
+-- [5] Sunday setlists. Items are replaced as a whole list, so (setlist_id,
+-- position) needs no deferred constraint.
+CREATE TABLE IF NOT EXISTS setlists (
+  id           TEXT PRIMARY KEY,
+  org_id       TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  service_date TEXT,
+  created_by   INTEGER,
+  updated_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS setlists_org ON setlists(org_id, service_date);
+CREATE TABLE IF NOT EXISTS setlist_items (
+  id             TEXT PRIMARY KEY,
+  setlist_id     TEXT NOT NULL REFERENCES setlists(id) ON DELETE CASCADE,
+  position       INTEGER NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('song', 'scripture', 'text', 'blank')),
+  song_id        TEXT,
+  arrangement_id TEXT,
+  source_id      TEXT,
+  usfm_ref       TEXT,
+  text           TEXT,
+  UNIQUE (setlist_id, position)
+);
 `;
 
 // Language tags for the artists of the original (pre-language) seed catalog,

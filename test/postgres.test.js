@@ -10,7 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { generateCatalog, HYMN_IDS } from '../scripts/generate.js';
+import { generateCatalog, HYMN_IDS, YOUTUBE_IDS, hymnTimings } from '../scripts/generate.js';
+import { HYMNS } from '../scripts/hymns.js';
 import { seedPostgres, schemaColumns } from '../scripts/seed-postgres.js';
 import { ARTISTS, ALBUMS, TRACKS } from '../scripts/catalog-names.js';
 
@@ -89,7 +90,8 @@ before(async () => {
   const hymnTracks = db.prepare("SELECT id FROM tracks WHERE genre = 'Hymn'").all().map((r) => r.id);
   const refs = [...hymnTracks, HYMN_IDS.artist, HYMN_IDS.album, HYMN_IDS.playlist];
   const marks = (list) => list.map(() => '?').join(', ');
-  for (const table of ['song_arrangements', 'song_sections', 'song_sources', 'song_themes', 'song_aliases', 'songs']) db.prepare(`DELETE FROM ${table}`).run();
+  for (const table of ['lyric_timings', 'youtube_video_cache', 'song_arrangements', 'song_sections', 'song_sources', 'song_themes', 'song_aliases', 'songs']) db.prepare(`DELETE FROM ${table}`).run();
+  db.prepare("DELETE FROM search_index WHERE kind = 'song'").run();
   db.prepare(`DELETE FROM playlist_tracks WHERE playlist_id = ?`).run(HYMN_IDS.playlist);
   db.prepare(`DELETE FROM playlists WHERE id = ?`).run(HYMN_IDS.playlist);
   db.prepare(`DELETE FROM search_index WHERE ref_id IN (${marks(refs)})`).run(...refs);
@@ -123,7 +125,7 @@ test('schema.pg.sql applies, re-applies, and every table has row-level security 
   assert.ok(tables.length >= 22);
   assert.deepEqual(tables.filter((t) => !t.relrowsecurity).map((t) => t.relname), [], 'row-level security on');
   assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM pg_policies WHERE schemaname = 'public'"), 0, 'and no policies');
-  for (const t of ['rate_limits', 'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements']) {
+  for (const t of ['rate_limits', 'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture', 'user_settings']) {
     assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', $1, 'SELECT,INSERT,UPDATE,DELETE') AS ok", [t]))[0].ok, true, `${t} granted`);
   }
 });
@@ -147,7 +149,8 @@ test('production upgrade: a database seeded before the hymns gains them, and not
   assert.equal(result.added, 8);
   const src = new DatabaseSync(full, { readOnly: true });
   try {
-    for (const table of ['tracks', 'track_files', 'artists', 'albums', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements']) {
+    for (const table of ['tracks', 'track_files', 'artists', 'albums', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture',
+      'youtube_video_cache', 'lyric_timings', 'search_index']) {
       assert.equal(await count(pg, `SELECT COUNT(*) AS n FROM ${table}`), src.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, `${table} matches the generated catalog`);
     }
   } finally {
@@ -237,6 +240,77 @@ test('renaming the catalog: a database seeded under the old names takes the new 
   assert.deepEqual(after.map((t) => t.id), before.map((t) => t.id), 'same ids');
   assert.ok(after.every((t, i) => t.title !== before[i].title), 'every original track renamed');
   assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
+});
+
+test('Scripture references are seeded once per song; after that the admins’ edits survive deploys', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, noHymns);
+  await seed(pg, full);
+  const songId = HYMN_IDS.song('amazing-grace');
+  const refsOf = async (id) => (await rows(pg, 'SELECT usfm_ref FROM song_scripture WHERE song_id = $1 ORDER BY position', [id])).map((r) => r.usfm_ref);
+  assert.deepEqual(await refsOf(songId), ['EPH.2.8', '1CH.17.16', 'JHN.9.25'], 'seeded with the hymn');
+  // An admin replaces the references (what PUT /api/songs/:id/scripture does).
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1', [songId]);
+  await pg.db.query("INSERT INTO song_scripture (song_id, section_label, usfm_ref, position) VALUES ($1, NULL, 'TIT.2.11', 0)", [songId]);
+  const other = HYMN_IDS.song('abide-with-me');
+  const otherBefore = await refsOf(other);
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1 AND position > 0', [other]);
+  assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
+  assert.deepEqual(await refsOf(songId), ['TIT.2.11'], 'the edit survives the next deploy');
+  assert.deepEqual(await refsOf(other), otherBefore.slice(0, 1), 'a trimmed list is not refilled');
+  // Cleared to nothing by an admin (the PUT logs it): stays cleared.
+  const cleared = HYMN_IDS.song('rock-of-ages');
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1', [cleared]);
+  await pg.db.query("INSERT INTO audit_log (id, action, target_type, target_id, created_at) VALUES ('a1', 'song.scripture.replace', 'song', $1, 0)", [cleared]);
+  await seed(pg, full);
+  assert.deepEqual(await refsOf(cleared), [], 'a cleared list is not refilled either');
+});
+
+test('Phases 3-4 on an existing database: the curated YouTube song and the hymn timings arrive; later deploys only refresh fetched_at', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  // Production before this change: the hymns, but no YouTube song, cache row, song search entries or timings.
+  const before = editedCatalog('before-youtube', (db) => {
+    db.prepare('DELETE FROM lyric_timings').run();
+    db.prepare('DELETE FROM youtube_video_cache').run();
+    db.prepare("DELETE FROM search_index WHERE kind = 'song'").run();
+    db.prepare("DELETE FROM songs WHERE id IN (SELECT song_id FROM song_sources WHERE source = 'youtube')").run(); // its source goes with it
+  });
+  await seed(pg, before);
+  const songId = YOUTUBE_IDS.song('eov9K7ALYKk');
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM songs WHERE id = $1', [songId]), 0);
+  const r = await seed(pg, full);
+  assert.equal(r.added, 0, 'no tracks added');
+  assert.deepEqual((await rows(pg, 'SELECT title, artist, language, org_id, public_domain FROM songs WHERE id = $1', [songId])),
+    [{ title: 'Carry My Cross', artist: 'Victory Worship', language: 'en', org_id: null, public_domain: 0 }]);
+  assert.deepEqual((await rows(pg, 'SELECT id, source, track_id, youtube_video_id, kind, available FROM song_sources WHERE song_id = $1', [songId])),
+    [{ id: YOUTUBE_IDS.source('eov9K7ALYKk'), source: 'youtube', track_id: null, youtube_video_id: 'eov9K7ALYKk', kind: 'lyric', available: 1 }]);
+  const [cache] = await rows(pg, 'SELECT title, channel_title, thumbnail_url, embeddable, fetched_at FROM youtube_video_cache WHERE video_id = $1', ['eov9K7ALYKk']);
+  assert.equal(cache.title, 'Carry My Cross - Official Lyric Video');
+  assert.equal(cache.channel_title, 'Victory Worship');
+  assert.equal(cache.thumbnail_url, 'https://i.ytimg.com/vi/eov9K7ALYKk/hqdefault.jpg');
+  assert.equal(cache.embeddable, 1);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM search_index WHERE kind = 'song' AND ref_id = $1", [songId]), 1, 'searchable');
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM song_sections WHERE song_id = $1', [songId]), 0, 'no lyrics for a copyrighted song');
+  for (const h of HYMNS) {
+    const [t] = await rows(pg, 'SELECT source_id, language, org_id, timings FROM lyric_timings WHERE id = $1', [HYMN_IDS.timings(h.slug)]);
+    assert.deepEqual({ ...t, timings: JSON.parse(t.timings) }, { source_id: HYMN_IDS.source(h.slug), language: 'en', org_id: null, timings: hymnTimings(h) }, h.slug);
+  }
+  assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 }, 'the same build again changes nothing');
+
+  // The next deploy generates the catalog again: only the cache row's fetched_at moves.
+  const later = editedCatalog('later', (db) => db.prepare('UPDATE youtube_video_cache SET fetched_at = fetched_at + 86400000').run());
+  const tables = ['songs', 'song_sources', 'lyric_timings', 'search_index', 'song_sections'];
+  const snapshot = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, await rows(pg, `SELECT * FROM ${t} ORDER BY 1, 2`)])));
+  const was = await snapshot();
+  assert.deepEqual((await seed(pg, later)).synced, { inserted: 0, updated: 1, deleted: 0 }, 'one row refreshed');
+  const [refreshed] = await rows(pg, 'SELECT fetched_at FROM youtube_video_cache WHERE video_id = $1', ['eov9K7ALYKk']);
+  assert.equal(Number(refreshed.fetched_at), Number(cache.fetched_at) + 86400000, 'fetched_at refreshed');
+  assert.deepEqual(await snapshot(), was, 'nothing else changed');
+
+  // A church's own timings for a hymn recording are never touched by the sync.
+  await pg.db.query(`INSERT INTO lyric_timings (id, source_id, language, offset_ms, timings, org_id, updated_at) VALUES ('church-t', $1, 'en', 0, '[]', 'org-a', 0)`, [HYMN_IDS.source('amazing-grace')]);
+  await seed(pg, full);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM lyric_timings WHERE id = 'church-t' AND timings = '[]'"), 1, 'church timings kept');
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {

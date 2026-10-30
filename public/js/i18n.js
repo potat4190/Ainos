@@ -294,6 +294,17 @@ export const STRINGS = {
     valence: 'Valence',
     acousticness: 'Acousticness',
     aboutArtistCard: 'About the artist',
+    scriptureCard: 'Scripture',
+    verseOfTheDay: 'Verse of the Day',
+    bibleVersionTitle: 'Bible version',
+    bibleVersionDesc: 'The translation Scripture passages are shown in',
+    bibleVersionAuto: 'Automatic',
+    scriptureNoText: 'This passage isn’t available in your language yet.',
+    scriptureUnavailable: 'Scripture couldn’t be loaded right now.',
+    songDetails: 'Song details',
+    songLabel: 'Song',
+    recordingsTitle: 'Recordings',
+    publicDomainSong: 'Public domain',
     // Toasts
     addedToLiked: 'Added to Liked Songs',
     removedFromLiked: 'Removed from Liked Songs',
@@ -589,6 +600,17 @@ export const STRINGS = {
     valence: 'आनंद (Valence)',
     acousticness: 'अकूस्टिक (Acousticness)',
     aboutArtistCard: 'कलाकार के बारे में',
+    scriptureCard: 'पवित्रशास्त्र',
+    verseOfTheDay: 'आज का वचन',
+    bibleVersionTitle: 'बाइबल संस्करण',
+    bibleVersionDesc: 'वह अनुवाद जिसमें पवित्रशास्त्र के अंश दिखाए जाते हैं',
+    bibleVersionAuto: 'स्वचालित',
+    scriptureNoText: 'यह अंश अभी आपकी भाषा में उपलब्ध नहीं है।',
+    scriptureUnavailable: 'पवित्रशास्त्र अभी लोड नहीं हो सका।',
+    songDetails: 'गीत का विवरण',
+    songLabel: 'गीत',
+    recordingsTitle: 'रिकॉर्डिंग',
+    publicDomainSong: 'सार्वजनिक डोमेन',
     addedToLiked: 'पसंदीदा गीतों में जोड़ा गया',
     removedFromLiked: 'पसंदीदा गीतों से हटाया गया',
     addedToQueueToast: 'कतार में जोड़ा गया',
@@ -881,6 +903,17 @@ export const STRINGS = {
     valence: 'आनन्द (Valence)',
     acousticness: 'अकुस्टिक (Acousticness)',
     aboutArtistCard: 'कलाकारको बारेमा',
+    scriptureCard: 'धर्मशास्त्र',
+    verseOfTheDay: 'आजको पद',
+    bibleVersionTitle: 'बाइबलको संस्करण',
+    bibleVersionDesc: 'धर्मशास्त्रका खण्डहरू देखाइने अनुवाद',
+    bibleVersionAuto: 'स्वचालित',
+    scriptureNoText: 'यो खण्ड अहिले तपाईंको भाषामा उपलब्ध छैन।',
+    scriptureUnavailable: 'धर्मशास्त्र अहिले लोड गर्न सकिएन।',
+    songDetails: 'गीतको विवरण',
+    songLabel: 'गीत',
+    recordingsTitle: 'रेकर्डिङहरू',
+    publicDomainSong: 'सार्वजनिक डोमेन',
     addedToLiked: 'मनपरेका भजनमा थपियो',
     removedFromLiked: 'मनपरेका भजनबाट हटाइयो',
     addedToQueueToast: 'पङ्क्तिमा थपियो',
@@ -1173,6 +1206,17 @@ export const STRINGS = {
     valence: '喜乐度 (Valence)',
     acousticness: '原声度 (Acousticness)',
     aboutArtistCard: '关于歌手',
+    scriptureCard: '经文',
+    verseOfTheDay: '每日经文',
+    bibleVersionTitle: '圣经译本',
+    bibleVersionDesc: '显示经文所用的译本',
+    bibleVersionAuto: '自动',
+    scriptureNoText: '这段经文暂时还没有你所用语言的版本。',
+    scriptureUnavailable: '暂时无法加载经文。',
+    songDetails: '歌曲详情',
+    songLabel: '歌曲',
+    recordingsTitle: '录音',
+    publicDomainSong: '公有领域',
     addedToLiked: '已添加到“我喜欢的诗歌”',
     removedFromLiked: '已从“我喜欢的诗歌”移除',
     addedToQueueToast: '已添加到播放队列',
@@ -1465,6 +1509,17 @@ export const STRINGS = {
     valence: '明るさ・喜び (Valence)',
     acousticness: 'アコースティック度',
     aboutArtistCard: 'アーティストについて',
+    scriptureCard: '聖書',
+    verseOfTheDay: '今日のみことば',
+    bibleVersionTitle: '聖書の訳',
+    bibleVersionDesc: '聖書の箇所を表示する翻訳',
+    bibleVersionAuto: '自動',
+    scriptureNoText: 'この箇所は、まだあなたの言語では表示できません。',
+    scriptureUnavailable: '今は聖書の箇所を読み込めませんでした。',
+    songDetails: '曲の詳細',
+    songLabel: '曲',
+    recordingsTitle: '録音',
+    publicDomainSong: 'パブリックドメイン',
     addedToLiked: 'お気に入りの賛美歌に追加しました',
     removedFromLiked: 'お気に入りの賛美歌から削除しました',
     addedToQueueToast: 'キューに追加しました',
@@ -1757,6 +1812,17 @@ export const STRINGS = {
     valence: 'Gozo (Valence)',
     acousticness: 'Acústico (Acousticness)',
     aboutArtistCard: 'Acerca del artista',
+    scriptureCard: 'Escritura',
+    verseOfTheDay: 'Versículo del día',
+    bibleVersionTitle: 'Versión de la Biblia',
+    bibleVersionDesc: 'La traducción en la que se muestran los pasajes bíblicos',
+    bibleVersionAuto: 'Automática',
+    scriptureNoText: 'Este pasaje todavía no está disponible en tu idioma.',
+    scriptureUnavailable: 'No se pudo cargar la Escritura ahora.',
+    songDetails: 'Detalles de la canción',
+    songLabel: 'Canción',
+    recordingsTitle: 'Grabaciones',
+    publicDomainSong: 'Dominio público',
     addedToLiked: 'Añadida a Canciones que te gustan',
     removedFromLiked: 'Quitada de Canciones que te gustan',
     addedToQueueToast: 'Añadida a la cola',
@@ -1859,6 +1925,14 @@ try {
 } catch { /* ignore */ }
 if (typeof document !== 'undefined') document.documentElement.lang = currentLang;
 
+// Feature string modules (Phases 3-6) merge into STRINGS, one file per feature.
+import listenerStrings from './strings/listener.js';
+import churchStrings from './strings/church.js';
+import presentStrings from './strings/present.js';
+for (const part of [listenerStrings, churchStrings, presentStrings]) {
+  for (const [lang, dict] of Object.entries(part)) Object.assign(STRINGS[lang], dict);
+}
+
 export function getLang() {
   return currentLang;
 }
@@ -1880,7 +1954,7 @@ export function t(key, vars = {}) {
 const ERROR_KEYS = {
   bad_credentials: 'errBadCredentials', username_taken: 'errUsernameTaken', bad_username: 'errBadUsername', bad_password: 'errBadPassword',
   rate_limited: 'errRateLimited', network: 'errNetwork', offline: 'errOffline', timeout: 'errTimeout', server: 'errServer', demo_private: 'errDemoPrivate',
-  demo_not_allowed: 'errDemoNotAllowed',
+  demo_not_allowed: 'errDemoNotAllowed', forbidden_role: 'errForbiddenRole',
 };
 
 /** A message for an API error in the current language (the server's English text when there is no translation). */

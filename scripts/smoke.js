@@ -100,6 +100,35 @@ if (hymn) {
   check(audio.status === 206 && (await audio.arrayBuffer()).byteLength === 1024, `hymn audio streams -> ${audio.status}`);
 }
 
+// Phase 2: Scripture next to songs. The public-domain fallback counts as a
+// pass (no key, or YouVersion trouble); `source` says which text came back.
+if (hymn) {
+  const refs = (await call('GET', `/api/songs/${hymn.song_id}/scripture`)).json;
+  const first = refs?.groups?.[0]?.references?.[0];
+  check(!!first, 'the hymn lists its Scripture');
+  if (first) {
+    const p = (await call('GET', `/api/scripture/${first.usfm}`)).json;
+    check(!!p?.reference && (p.text === null || !!p.version?.abbreviation), `its passage answers, with attribution when there is text (${p?.source})`);
+  }
+}
+// Phases 3-4: songs in search (the curated official video, from the local
+// index only) and a hymn's lyrics with their synced timings.
+const carry = (await call('GET', '/api/search?q=carry%20my%20cross')).json?.songs?.items?.find((x) => x.name === 'Carry My Cross');
+const video = carry?.sources?.find((x) => x.source === 'youtube');
+check(video?.youtube?.videoId === 'eov9K7ALYKk' && video.youtube.title === 'Carry My Cross - Official Lyric Video' && video.youtube.channelTitle === 'Victory Worship'
+  && /^https:\/\/i\.ytimg\.com\//.test(video.youtube.thumbnail || ''), 'search "carry my cross" finds the official Victory Worship video');
+const csp = (await get('/')).headers.get('content-security-policy') || '';
+check(/frame-src https:\/\/www\.youtube\.com/.test(csp) && /script-src 'self' https:\/\/www\.youtube\.com/.test(csp), 'the CSP allows the YouTube embed');
+if (hymn?.song_id) {
+  const lyrics = (await call('GET', `/api/songs/${hymn.song_id}`)).json;
+  const rec = lyrics?.sources?.find((x) => x.source === 'ainos');
+  check(lyrics?.sections?.length > 0 && rec?.timings?.[0]?.timings?.length > 0, 'the hymn has lyrics and synced timings');
+  if (rec) check((await call('GET', `/api/sources/${rec.id}/timings?lang=en`)).json?.timings?.length > 0, 'its recording’s timings route answers');
+}
+const votd = (await call('GET', '/api/scripture/votd')).json;
+check(!!votd?.reference, `Verse of the Day (${votd?.source})`);
+await call('GET', '/api/scripture/NOPE.1', undefined, { expect: 400 });
+
 // Writes: like/unlike, follow/unfollow, a temporary playlist, an event, the language.
 // Only undo what this script changed, so the demo account keeps its own likes,
 // follows and language. The one event sent is a pause with no track, which
@@ -126,8 +155,31 @@ if (!likedBefore) await call('DELETE', `/api/me/liked/${track.id}`);
 if (!followedBefore) await call('DELETE', `/api/me/following/${track.artist.id}`);
 await call('POST', '/api/me/language', { language: me.language }); // the endpoint works; the saved language stays as it was
 await call('POST', '/api/playlists', { name: 'evil' }, { expect: 403, headers: { Origin: 'https://evil.example' } });
+// Phase 5: the listener demo can't make a church.
+await call('POST', '/api/orgs', { name: 'Smoke Church' }, { expect: 403 });
 await call('POST', '/api/auth/logout', {});
 await call('GET', '/api/me', undefined, { expect: 401 });
+
+// Phases 5-6: the church demo signs in, sees only its demo church, and its
+// setlist builds slides (song slides with timings, a Scripture reading).
+await call('POST', '/api/auth/church-demo', {});
+const orgs = (await call('GET', '/api/me/orgs')).json;
+check(orgs?.length === 1, 'the church demo sees exactly one church');
+if (orgs?.length) {
+  const org = orgs[0];
+  const setlists = (await call('GET', `/api/orgs/${org.id}/setlists`)).json;
+  check(setlists?.length >= 1 && setlists[0].item_count >= 5, 'the demo church has its seeded setlist');
+  if (setlists?.length) {
+    const deck = (await call('GET', `/api/orgs/${org.id}/setlists/${setlists[0].id}/slides`)).json;
+    const songs = deck?.items?.filter((i) => i.kind === 'song') || [];
+    check(songs.length >= 3 && songs.every((i) => i.slides.length > 0), 'setlist songs have slides');
+    check(songs.some((i) => i.hasTimings && i.slides.some((s) => Number.isFinite(s.startMs))), 'a hymn has timed slides for automatic mode');
+    check(deck?.items?.some((i) => i.kind === 'scripture' && i.slides[0]?.lines?.length), 'the Scripture reading has a slide');
+  }
+  await call('POST', '/api/orgs', { name: 'Another Church' }, { expect: 403 });
+  await call('GET', '/api/orgs/no-such-org', undefined, { expect: 404 });
+}
+await call('POST', '/api/auth/logout', {});
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');
 process.exit(failures ? 1 : 0);

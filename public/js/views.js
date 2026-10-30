@@ -158,6 +158,15 @@ export async function home(el, _p, app) {
     h('div', { class: 'faith-banner' }, icon('sparkle'), t('faithBanner')),
     h('h1', { class: 'greeting', style: { 'font-size': '30px', 'margin-top': '10px' } }, greet),
   );
+  const votd = h('section', { class: 'votd box', 'aria-label': t('verseOfTheDay') });
+  el.append(votd);
+  api.get('/api/scripture/votd').then((v) => {
+    votd.append(h('div', { class: 'votd-label dim small' }, t('verseOfTheDay')));
+    if (v.text) votd.append(h('blockquote', { class: 'passage-text' }, v.text));
+    votd.append(h('div', { class: 'votd-ref' }, v.reference,
+      v.version ? h('span', { class: 'dim small' }, ` · ${[v.version.abbreviation, v.version.copyright].filter(Boolean).join(' · ')}`) : null));
+    if (!v.text) votd.append(h('p', { class: 'muted small' }, t('scriptureNoText')));
+  }).catch(() => votd.remove());
 
   const mixes = data.made_for_you.map((m) => translateMix(m, lang));
   const editorials = data.editorial.map(translateEditorial);
@@ -250,10 +259,13 @@ export async function search(el, params, app) {
     return;
   }
   const r = await api.get(`/api/search?q=${encodeURIComponent(q)}`);
-  if (!r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) {
+  const songItems = r.songs?.items || [];
+  if (!songItems.length && !r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) {
     results.append(empty(t('noResultsTitle', { q }), t('noResultsSub')));
     return;
   }
+  if (songItems.length) results.append(section(t('songsGroup'), h('div', { class: 'song-results', role: 'list' }, songItems.map((sg) => songResult(app, sg))), { sub: t('songsGroupSub') }));
+  if (!r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) return;
   const top = r.top?.item;
   const songs = r.tracks.slice(0, 4);
   const topEl = top ? (() => {
@@ -313,6 +325,219 @@ export async function album(el, { id }, app) {
   el.append(trackList(app, a.tracks, ctx, { showAlbum: false, showCover: false }));
   const dateStr = new Date(a.released_at || Date.UTC(a.year, 0, 1)).toLocaleDateString(getLang(), { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   el.append(h('p', { class: 'dim small', style: { 'margin-top': '24px' } }, t('releasedDate', { date: dateStr }), h('br'), t('synthesizedNote', { year: a.year, artist: a.artist.name })));
+}
+
+/** One passage, fetched when shown: its text and the version's attribution, or why there is no text. */
+function passage(usfm) {
+  const box = h('div', { class: 'passage', role: 'region', 'aria-live': 'polite' }, h('p', { class: 'dim small' }, '…'));
+  api.get(`/api/scripture/${encodeURIComponent(usfm)}`).then((p) => {
+    clear(box);
+    if (p.text) {
+      box.append(h('blockquote', { class: 'passage-text' }, p.text),
+        h('p', { class: 'passage-attribution dim small' }, [p.version.abbreviation, p.version.title].filter(Boolean).join(' · '), p.version.copyright ? h('br') : null, p.version.copyright || null));
+    } else {
+      box.append(h('p', { class: 'muted small' }, t('scriptureNoText')));
+    }
+  }).catch(() => { clear(box); box.append(h('p', { class: 'muted small' }, t('scriptureUnavailable'))); });
+  return box;
+}
+
+/** "Scripture" card for a song: its references, each opening its passage. */
+export function scriptureCard(songId, { link = false } = {}) {
+  const list = h('div', { class: 'scripture-refs' });
+  const card = h('div', { class: 'rp-card scripture-card' }, h('h3', {}, t('scriptureCard')), list);
+  if (link) card.append(h('a', { class: 'dim small', href: `#/song/${songId}` }, t('songDetails')));
+  api.get(`/api/songs/${encodeURIComponent(songId)}/scripture`).then(({ groups }) => {
+    if (!groups.length) { card.hidden = true; return; }
+    for (const g of groups) {
+      if (g.section_label) list.append(h('div', { class: 'queue-label' }, g.section_label));
+      for (const ref of g.references) {
+        const btn = h('button', { class: 'scripture-ref', 'aria-expanded': 'false' }, ref.reference);
+        let shown = null;
+        btn.addEventListener('click', () => {
+          if (shown) { shown.remove(); shown = null; btn.setAttribute('aria-expanded', 'false'); return; }
+          shown = passage(ref.usfm);
+          btn.after(shown);
+          btn.setAttribute('aria-expanded', 'true');
+        });
+        list.append(btn);
+      }
+    }
+  }).catch(() => {
+    card.dataset.failedAt = String(Date.now());
+    list.append(h('p', { class: 'muted small' }, t('scriptureUnavailable')));
+  });
+  return card;
+}
+
+export async function song(el, { id }, app) {
+  const s = await api.get(`/api/songs/${encodeURIComponent(id)}`);
+  const cover = s.tracks[0]?.album.cover;
+  el.append(pageHead({
+    art: cover ? img(cover) : h('div', { class: 'art' }), kind: t('songLabel'), title: s.title, color: s.tracks[0]?.album.color,
+    facts: facts(h('b', {}, s.artist), s.public_domain ? t('publicDomainSong') : null),
+  }));
+  if (s.tracks.length) {
+    const ctx = { uri: `ainos:song:${s.id}`, title: s.title, tracks: s.tracks };
+    el.append(section(t('recordingsTitle'), trackList(app, s.tracks, ctx)));
+  }
+  const videos = (s.sources || []).filter((x) => x.source === 'youtube');
+  if (videos.length) {
+    const sg = { id: s.id, name: s.title, artist: { name: s.artist }, language: s.language, sources: videos };
+    el.append(section(t('ytVideoLabel'), h('div', { class: 'song-results', role: 'list' }, songResult(app, sg))));
+  }
+  el.append(scriptureCard(s.id));
+}
+
+// ------------------------------------------------------------- songs and their sources (Phase 3)
+
+const KIND_KEYS = { official: 'kindOfficial', lyric: 'kindLyric', live: 'kindLive', backing: 'kindBacking' };
+
+/**
+ * One song from search (spec 3.3) with each way to play it: Ainos recordings,
+ * and official YouTube videos shown with YouTube's own title and thumbnail,
+ * unmodified. The song record (title, artist) is Ainos's.
+ */
+function songResult(app, sg) {
+  const video = sg.sources.find((x) => x.source === 'youtube');
+  const native = sg.sources.find((x) => x.source === 'ainos');
+  const art = video
+    ? h('img', { class: 'yt-thumb', src: video.youtube.thumbnail, alt: '', loading: 'lazy', decoding: 'async' })
+    : img(native.track.album.cover, 'art');
+  const buttons = sg.sources.map((src) => {
+    if (src.source === 'youtube') {
+      const y = src.youtube;
+      return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: y.title }), onclick: () => app.playYouTube(sg, src) },
+        icon('play'), h('span', { class: 'source-name' }, y.title),
+        h('span', { class: 'dim' }, [y.channelTitle, KIND_KEYS[src.kind] ? t(KIND_KEYS[src.kind]) : null, t('sourceYouTube')].filter(Boolean).join(' · ')));
+    }
+    return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: src.track.title }),
+      onclick: () => app.player.playContext({ uri: `ainos:song:${sg.id}`, title: sg.name, tracks: [src.track] }, 0) },
+    icon('play'), h('span', { class: 'source-name' }, t('sourceNative')), h('span', { class: 'dim' }, `${src.track.artist.name} · ${fmtTime(src.track.duration_ms)}`));
+  });
+  return h('div', { class: 'song-result', role: 'listitem' }, art,
+    h('div', { class: 'song-result-main' },
+      h('div', { class: 'song-result-name' }, h('a', { href: `#/song/${sg.id}` }, sg.name)),
+      h('div', { class: 'dim small' }, sg.artist.name),
+      h('div', { class: 'song-sources' }, buttons)));
+}
+
+// ------------------------------------------------------------- synced lyrics (Phase 4)
+
+const LABEL_ORDER = ['I', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'PC', 'C', 'C2', 'B', 'T', 'E'];
+const MANUAL_SCROLL_MS = 5000; // spec 4.5: manual scrolling pauses auto-scroll this long
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+const userScrolls = new WeakMap(); // scroller -> when the user last scrolled it
+
+/** 'V2' -> "Verse 2", 'C' -> "Chorus", ... */
+export function sectionName(label) {
+  const m = /^V(\d)$/.exec(label || '');
+  if (m) return t('sectionVerse', { n: m[1] });
+  const key = { C: 'sectionChorus', C2: 'sectionChorus2', PC: 'sectionPreChorus', B: 'sectionBridge', T: 'sectionTag', I: 'sectionIntro', E: 'sectionEnding' }[label];
+  return key ? t(key) : label;
+}
+
+function watchUserScroll(scroller) {
+  if (userScrolls.has(scroller)) return;
+  userScrolls.set(scroller, 0);
+  const mark = () => userScrolls.set(scroller, performance.now());
+  scroller.addEventListener('wheel', mark, { passive: true });
+  scroller.addEventListener('touchmove', mark, { passive: true });
+  scroller.addEventListener('keydown', (e) => { if (SCROLL_KEYS.has(e.key) && !e.target.closest?.('button, a, input, select, textarea')) mark(); });
+  scroller.addEventListener('pointerdown', (e) => { if (e.target === scroller) mark(); }); // its scrollbar
+}
+
+/** Does this song detail have lyrics to show? */
+export const hasLyrics = (detail) => !!detail?.sections?.some((x) => x.lines.some((l) => l.trim()));
+
+/**
+ * The lyrics view for the right panel (spec 4.5), built once per song and
+ * recording. With timings for the playing recording, tick(view) highlights
+ * the current line, dims past ones and keeps it in view (paused for 5 s after
+ * the user scrolls); a click on a line seeks there. Without timings the
+ * lyrics show as static text in arrangement order, with a note.
+ */
+export function lyricsView(app, { track, detail, scroller }) {
+  watchUserScroll(scroller);
+  const source = track.youtube
+    ? detail.sources.find((x) => x.id === track.youtube.sourceId)
+    : detail.sources.find((x) => x.source === 'ainos' && x.track?.id === track.id);
+  const langs = [...new Set(detail.sections.map((x) => x.language))];
+  const timing = source?.timings?.find((x) => x.language === getLang() && langs.includes(x.language)) || source?.timings?.find((x) => langs.includes(x.language)) || null;
+  const lang = timing?.language || [getLang(), detail.language].find((l) => langs.includes(l)) || langs[0];
+  // A church's own text for a section wins over the global one.
+  const byLabel = new Map();
+  for (const x of detail.sections.filter((y) => y.language === lang)) if (!byLabel.has(x.label) || x.org_id) byLabel.set(x.label, x);
+  const sectionEl = (label, lines) => h('section', { class: 'lyrics-sec' }, h('div', { class: 'lyrics-sec-label' }, sectionName(label)), lines);
+
+  const lines = [];
+  const blocks = [];
+  let more = null;
+  if (timing) {
+    let block = null;
+    for (const { label, line, ms } of timing.timings) {
+      const text = byLabel.get(label)?.lines[line];
+      if (text == null) continue;
+      if (!block || block.label !== label || line === 0) blocks.push((block = { label, items: [] }));
+      const at = ms + timing.offset_ms;
+      const b = h('button', { class: 'lyric-line', type: 'button', onclick: () => {
+        userScrolls.set(scroller, 0);
+        app.player.seek(at);
+        if (!app.player.view().isPlaying) app.player.toggle();
+      } }, text);
+      lines.push({ ms: at, el: b });
+      block.items.push(b);
+    }
+    const sung = new Set(timing.timings.map((x) => x.label));
+    const rest = [...byLabel.values()].filter((x) => !sung.has(x.label)).sort((a, b) => LABEL_ORDER.indexOf(a.label) - LABEL_ORDER.indexOf(b.label));
+    if (rest.length) {
+      more = h('section', { class: 'lyrics-more' }, h('h3', {}, t('lyricsMoreVerses')),
+        rest.map((x) => sectionEl(x.label, x.lines.map((l) => h('p', { class: 'lyric-static' }, l)))));
+    }
+  } else {
+    const arrangement = detail.arrangements.find((a) => a.org_id) || detail.arrangements.find((a) => a.name === 'All verses') || detail.arrangements[0];
+    const order = (arrangement?.section_order || []).filter((l) => byLabel.has(l));
+    const labels = order.length ? order : [...byLabel.keys()].sort((a, b) => LABEL_ORDER.indexOf(a) - LABEL_ORDER.indexOf(b));
+    for (const label of labels) blocks.push({ label, items: byLabel.get(label).lines.map((l) => h('p', { class: 'lyric-static' }, l)) });
+  }
+
+  const el = h('div', { class: `lyrics${timing ? ' synced' : ''}` },
+    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced'))),
+    h('div', { class: 'lyrics-lines' }, blocks.map((b) => sectionEl(b.label, b.items))),
+    more);
+
+  let current = -2;
+  let paused = false;
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function scrollToLine(lineEl, instant) {
+    if (!el.isConnected || scroller.hidden) return;
+    const box = scroller.getBoundingClientRect();
+    const r = lineEl.getBoundingClientRect();
+    const top = scroller.scrollTop + (r.top - box.top) + r.height / 2 - scroller.clientHeight / 2;
+    scroller.scrollTo({ top: Math.max(0, top), behavior: instant || reduceMotion() ? 'auto' : 'smooth' });
+  }
+  return {
+    el,
+    /** Called every frame with the player's view; touches the DOM only when the line changes. */
+    tick(v) {
+      if (!lines.length || v.track?.id !== track.id || !el.isConnected) return;
+      let idx = -1;
+      while (idx + 1 < lines.length && lines[idx + 1].ms <= v.positionMs + 50) idx++;
+      const scrollPaused = performance.now() - (userScrolls.get(scroller) || 0) < MANUAL_SCROLL_MS;
+      const resumed = paused && !scrollPaused; // auto-scroll comes back: bring the line into view again
+      paused = scrollPaused;
+      if (idx === current && !resumed) return;
+      const first = current === -2;
+      current = idx;
+      lines.forEach((ln, i) => {
+        ln.el.classList.toggle('past', i < idx);
+        ln.el.classList.toggle('current', i === idx);
+        if (i === idx) ln.el.setAttribute('aria-current', 'true');
+        else ln.el.removeAttribute('aria-current');
+      });
+      if (idx >= 0 && (first || !scrollPaused)) scrollToLine(lines[idx].el, first);
+    },
+  };
 }
 
 export async function artist(el, { id }, app) {
@@ -623,6 +848,16 @@ export async function settings(el, _p, app) {
 
   const langOptions = LANGUAGES.map((l) => [l.code, `${l.native} (${l.label})`]);
   el.append(row(t('languageSettingTitle'), t('languageSettingDesc'), select(getLang(), langOptions, (v) => app.changeLanguage(v))));
+  if (!me.is_demo) try {
+    const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
+    const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
+    const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];
+    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), String(bible.selected)]);
+    el.append(row(t('bibleVersionTitle'), t('bibleVersionDesc'), select(bible.selected ? String(bible.selected) : '', options, safely(async (v) => {
+      await api.put('/api/me/bible-version', { version: v ? Number(v) : null });
+      app.scriptureCards.clear();
+    }))));
+  } catch { /* the setting just isn't shown */ }
 
   el.append(h('h2', { class: 'section', style: { 'font-size': '18px', 'margin-bottom': '10px' } }, t('audioSection')));
   el.append(row(t('streamingQuality'), t('streamingQualityDesc'), select(s.quality, [['auto', t('qualityAuto')], ['low', t('qualityLow')], ['high', t('qualityHigh')]], (v) => app.player.updateSettings({ quality: v }))));

@@ -19,8 +19,12 @@
 // it. The generator's own songs follow its data: global lyrics, arrangements
 // and themes it no longer writes are removed (aliases are kept). Editorial
 // playlists gain tracks the generator adds to them (tracks removed from one by
-// hand come back). User data, church (org) rows and user playlists are never
-// touched; removing an existing track is a manual data migration.
+// hand come back). A song's Scripture references are seeded once, when it
+// has none and no admin has edited them (audit_log); after that they belong
+// to the catalog admins (PUT /api/songs/:id/scripture), so their edits, even
+// clearing the list, survive deploys. User data,
+// church (org) rows and user playlists are never touched; removing an
+// existing track is a manual data migration.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +39,8 @@ const CERT_ERRORS = new Set(['SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNE
 const TABLES = [
   'artists', 'albums', 'tracks', 'track_files', 'users', 'playlists', 'playlist_tracks',
   'liked_tracks', 'followed_artists', 'streams', 'events', 'search_index',
-  'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
+  'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements', 'song_scripture',
+  'youtube_video_cache', 'lyric_timings',
 ];
 
 // The rows the generator owns, in foreign-key order: what a catalog sync may
@@ -65,6 +70,13 @@ export const CATALOG_SYNC = [
   { table: 'song_sources', key: ['id'], where: GLOBAL_SONG, target: `song_sources.${GLOBAL_SONG}`, update: ['kind'] },
   { table: 'song_sections', key: ['id'], where: 'org_id IS NULL', target: 'song_sections.org_id IS NULL', update: ['lines', 'folded'] },
   { table: 'song_arrangements', key: ['id'], where: 'org_id IS NULL', target: 'song_arrangements.org_id IS NULL', update: ['name', 'section_order'] },
+  // The curated YouTube videos' cached data (scripts/youtube-videos.js). Every
+  // deploy rewrites fetched_at: YouTube's terms want it refreshed within 30 days.
+  { table: 'youtube_video_cache', key: ['video_id'], where: `video_id IN (SELECT youtube_video_id FROM song_sources WHERE source = 'youtube' AND ${GLOBAL_SONG})`,
+    target: `youtube_video_cache.video_id IN (SELECT youtube_video_id FROM song_sources WHERE source = 'youtube' AND ${GLOBAL_SONG})`,
+    update: ['title', 'channel_title', 'thumbnail_url', 'embeddable', 'default_language', 'fetched_at'] },
+  // Hymn line timings, from the melody the audio is rendered from.
+  { table: 'lyric_timings', key: ['id'], where: 'org_id IS NULL', target: 'lyric_timings.org_id IS NULL', update: ['language', 'offset_ms', 'timings', 'updated_at'] },
 ];
 
 // Lyrics, arrangements and themes of the generator's own songs follow its
@@ -172,6 +184,22 @@ async function syncCatalog(client, src, log) {
     const { rowCount } = await client.query(pruneSql(p), [[...new Set(rows.map((r) => r.s))], rows.map((r) => r.k)]);
     totals.deleted += rowCount;
     if (rowCount) log(`  ${p.table}: ${rowCount} removed (no longer generated)`);
+  }
+
+  // Scripture references: only for the generator's songs that have none here
+  // yet and whose references no admin has ever replaced.
+  const refs = src.prepare(`SELECT * FROM song_scripture WHERE ${GLOBAL_SONG}`).all();
+  if (refs.length) {
+    const songIds = [...new Set(refs.map((r) => r.song_id))];
+    const have = new Set((await client.query(`SELECT song_id FROM song_scripture WHERE song_id = ANY($1::text[])
+      UNION SELECT target_id FROM audit_log WHERE action = 'song.scripture.replace' AND target_type = 'song' AND target_id = ANY($1::text[])`, [songIds])).rows.map((r) => r.song_id));
+    const add = refs.filter((r) => !have.has(r.song_id));
+    if (add.length) {
+      const refCols = Object.keys(add[0]);
+      await inBatches(client, add, refCols, (count) => upsertSql('song_scripture', refCols, ['song_id', 'usfm_ref'], [], count));
+      totals.inserted += add.length;
+      log(`  song_scripture: ${add.length} added for ${new Set(add.map((r) => r.song_id)).size} songs`);
+    }
   }
 
   // Editorial playlists: a new one (e.g. Hymns) gets its tracks, an existing

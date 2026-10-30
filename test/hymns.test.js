@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HYMNS, HYMN_ARTIST, HYMN_ALBUM } from '../scripts/hymns.js';
 import { THEMES, SECTION_LABEL } from '../server/songs.js';
-import { str } from '../server/validate.js';
+import { str, usfmRef } from '../server/validate.js';
 import { melodyTimeline } from '../scripts/synth.js';
 
 const PUBLIC_DOMAIN_BEFORE = 1929;
@@ -74,6 +74,9 @@ test('lyrics: every stanza fits the tune line for line, within the app’s limit
       for (const line of s.lines) assert.equal(str(line, { min: 1, max: 120 }), line, `${h.slug} ${s.label}: clean line "${line}"`);
     }
     assert.ok(h.themes.length >= 1 && h.themes.length <= 3 && h.themes.every((t) => THEMES.includes(t)), `${h.slug}: themes`);
+    assert.ok(h.scripture.length >= 1 && h.scripture.length <= 3, `${h.slug}: 1-3 Scripture references`);
+    for (const ref of h.scripture) assert.equal(usfmRef(ref), ref, `${h.slug}: ${ref} is a canonical USFM reference`);
+    assert.equal(new Set(h.scripture).size, h.scripture.length, `${h.slug}: no repeated reference`);
   }
 });
 
@@ -140,6 +143,8 @@ test('each hymn is a public-domain song with every stanza, its source, arrangeme
     assert.deepEqual(arrangements.Recording, hymnOrder(h, h.audioVerses));
     assert.equal(arrangements.Recording.filter((l) => l.startsWith('V')).length, h.audioVerses, `${h.slug}: the recording has ${h.audioVerses} verses`);
     assert.deepEqual(db.prepare('SELECT theme FROM song_themes WHERE song_id = ? ORDER BY theme').all(songId).map((r) => r.theme), [...h.themes].sort());
+    assert.deepEqual(db.prepare('SELECT usfm_ref, section_label FROM song_scripture WHERE song_id = ? ORDER BY position').all(songId).map((r) => ({ ...r })),
+      h.scripture.map((usfm_ref) => ({ usfm_ref, section_label: null })), `${h.slug}: Scripture references in order`);
   }
   // Searchable by first line where it differs from the title.
   const aliases = (slug) => db.prepare('SELECT alias FROM song_aliases WHERE song_id = ?').all(HYMN_IDS.song(slug)).map((r) => r.alias);
