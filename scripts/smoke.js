@@ -155,8 +155,31 @@ if (!likedBefore) await call('DELETE', `/api/me/liked/${track.id}`);
 if (!followedBefore) await call('DELETE', `/api/me/following/${track.artist.id}`);
 await call('POST', '/api/me/language', { language: me.language }); // the endpoint works; the saved language stays as it was
 await call('POST', '/api/playlists', { name: 'evil' }, { expect: 403, headers: { Origin: 'https://evil.example' } });
+// Phase 5: the listener demo can't make a church.
+await call('POST', '/api/orgs', { name: 'Smoke Church' }, { expect: 403 });
 await call('POST', '/api/auth/logout', {});
 await call('GET', '/api/me', undefined, { expect: 401 });
+
+// Phases 5-6: the church demo signs in, sees only its demo church, and its
+// setlist builds slides (song slides with timings, a Scripture reading).
+await call('POST', '/api/auth/church-demo', {});
+const orgs = (await call('GET', '/api/me/orgs')).json;
+check(orgs?.length === 1, 'the church demo sees exactly one church');
+if (orgs?.length) {
+  const org = orgs[0];
+  const setlists = (await call('GET', `/api/orgs/${org.id}/setlists`)).json;
+  check(setlists?.length >= 1 && setlists[0].item_count >= 5, 'the demo church has its seeded setlist');
+  if (setlists?.length) {
+    const deck = (await call('GET', `/api/orgs/${org.id}/setlists/${setlists[0].id}/slides`)).json;
+    const songs = deck?.items?.filter((i) => i.kind === 'song') || [];
+    check(songs.length >= 3 && songs.every((i) => i.slides.length > 0), 'setlist songs have slides');
+    check(songs.some((i) => i.hasTimings && i.slides.some((s) => Number.isFinite(s.startMs))), 'a hymn has timed slides for automatic mode');
+    check(deck?.items?.some((i) => i.kind === 'scripture' && i.slides[0]?.lines?.length), 'the Scripture reading has a slide');
+  }
+  await call('POST', '/api/orgs', { name: 'Another Church' }, { expect: 403 });
+  await call('GET', '/api/orgs/no-such-org', undefined, { expect: 404 });
+}
+await call('POST', '/api/auth/logout', {});
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');
 process.exit(failures ? 1 : 0);

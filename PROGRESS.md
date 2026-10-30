@@ -7,6 +7,11 @@ Last updated: 2026-10-30 · **Current work: SPEEDRUN** (owner, 2026-10-30): fini
 - Still ask the owner before: merging/pushing to main, production deploys, anything against the production database, anything that costs money, changing Production Vercel variables, reading or writing secrets. Preview deploys, the preview database and PRs are fine.
 - Done = push, PR, preview deploy, smoke test; report the preview URL, what works / what's rough, the SQL to run on production before merging, and the decisions list.
 
+## Speedrun status (2026-10-30, paused at the usage limit)
+- Done: foundation e348ebd/f222ae7; Phases 3-6 dd19fe8 (npm test 169 pass, 1 skipped). Local smoke 100/100 incl. church demo + slides. Browser-checked locally: church demo dashboard, Present (automatic mode advanced slides with the hymn), YouTube search + IFrame embed (308x240, plays, uncovered), switching video → hymn.
+- Left: lyrics view browser check (agent-tested only); push + preview deploy + smoke on preview; security self-check; i18n-review rows for the new strings; final hand-off (preview URL, works/rough, production SQL = apply server/schema.pg.sql, decisions).
+- Rough: no YouTube play events/Connect/queue for videos; church demo role preview, invites and member management skipped; church routes only run on SQLite (PGlite covers schema, not routes).
+
 ## Decisions (speedrun)
 One line each: question → choice (why). Reversible; review at merge.
 - Q2 spec "uncommitted work" note → closed (it was committed in 8b708bf).
