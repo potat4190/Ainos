@@ -5,11 +5,16 @@ import http from 'node:http';
 import { generateCatalog } from '../scripts/generate.js';
 import { createApp } from '../server/app.js';
 
-/** Fresh catalog (short tracks) + running server on a random port. */
-export async function startTestServer(options = {}) {
+/**
+ * Fresh catalog (short tracks) + running server on a random port.
+ * `prepare(dataDir)` may return more createApp options, worked out from the
+ * generated data before the app starts.
+ */
+export async function startTestServer({ prepare, ...options } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-test-'));
   await generateCatalog({ dataDir, quick: true, quiet: true });
-  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000, ...options });
+  const extra = prepare ? await prepare(dataDir) : {};
+  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000, ...options, ...extra });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {
@@ -41,6 +46,7 @@ export function client(base) {
     get: (u, h) => req('GET', u, undefined, h),
     post: (u, b = {}, h) => req('POST', u, b, h),
     put: (u, h) => req('PUT', u, undefined, h),
+    putJson: (u, b) => req('PUT', u, b),
     patch: (u, b) => req('PATCH', u, b),
     del: (u) => req('DELETE', u),
     get cookie() { return cookie; },

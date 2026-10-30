@@ -89,7 +89,7 @@ export async function resetDemo(store, { language = 'en', now = Date.now() } = {
       await t.run(`DELETE FROM search_index WHERE kind = 'playlist' AND ref_id IN (${inList(playlists)})`, playlists);
       await t.run(`DELETE FROM playlists WHERE id IN (${inList(playlists)})`, playlists); // playlist_tracks cascade
     }
-    for (const table of ['liked_tracks', 'followed_artists', 'streams', 'events', 'generated_playlists']) {
+    for (const table of ['liked_tracks', 'followed_artists', 'streams', 'events', 'generated_playlists', 'user_settings']) {
       await t.run(`DELETE FROM ${table} WHERE user_id = ?`, [uid]);
     }
 

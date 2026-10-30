@@ -7,7 +7,9 @@ const TRACK_SELECT = `
   SELECT t.id, t.title, t.track_no, t.duration_ms, t.genre, t.language, t.tempo, t.key, t.mode,
          t.energy, t.valence, t.danceability, t.acousticness, t.loudness_lufs,
          a.id AS artist_id, a.name AS artist_name,
-         al.id AS album_id, al.title AS album_title, al.cover AS album_cover, al.color AS album_color
+         al.id AS album_id, al.title AS album_title, al.cover AS album_cover, al.color AS album_color,
+         (SELECT ss.song_id FROM song_sources ss JOIN songs s ON s.id = ss.song_id
+          WHERE ss.track_id = t.id AND ss.source = 'ainos' AND s.org_id IS NULL ORDER BY ss.song_id LIMIT 1) AS song_id
   FROM tracks t
   JOIN artists a ON a.id = t.artist_id
   JOIN albums al ON al.id = t.album_id`;
@@ -23,6 +25,7 @@ export function trackDto(r) {
     duration_ms: r.duration_ms,
     genre: r.genre,
     language: r.language,
+    song_id: r.song_id ?? null, // the song it performs (e.g. a hymn), for its Scripture and lyrics
     artist: { id: r.artist_id, name: r.artist_name },
     album: { id: r.album_id, title: r.album_title, cover: '/' + r.album_cover, color: r.album_color },
     features: {
