@@ -686,7 +686,7 @@ export async function settings(el, _p, app) {
 
   const langOptions = LANGUAGES.map((l) => [l.code, `${l.native} (${l.label})`]);
   el.append(row(t('languageSettingTitle'), t('languageSettingDesc'), select(getLang(), langOptions, (v) => app.changeLanguage(v))));
-  try {
+  if (!me.is_demo) try {
     const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
     const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
     const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];

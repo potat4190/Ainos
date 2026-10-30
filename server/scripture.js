@@ -86,22 +86,28 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
   const versionLists = new Map(); // language → { at, versions }
   const versionInfo = new Map(); // id → { at, version }
   const votdRefs = new Map(); // day → { at, usfm }
+  const loading = new Map(); // language → the version list being fetched, shared by concurrent callers
 
-  async function call(pathname, params = []) {
+  // Redirects are refused: fetch would carry the key header to wherever one points.
+  async function call(pathname, params = [], deadline = null) {
     const url = new URL(YOUVERSION_API + pathname);
     for (const [k, v] of params) url.searchParams.append(k, v);
+    const signal = deadline ? AbortSignal.any([AbortSignal.timeout(timeoutMs), deadline]) : AbortSignal.timeout(timeoutMs);
     let res;
     try {
-      res = await fetch(url, { headers: { 'X-YVP-App-Key': appKey, Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
+      res = await fetch(url, { headers: { 'X-YVP-App-Key': appKey, Accept: 'application/json' }, signal, redirect: 'error' });
     } catch (err) {
       throw new UpstreamError(err.name === 'TimeoutError' ? 'timeout' : 'network error');
     }
     if (!res.ok) throw new UpstreamError(`HTTP ${res.status}`);
+    let body;
     try {
-      return await res.json();
+      body = await res.json();
     } catch {
       throw new UpstreamError('bad JSON');
     }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new UpstreamError('unexpected body');
+    return body;
   }
 
   const versionDto = (b) => ({
@@ -118,13 +124,20 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
     if (!appKey || !range) return [];
     const hit = versionLists.get(language);
     if (hit && now() - hit.at < DAY_MS) return hit.versions;
+    if (!loading.has(language)) loading.set(language, loadVersions(language, range).finally(() => loading.delete(language)));
+    return loading.get(language);
+  }
+
+  // At most 5 pages, all within two timeouts' time.
+  async function loadVersions(language, range) {
+    const deadline = AbortSignal.timeout(timeoutMs * 2);
     try {
       const versions = [];
       let token = null;
       for (let page = 0; page < 5; page++) {
         const params = [['language_ranges[]', range], ['page_size', '99']];
         if (token) params.push(['page_token', token]);
-        const body = await call('/bibles', params);
+        const body = await call('/bibles', params, deadline);
         for (const b of body.data || []) if (Number.isInteger(b.id)) versions.push(versionDto(b));
         token = body.next_page_token;
         if (!token) break;
@@ -170,9 +183,10 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
    * A passage in a version (an id versionStatus() called 'allowed'), or the
    * fallback for `language`.
    */
-  async function getPassage({ usfm, versionId = null, language = 'en' }) {
+  async function getPassage({ usfm, versionId = null, language = 'en', upstream = true }) {
     usfm = usfmRef(usfm);
     if (!appKey) return fallback(usfm, language, 'no_key');
+    if (!upstream) return fallback(usfm, language, 'busy');
     if (!versionId) return fallback(usfm, language, 'no_version');
     try {
       const [body, version] = await Promise.all([call(`/bibles/${versionId}/passages/${usfm}`, [['format', 'text']]), getVersion(versionId)]);
@@ -186,10 +200,10 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
   }
 
   /** Today's Verse of the Day: YouVersion's reference when it can be had, else the bundled list's. */
-  async function getVerseOfTheDay({ versionId = null, language = 'en', date = new Date(now()) } = {}) {
+  async function getVerseOfTheDay({ versionId = null, language = 'en', date = new Date(now()), upstream = true } = {}) {
     const day = dayOfYear(date);
     let usfm = null;
-    if (appKey) {
+    if (appKey && upstream) {
       const hit = votdRefs.get(day);
       if (hit && now() - hit.at < HOUR_MS) usfm = hit.usfm;
       else {
@@ -203,7 +217,7 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
       }
     }
     usfm ||= VOTD_FALLBACK[(day - 1) % VOTD_FALLBACK.length];
-    return { day, ...(await getPassage({ usfm, versionId, language })) };
+    return { day, ...(await getPassage({ usfm, versionId, language, upstream })) };
   }
 
   return { getPassage, getVerseOfTheDay, listVersions, versionStatus, hasKey: !!appKey };

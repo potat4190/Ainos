@@ -27,11 +27,12 @@ function fakeYouVersion() {
     222: { id: 222, abbreviation: 'PRB', title: 'Prueba', copyright: '© Editorial', language_tag: 'es' } };
   fake.fetch = async (url, init = {}) => {
     const u = new URL(url);
-    fake.calls.push({ url: u.href, key: init.headers?.['X-YVP-App-Key'] });
+    fake.calls.push({ url: u.href, key: init.headers?.['X-YVP-App-Key'], redirect: init.redirect });
     if (fake.mode === 'timeout') {
       return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
     }
     if (fake.mode === 'error') return json({ error: 'boom' }, 500);
+    if (fake.mode === 'null') return json(null);
     if (init.headers?.['X-YVP-App-Key'] !== KEY) return json({ detail: 'unauthorized' }, 401);
     let m;
     if (u.pathname === '/v1/bibles') {
@@ -121,6 +122,30 @@ test('a version is refused only when every language list loaded; a failed list i
   assert.equal(await createScripture({ appKey: '' }).versionStatus(111), 'unknown');
 });
 
+test('concurrent callers share one version-list load per language', async () => {
+  const fake = fakeYouVersion();
+  const s = createScripture({ appKey: KEY, fetch: fake.fetch });
+  const results = await Promise.all(Array.from({ length: 10 }, () => s.versionStatus(111)));
+  assert.ok(results.every((r) => r === 'allowed'));
+  assert.equal(fake.calls.filter((c) => new URL(c.url).pathname === '/v1/bibles').length, 6, 'one list request per UI language');
+});
+
+test('past the app-wide daily budget, Scripture answers from the fallback without calling YouVersion', async () => {
+  const fake = fakeYouVersion();
+  const srv = await startTestServer({ scripture: createScripture({ appKey: KEY, fetch: fake.fetch }), scriptureDailyBudget: 2 });
+  try {
+    const c = await signup(srv.base, 'thrifty');
+    const sources = [];
+    for (let i = 0; i < 3; i++) sources.push((await c.get('/api/scripture/EPH.2.8?version=111')).json);
+    assert.deepEqual(sources.map((p) => p.source), ['youversion', 'youversion', 'fallback']);
+    assert.equal(sources[2].reason, 'busy');
+    const passageCalls = fake.calls.filter((x) => x.url.includes('/passages/')).length;
+    assert.equal(passageCalls, 2, 'no upstream passage call once the budget is spent');
+  } finally {
+    await srv.close();
+  }
+});
+
 test('admins come from ADMIN_USER_IDS only, and a demo account never is one', () => {
   const ids = parseAdminIds(' 12,x, 7 ,0,-3,12');
   assert.deepEqual([...ids].sort(), ['12', '7']);
@@ -201,6 +226,7 @@ test('with a key: YouVersion text in the chosen version, with its attribution; t
   assert.ok(fake.calls.length > 0);
   for (const call of fake.calls) {
     assert.equal(call.key, KEY, 'the key is sent as X-YVP-App-Key');
+    assert.equal(call.redirect, 'error', 'redirects are refused, so the key never follows one');
     assert.ok(!call.url.includes(KEY), 'and never in a URL');
     assert.ok(ALLOWED_UPSTREAM.some((re) => re.test(call.url)), `only the three endpoints, with server-built URLs: ${call.url}`);
   }
@@ -214,6 +240,9 @@ test('an API error or a timeout falls back to the public-domain text; the reques
     const err = await c.get('/api/scripture/EPH.2.8');
     assert.equal(err.status, 200);
     assert.deepEqual([err.json.text, err.json.source, err.json.version.abbreviation], [fallbackText('EPH.2.8'), 'fallback', 'WEB']);
+    fake.mode = 'null';
+    const odd = await c.get('/api/scripture/EPH.2.8?version=111');
+    assert.deepEqual([odd.status, odd.json.source], [200, 'fallback'], 'a body that is not an object falls back too');
     fake.mode = 'timeout';
     const started = Date.now();
     const slow = await c.get('/api/scripture/PHP.4.7?version=111');
@@ -256,6 +285,7 @@ test('a song lists its references by section; only a catalog admin may replace t
   const body = { references: ['TIT.2.11', { usfm: 'eph.2.8', section_label: 'V1' }] };
   assert.equal((await c.putJson(`/api/songs/${songId}/scripture`, body)).status, 403, 'not an admin');
   const demo = await login(withKey.base);
+  assert.equal((await demo.putJson('/api/me/bible-version', { version: 111 })).status, 403, 'the shared demo keeps one Bible version for everyone');
   assert.equal((await demo.putJson(`/api/songs/${songId}/scripture`, body)).status, 403, 'the demo, though listed, is never an admin');
 
   const admin = record(adminClient);
@@ -276,7 +306,7 @@ test('a song lists its references by section; only a catalog admin may replace t
   try {
     const log = db.prepare("SELECT user_id, action, target_type, target_id, details FROM audit_log WHERE action = 'song.scripture.replace'").all();
     assert.equal(log.length, 1, 'one entry: refused and invalid attempts change nothing');
-    assert.deepEqual({ ...log[0], details: JSON.parse(log[0].details) }, { user_id: adminId, action: 'song.scripture.replace', target_type: 'song', target_id: songId, details: { references: ['TIT.2.11', 'EPH.2.8'] } });
+    assert.deepEqual({ ...log[0], details: JSON.parse(log[0].details) }, { user_id: adminId, action: 'song.scripture.replace', target_type: 'song', target_id: songId, details: { before: HYMNS[0].scripture, after: ['TIT.2.11', 'EPH.2.8@V1'] } });
   } finally {
     db.close();
   }

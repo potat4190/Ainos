@@ -1,6 +1,7 @@
 import http from 'node:http';
 import net from 'node:net';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sqliteStore, postgresStore, inList } from './store.js';
@@ -14,7 +15,7 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
+import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
@@ -53,6 +54,7 @@ export async function createApp({
   demoSignInsPerMinute = 6,
   adminUserIds = process.env.ADMIN_USER_IDS,
   scripture = createScripture({ log }),
+  scriptureDailyBudget = Number(process.env.SCRIPTURE_DAILY_BUDGET) || 20_000, // YouVersion requests a day, all listeners
 } = {}) {
   const adminIds = parseAdminIds(adminUserIds);
   let store;
@@ -188,16 +190,26 @@ export async function createApp({
   }
 
   // 60 a minute and 600 a day per listener; demo visitors share one account,
-  // so theirs is per address.
+  // so theirs is per demo session (each demo sign-in is itself rate-limited).
+  // Returns whether YouVersion may be called: past the app-wide daily budget,
+  // Scripture keeps answering from the fallback instead of spending the key's quota.
   async function scriptureLimit(req, user) {
-    const who = isDemo(user) ? `demo:${clientIp(req)}` : `user:${user.id}`;
+    const who = isDemo(user) ? `demo:${crypto.createHash('sha256').update(user.token).digest('hex').slice(0, 24)}` : `user:${user.id}`;
     await rateLimit(store, `scripture:${who}`, { limit: 60, windowSec: 60, message: 'Too many Scripture requests, try again in a minute' });
     await rateLimit(store, `scripture:${who}`, { limit: 600, windowSec: 86_400, message: 'Daily Scripture limit reached, try again tomorrow' });
+    try {
+      await rateLimit(store, 'scripture:all', { limit: scriptureDailyBudget, windowSec: 86_400 });
+      return true;
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 429) return false;
+      throw err;
+    }
   }
 
-  r.get('/api/scripture/versions', auth(async ({ res, user, query }) => {
+  r.get('/api/scripture/versions', auth(async ({ req, res, user, query }) => {
     const language = query.get('lang') || user.language;
     if (!LANGUAGES.includes(language)) throw new HttpError(400, `lang must be one of: ${LANGUAGES.join(', ')}`);
+    await scriptureLimit(req, user);
     const fallback = language === FALLBACK_SOURCE.language
       ? { abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright } : null;
     sendJson(res, 200, {
@@ -206,18 +218,19 @@ export async function createApp({
     });
   }));
   r.get('/api/scripture/votd', auth(async ({ req, res, user, query }) => {
-    await scriptureLimit(req, user);
+    const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
-    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language }));
+    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, upstream }));
   }));
   r.get('/api/scripture/:ref', auth(async ({ req, res, user, params, query }) => {
     const usfm = usfmRef(params.ref);
-    await scriptureLimit(req, user);
+    const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
-    sendJson(res, 200, await scripture.getPassage({ usfm, versionId, language: user.language }));
+    sendJson(res, 200, await scripture.getPassage({ usfm, versionId, language: user.language, upstream }));
   }));
 
-  r.put('/api/me/bible-version', auth(async ({ req, res, user }) => {
+  r.put('/api/me/bible-version', auth(noDemo(async ({ req, res, user }) => {
+    await scriptureLimit(req, user);
     const { version } = await readJson(req);
     if (version === null) {
       await store.run("DELETE FROM user_settings WHERE user_id = ? AND key = 'bible_version'", [user.id]);
@@ -228,7 +241,7 @@ export async function createApp({
     await store.run(`INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, 'bible_version', ?, ?)
       ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, [user.id, String(id), Date.now()]);
     sendJson(res, 200, { bible_version: id });
-  }));
+  })));
 
   // A global song (org songs arrive with churches in Phase 5), or 404.
   async function globalSong(id) {
@@ -268,11 +281,14 @@ export async function createApp({
     });
     if (new Set(refs.map((x) => x.usfm)).size !== refs.length) throw new HttpError(400, 'A reference is listed twice', 'invalid_input');
     await store.tx(async (t) => {
+      const before = await t.all('SELECT usfm_ref, section_label FROM song_scripture WHERE song_id = ? ORDER BY position', [song.id]);
       await t.run('DELETE FROM song_scripture WHERE song_id = ?', [song.id]);
       for (const [i, x] of refs.entries()) {
         await t.run('INSERT INTO song_scripture (song_id, section_label, usfm_ref, position) VALUES (?, ?, ?, ?)', [song.id, x.label, x.usfm, i]);
       }
-      await audit(t, { userId: user.id, action: 'song.scripture.replace', targetType: 'song', targetId: song.id, details: { references: refs.map((x) => x.usfm) } });
+      const list = (rows) => rows.map((x) => (x.section_label ? `${x.usfm_ref}@${x.section_label}` : x.usfm_ref));
+      await audit(t, { userId: user.id, action: 'song.scripture.replace', targetType: 'song', targetId: song.id,
+        details: { before: list(before), after: list(refs.map((x) => ({ usfm_ref: x.usfm, section_label: x.label }))) } });
     });
     sendJson(res, 200, await songScripture(song.id));
   }));
