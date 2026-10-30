@@ -7,10 +7,15 @@ Last updated: 2026-10-30 · **Current work: SPEEDRUN** (owner, 2026-10-30): fini
 - Still ask the owner before: merging/pushing to main, production deploys, anything against the production database, anything that costs money, changing Production Vercel variables, reading or writing secrets. Preview deploys, the preview database and PRs are fine.
 - Done = push, PR, preview deploy, smoke test; report the preview URL, what works / what's rough, the SQL to run on production before merging, and the decisions list.
 
-## Speedrun status (2026-10-30, paused at the usage limit)
-- Done: foundation e348ebd/f222ae7; Phases 3-6 dd19fe8 (npm test 169 pass, 1 skipped). Local smoke 100/100 incl. church demo + slides. Browser-checked locally: church demo dashboard, Present (automatic mode advanced slides with the hymn), YouTube search + IFrame embed (308x240, plays, uncovered), switching video → hymn.
-- Left: lyrics view browser check (agent-tested only); push + preview deploy + smoke on preview; security self-check; i18n-review rows for the new strings; final hand-off (preview URL, works/rough, production SQL = apply server/schema.pg.sql, decisions).
-- Rough: no YouTube play events/Connect/queue for videos; church demo role preview, invites and member management skipped; church routes only run on SQLite (PGlite covers schema, not routes).
+## Speedrun status (2026-10-30): built, preview-checked, waiting for owner review
+- PR #5 (branch `speedrun`): https://github.com/potat4190/Ainos/pull/5 · preview https://ainos-git-speedrun-rhidayas-projects.vercel.app (Vercel Authentication on) · CI `test` passed.
+- Commits: Phase 2 review fixes 33d6fa5; foundation e348ebd + f222ae7; Phases 3-6 dd19fe8; smoke/church checks 67bd513; i18n review rows + this status (next commit).
+- Tests: npm test 169 pass, 1 skipped (CI-only). Local smoke 100/100 (incl. church demo + slides).
+- Preview checks (run inside the preview page in Chrome, Postgres preview DB; `scripts/smoke.js` itself needs VERCEL_AUTOMATION_BYPASS_SECRET, which this session's environment no longer has): 16/16 pass: app CSP allows www.youtube.com with no unsafe-*, listener demo, search → Carry My Cross YouTube source, hymn sections + timings + Scripture, passage (WEB fallback; no YouVersion key in Preview), listener demo can't create a church, church demo sees only its church, seeded setlist, timed slides, reorder items (Postgres), paste lyrics → org song (Postgres), church demo can't create another church, unknown church 404. YouTube plays in the standard embed on the preview (308×240, uncovered, no CSP violations).
+- Browser-checked locally: church dashboard, Present (automatic mode advanced title → Verse 1 with the hymn), YouTube search + playback, video → hymn switch, synced lyrics view.
+- Security self-check: every church route goes through requireRole (404 for non-members, 403 forbidden_role for a member without the role, both demos confined; the church demo only to the demo church); every child query carries org_id; listener lyrics/timings filtered to global + my churches (tested); strict CSP holds; YouTube player visible. Nothing to fix.
+- Before merging (owner): apply server/schema.pg.sql to production (Supabase SQL editor; re-runnable; adds song_scripture, user_settings, youtube_video_cache, lyric_timings, orgs, org_members, setlists, setlist_items), or set DATABASE_MIGRATION_URL for Production builds. Optional: YOUVERSION_APP_KEY in Preview to list Bible versions.
+- Rough: YouTube videos log no play events, don't join the queue or Connect (Next goes back to the native queue); no tap-to-sync (only hymns have timings); church demo has no role preview, invites or member management; Phase 4 section-name keys are duplicated between the lyrics view and projection (`prSec*`); automatic projection keeps YouTube items manual; 820 new translations await native review (docs/i18n-review.md).
 
 ## Decisions (speedrun)
 One line each: question → choice (why). Reversible; review at merge.
@@ -34,6 +39,10 @@ One line each: question → choice (why). Reversible; review at merge.
 - Q27 hymn Scripture references → as proposed in Phase 2.
 - Q28 Verse of the Day fallback list → as proposed in Phase 2.
 - setlist item reorder → the whole item list is replaced in one transaction (no deferred unique constraint needed).
+- Church errors → 404 for non-members, 403 `forbidden_role` for a member whose role is too low (so the UI can explain), 403 `demo_not_allowed` for the church demo outside its rights.
+- Church limits → 5 new churches per user per day, ≤ 20 churches per user, ≤ 2000 songs per church, 60 pasted songs per hour, ≤ 40 items per setlist, ≤ 500 setlists per church (stop abuse; generous for real churches).
+- Church nav link → shown to every signed-in user except the listener demo (so anyone can create a church from #/church).
+- Projection title slides → one per song, added by the client; slide ids 0-based (`V1-0-0`); automatic mode advances when playback crosses a slide's startMs, a manual jump seeks the hymn there; YouTube items always manual in automatic mode.
 - Schema scope → new tables youtube_video_cache, lyric_timings, orgs, org_members, setlists, setlist_items only (no youtube_channels, search_cache, api_quota, org_invites, uploads).
 
 ## Done (newest first)
