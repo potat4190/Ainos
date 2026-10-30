@@ -7,9 +7,9 @@ import { player } from '../player.js';
 import { t } from '../i18n.js';
 import { WEB_ATTRIBUTION } from '../data/hymns.js';
 import * as home from '../views/home.js';
+import { mountYouTube, watchUrl } from '../youtube.js';
 
 const USER_SCROLL_GRACE_MS = 3000;
-const YT_ORIGIN = 'https://www.youtube-nocookie.com';
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 let unsubs = [];
@@ -33,12 +33,6 @@ function sectionLabel(label = '') {
 
 const reduceMotion = () => matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-function embedUrl(youtubeId) {
-  let url = `${YT_ORIGIN}/embed/${encodeURIComponent(youtubeId)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
-  if (/^https?:/.test(location.origin)) url += `&origin=${encodeURIComponent(location.origin)}`;
-  return url;
-}
-
 export function mountNowPlaying(el) {
   // A language change rebuilds the shell and mounts again: drop the old listeners.
   for (const u of unsubs) u();
@@ -57,8 +51,8 @@ export function mountNowPlaying(el) {
     const cur = player.current;
     if (!state.panel) {
       el.hidden = true;
-      // Removing the iframe stops the video: it never plays hidden.
-      if (ctx.key) { clear(el); Object.assign(ctx, { key: null, tabs: null, lyrics: null, video: null }); }
+      // Removing the player stops the video: it never plays hidden.
+      if (ctx.key) { ctx.video?.yt?.destroy(); clear(el); Object.assign(ctx, { key: null, tabs: null, lyrics: null, video: null }); }
       return;
     }
     el.hidden = false;
@@ -72,6 +66,7 @@ export function mountNowPlaying(el) {
   function build(key, cur, isVideo) {
     ctx.key = key;
     ctx.lyrics = null;
+    ctx.video?.yt?.destroy();
     ctx.video = null;
     const tab = (panel, label) => h('button', { class: 'np-tab', type: 'button', onclick: () => set({ panel }) }, label);
     ctx.tabs = { nowplaying: tab('nowplaying', t('npNowPlaying')), lyrics: tab('lyrics', t('npLyrics')) };
@@ -102,11 +97,11 @@ export function mountNowPlaying(el) {
     const v = ctx.video;
     if (!v) return;
     v.note.hidden = state.panel !== 'lyrics';
-    // Forward the player bar's play/pause to the official player (YouTube iframe API messages).
+    // Forward the player bar's play/pause to the official player (IFrame Player API).
     const want = player.isPlaying();
-    if (v.frame.tagName === 'IFRAME' && want !== v.playing) {
+    if (v.yt && want !== v.playing) {
       v.playing = want;
-      v.frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: want ? 'playVideo' : 'pauseVideo', args: [] }), YT_ORIGIN);
+      if (want) v.yt.play(); else v.yt.pause();
     }
   }
 
@@ -164,18 +159,31 @@ export function mountNowPlaying(el) {
   }
 
   function buildVideo(v) {
-    const frame = v.youtubeId
-      ? h('iframe', {
-        class: 'np-frame', src: embedUrl(v.youtubeId), title: t('npVideoFrameTitle', { title: v.title }),
-        allow: 'autoplay; encrypted-media; picture-in-picture', allowfullscreen: true,
-        referrerpolicy: 'strict-origin-when-cross-origin',
-      })
-      : h('div', { class: 'np-frame np-frame-missing', role: 'note' }, icon('video', 'icon np-missing-icon'), h('p', {}, t('npVideoIdNotSet')));
+    // The official player (IFrame Player API, www.youtube.com). If YouTube can't
+    // play it here, a fallback appears BELOW the player, which stays visible.
+    const fallback = h('p', { class: 'np-yt-fallback', role: 'status' },
+      t('npYtFallback'), ' ',
+      h('a', { href: watchUrl(v.youtubeId || ''), target: '_blank', rel: 'noopener noreferrer' }, t('npWatchOnYouTube')));
+    fallback.hidden = true;
+    let frame;
+    let yt = null;
+    if (v.youtubeId) {
+      frame = h('div', { class: 'np-frame np-frame-host' });
+      yt = mountYouTube(frame, {
+        videoId: v.youtubeId,
+        title: t('npVideoFrameTitle', { title: v.title }),
+        onProblem: (reason) => { console.info('[ainos] YouTube player:', reason); fallback.hidden = false; },
+        onPlaying: () => { fallback.hidden = true; },
+      });
+    } else {
+      frame = h('div', { class: 'np-frame np-frame-missing', role: 'note' }, icon('video', 'icon np-missing-icon'), h('p', {}, t('npVideoIdNotSet')));
+    }
     const note = h('p', { class: 'np-video-nolyrics' }, icon('lyrics'), t('npNoLyricsVideo'));
     note.hidden = true;
-    ctx.video = { frame, note, playing: true };
+    ctx.video = { yt, note, playing: true };
     return h('div', { class: 'np-body np-video' },
       h('div', { class: 'np-frame-wrap' }, frame),
+      fallback,
       h('div', { class: 'np-titles' },
         h('span', { class: 'np-badge' }, icon('video'), t('npOfficialVideo')),
         h('h2', { class: 'np-title' }, v.title),

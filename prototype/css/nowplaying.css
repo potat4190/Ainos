@@ -145,3 +145,8 @@
   .np-cover { max-width: 240px; align-self: center; }
   .np-line { font-size: 17px; }
 }
+
+/* Shown under the player (never over it) when YouTube can't play the video here. */
+.np-yt-fallback { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.np-yt-fallback a { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.np-yt-fallback a:hover { text-decoration: underline; }
