@@ -1,2 +1,46 @@
-// Strings for this feature: { en: {...}, ne: {...} } (Nepali complete).
-export default { en: {}, ne: {} };
+// Strings for the right panel (now playing, synced lyrics, Scripture, video).
+// { en: {...}, ne: {...} } (Nepali complete). Keys are prefixed "np".
+export default {
+  en: {
+    npPanel: 'Panel view',
+    npNowPlaying: 'Now playing',
+    npLyrics: 'Lyrics',
+    npCredits: 'Credits',
+    npWords: 'Words',
+    npTune: 'Tune',
+    npScripture: 'Scripture',
+    npScriptureSub: 'The Word behind this hymn',
+    npEmptyTitle: 'Nothing playing yet',
+    npEmptySub: 'Pick a hymn to hear it here, with synced lyrics and the Scripture behind it.',
+    npLyricsEmpty: 'Play a hymn to follow its lyrics here.',
+    npOfficialVideo: 'Official video',
+    npOfficialChannel: '{artist} · official channel',
+    npPlaysFromYouTube: 'This video plays from YouTube, in its official player.',
+    npVideoIdNotSet: 'Video id not set — fill in js/config.js',
+    npVideoFrameTitle: '{title} — official video on YouTube',
+    npNoLyricsVideo: 'Lyrics aren’t available for this video',
+    npSyncedHint: 'Synced · tap a line to jump',
+    npMoreVerses: 'More verses (not in this recording)',
+  },
+  ne: {
+    npPanel: 'प्यानलको दृश्य',
+    npNowPlaying: 'अहिले बजिरहेको',
+    npLyrics: 'गीतका शब्द',
+    npCredits: 'श्रेय',
+    npWords: 'शब्द',
+    npTune: 'धुन',
+    npScripture: 'धर्मशास्त्र',
+    npScriptureSub: 'यो भजनको पछाडिको वचन',
+    npEmptyTitle: 'अहिले केही बजिरहेको छैन',
+    npEmptySub: 'यहाँ सुन्न एउटा भजन छान्नुहोस् — मिलाइएका शब्द र त्यसको पछाडिको धर्मशास्त्रसहित।',
+    npLyricsEmpty: 'यहाँ शब्दहरू पछ्याउन एउटा भजन बजाउनुहोस्।',
+    npOfficialVideo: 'आधिकारिक भिडियो',
+    npOfficialChannel: '{artist} · आधिकारिक च्यानल',
+    npPlaysFromYouTube: 'यो भिडियो YouTube बाट, त्यसकै आधिकारिक प्लेयरमा बज्छ।',
+    npVideoIdNotSet: 'भिडियो आईडी राखिएको छैन — js/config.js मा भर्नुहोस्',
+    npVideoFrameTitle: '{title} — YouTube मा आधिकारिक भिडियो',
+    npNoLyricsVideo: 'यो भिडियोका लागि गीतका शब्द उपलब्ध छैनन्',
+    npSyncedHint: 'मिलाइएको · जानका लागि कुनै पङ्क्तिमा थिच्नुहोस्',
+    npMoreVerses: 'थप पदहरू (यो रेकर्डिङमा छैनन्)',
+  },
+};

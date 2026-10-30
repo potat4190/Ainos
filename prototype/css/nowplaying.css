@@ -1,1 +1,147 @@
-/* nowplaying styles */
+/* Right panel: now playing, Scripture card, synced lyrics and the official video. */
+
+/* The panel itself is the scroll container; its padding moves inside so the
+   sticky header sits flush at the top. */
+.right { padding: 0; scroll-padding-top: 56px; overscroll-behavior: contain; }
+
+.np-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 12px 10px 16px;
+  background: linear-gradient(var(--panel) 75%, rgb(18 18 18 / 0));
+}
+/* Over a video the header must never overlap the player: it scrolls away instead. */
+.np-head-static { position: static; background: var(--panel); }
+.np-tabs { display: flex; gap: 6px; }
+.np-tab {
+  border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+  background: var(--panel-3); color: var(--text-2); font-size: 13px; font-weight: 600;
+  transition: background .15s, color .15s;
+}
+.np-tab:hover { color: var(--text); }
+.np-tab.active { background: var(--text); color: #000; }
+.np-close { width: 32px; height: 32px; }
+
+.np-body { padding: 4px 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ---- now playing ---- */
+.np-cover { width: 100%; border-radius: 8px; box-shadow: 0 16px 40px rgb(0 0 0 / .5); }
+.np-titlerow { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.np-titles { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.np-title { font-size: 22px; font-weight: 800; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.np-artist { color: var(--text-2); font-size: 13.5px; }
+.np-lyrics-btn { flex: none; }
+.np-lyrics-btn .icon { width: 16px; height: 16px; }
+
+.np-card { background: var(--panel-2); border-radius: 10px; padding: 14px 16px; }
+.np-card-title { font-size: 15px; font-weight: 700; }
+.np-card-head { margin-bottom: 10px; }
+.np-card-sub { margin: 2px 0 0; color: var(--text-3); font-size: 12.5px; }
+.np-credits { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 10px 0 0; font-size: 13px; }
+.np-credits dt { color: var(--text-3); }
+.np-credits dd { margin: 0; color: var(--text); }
+
+/* Scripture: an accordion of 1–2 passages, quoted with the WEB attribution. */
+.np-scripture {
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgb(30 215 96 / .10), transparent 60%),
+    linear-gradient(160deg, #1f2420, var(--panel-2) 55%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .05);
+}
+.np-scr-item { border-top: 1px solid rgb(255 255 255 / .07); }
+.np-scr-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 2px;
+  border: 0; background: none; cursor: pointer; text-align: left; color: var(--text);
+  font-weight: 600; font-size: 14px;
+}
+.np-scr-btn:hover .np-scr-ref { color: var(--accent); }
+.np-scr-icon { width: 17px; height: 17px; color: var(--accent); opacity: .85; }
+.np-scr-ref { flex: 1; transition: color .15s; }
+.np-chev { width: 18px; height: 18px; color: var(--text-3); transition: rotate .25s ease; }
+.np-scr-item.open .np-chev { rotate: 180deg; color: var(--text); }
+.np-scr-region { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s ease; }
+.np-scr-item.open .np-scr-region { grid-template-rows: 1fr; }
+.np-scr-inner { overflow: hidden; min-height: 0; }
+.np-quote {
+  position: relative; margin: 2px 0 8px; padding: 4px 4px 4px 18px;
+  border-left: 2px solid var(--accent);
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-style: italic;
+  font-size: 15.5px; line-height: 1.6; color: #ececec;
+  opacity: 0; translate: 0 -4px; transition: opacity .3s ease .05s, translate .3s ease .05s;
+}
+.np-scr-item.open .np-quote { opacity: 1; translate: 0 0; }
+.np-quote p { margin: 0; }
+.np-attrib { margin: 0 0 14px 18px; font-size: 11.5px; letter-spacing: .02em; color: var(--text-3); }
+
+/* ---- empty state ---- */
+.np-empty { align-items: center; text-align: center; padding-top: 40px; gap: 10px; }
+.np-empty-art {
+  display: grid; place-items: center; width: 88px; height: 88px; border-radius: 50%; margin-bottom: 6px;
+  background: radial-gradient(circle at 30% 25%, rgb(30 215 96 / .25), var(--panel-2) 70%);
+}
+.np-empty-icon { width: 36px; height: 36px; color: var(--accent); }
+.np-empty-title { font-size: 18px; font-weight: 700; }
+.np-empty p { margin: 0; max-width: 260px; }
+
+/* ---- official video: always visible, never covered ---- */
+.np-frame-wrap { width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+.np-frame { display: block; width: 100%; height: 240px; min-height: 220px; border: 0; background: #000; }
+.np-frame-missing {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 20px; text-align: center; color: var(--text-2); font-size: 13px;
+  background: repeating-linear-gradient(135deg, #0b0b0b 0 12px, #101010 12px 24px);
+  box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px;
+}
+.np-frame-missing p { margin: 0; max-width: 240px; }
+.np-missing-icon { width: 34px; height: 34px; color: var(--text-3); }
+.np-badge {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 2px;
+  padding: 3px 9px; border-radius: 999px; background: var(--panel-3); color: var(--text-2);
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+}
+.np-badge .icon { width: 14px; height: 14px; }
+.np-video-nolyrics {
+  display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 14px; border-radius: 10px;
+  background: var(--panel-2); color: var(--text-3); font-size: 13px;
+}
+.np-video-nolyrics[hidden] { display: none; }
+.np-video-nolyrics .icon { width: 18px; height: 18px; }
+.np-yt-note { margin: -6px 0 0; color: var(--text-3); font-size: 12px; }
+
+/* ---- synced lyrics ---- */
+.np-lyrics { gap: 6px; padding-bottom: 40vh; }
+.np-lyrics-head { margin-bottom: 8px; }
+.np-hint { display: flex; align-items: center; gap: 7px; margin: 6px 0 0; font-size: 12px; color: var(--text-3); }
+.np-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.np-sec { margin: 12px 0 4px; }
+.np-sec-label {
+  display: inline-block; margin: 0 0 6px 8px; padding: 1px 7px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-3); background: rgb(255 255 255 / .05);
+}
+.np-line {
+  display: block; width: 100%; padding: 5px 8px; margin: 1px 0; border: 0; border-radius: 6px;
+  background: none; cursor: pointer; text-align: left;
+  font-size: 18px; font-weight: 700; line-height: 1.35; color: var(--text-3);
+  transform-origin: left center;
+  transition: color .3s ease, opacity .3s ease, transform .3s ease, text-shadow .3s ease, background .15s;
+}
+.np-line:hover { background: rgb(255 255 255 / .05); color: var(--text-2); }
+.np-line.past { color: var(--text-2); opacity: .5; }
+.np-line.current {
+  color: var(--text); opacity: 1; transform: scale(1.06);
+  text-shadow: 0 0 18px rgb(30 215 96 / .45), 0 0 2px rgb(30 215 96 / .35);
+}
+.np-more { margin-top: 28px; padding-top: 16px; border-top: 1px solid rgb(255 255 255 / .08); }
+.np-more-title { font-size: 13px; font-weight: 700; color: var(--text-3); margin: 0 0 4px 8px; }
+.np-line-static { margin: 0; padding: 3px 8px; font-size: 15px; line-height: 1.45; color: var(--text-3); opacity: .75; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-line, .np-quote, .np-scr-region, .np-chev { transition: none; }
+}
+
+@media (max-width: 760px) {
+  .np-frame { height: 220px; min-height: 200px; }
+  .np-cover { max-width: 240px; align-self: center; }
+  .np-line { font-size: 17px; }
+}

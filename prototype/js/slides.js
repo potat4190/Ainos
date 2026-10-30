@@ -34,14 +34,23 @@ export function parseLyrics(text) {
     }
     if (!block.length) continue;
     // Unlabelled: a block that repeats an earlier one is the chorus; otherwise the next verse.
+    let auto = false;
     if (!label) {
       const same = sections.find((s) => s.lines.join('\n') === block.join('\n'));
       label = same ? same.label : `V${++verseNo}`;
-      if (same && same.label.startsWith('V')) { same.label = 'C'; label = 'C'; }
+      auto = !same;
+      if (same && same.label.startsWith('V')) {
+        // The repeated block was the chorus all along: give its verse number back.
+        const n = Number(same.label.slice(1));
+        verseNo--;
+        for (const s of sections) if (s.auto && s.label.startsWith('V') && Number(s.label.slice(1)) > n) s.label = `V${Number(s.label.slice(1)) - 1}`;
+        same.label = 'C';
+        label = 'C';
+      }
     }
-    sections.push({ label, lines: block });
+    sections.push({ label, lines: block, auto });
   }
-  return sections;
+  return sections.map(({ auto, ...section }) => section);
 }
 
 export const sectionName = (label, t) => (label === 'C' ? t('chorus') : label === 'B' ? t('bridge') : label === 'PC' ? t('preChorus') : label.startsWith('V') ? t('verseN', { n: label.slice(1) }) : label);

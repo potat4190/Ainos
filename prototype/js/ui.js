@@ -79,7 +79,7 @@ export function modal({ title, content, actions = [], wide = false, onClose }) {
   dialog.append(
     h('div', { class: 'modal-head' }, h('h2', {}, title), h('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: close }, icon('close'))),
     h('div', { class: 'modal-body' }, content),
-    actions.length ? h('div', { class: 'modal-actions' }, actions) : null,
+    ...(actions.length ? [h('div', { class: 'modal-actions' }, actions)] : []),
   );
   dialog.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   document.body.append(dialog);
