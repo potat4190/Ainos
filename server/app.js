@@ -272,8 +272,8 @@ export async function createApp({
       for (const [i, x] of refs.entries()) {
         await t.run('INSERT INTO song_scripture (song_id, section_label, usfm_ref, position) VALUES (?, ?, ?, ?)', [song.id, x.label, x.usfm, i]);
       }
+      await audit(t, { userId: user.id, action: 'song.scripture.replace', targetType: 'song', targetId: song.id, details: { references: refs.map((x) => x.usfm) } });
     });
-    await audit(store, { userId: user.id, action: 'song.scripture.replace', targetType: 'song', targetId: song.id, details: { references: refs.map((x) => x.usfm) } });
     sendJson(res, 200, await songScripture(song.id));
   }));
 
