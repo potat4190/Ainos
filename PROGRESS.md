@@ -1,5 +1,5 @@
 # Progress
-Last updated: 2026-10-30 · **Current work: SPEEDRUN, merged (e031b6e); production waits for the schema** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
+Last updated: 2026-10-30 · **Current work: SPEEDRUN, merged (e031b6e) and live in production** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
 
 ## Speedrun (owner instructions, 2026-10-30)
 - Scope: Phase 1 leftovers, Phase 2 (WEB fallback; YouVersion only if the key is set), Phase 3 search + YouTube playback (standard www.youtube.com embed via the IFrame API, "Watch on YouTube" fallback), Phase 4 synced lyrics view, Phase 5 church accounts + setlists + paste lyrics + church demo, Phase 6 projection (this screen / presenter view; manual / automatic). Skip Phase 7, CI polish, anything not needed for the demo.
@@ -7,10 +7,14 @@ Last updated: 2026-10-30 · **Current work: SPEEDRUN, merged (e031b6e); producti
 - Still ask the owner before: merging/pushing to main, production deploys, anything against the production database, anything that costs money, changing Production Vercel variables, reading or writing secrets. Preview deploys, the preview database and PRs are fine.
 - Done = push, PR, preview deploy, smoke test; report the preview URL, what works / what's rough, the SQL to run on production before merging, and the decisions list.
 
-## Speedrun status (2026-10-30): MERGED to main, production build blocked on the schema
+## Speedrun status (2026-10-30): MERGED to main and LIVE in production
+- Owner ran server/schema.pg.sql on production, then asked Claude to redeploy main: production deploy 5vjPYxqLAAgsa529uhpPY2EbR9oy (ainos-6vvkr7fd0) Ready, aliased to https://ainos-liard.vercel.app. Build log: schema up to date, already seeded (41 tracks match), catalog synced (41 rows added: song-related rows, 0 updated, 0 removed). Live check: home 200, /api/scripture/votd 401 (route exists, needs sign-in; was 404 before). No production smoke test (needs the owner's go-ahead).
+- Next: owner reviews the live app; open items are under "Rough" below and the Phase 2 waiting questions (Q26-Q28 took the recommended options in the speedrun).
+
+### Earlier: production build blocked on the schema
 - Owner asked Claude to merge PR #5 ("merge this into the main app", then chose "let Claude do it") → merge commit e031b6e on `main` (also brings in Phase 2; PR #4 was never merged separately).
 - Production deploy dpl_HHQxPFqy3vqAXQtSsv3Z2rYrm5eg FAILED at the schema check (as expected): production lacks song_scripture, user_settings, youtube_video_cache, lyric_timings, orgs, org_members, setlists, setlist_items. The check runs before any write, so https://ainos-liard.vercel.app stays on the Phase 1 deploy (checked: home 200, /api/scripture/votd 404).
-- **Next (owner):** run `server/schema.pg.sql` in the production Supabase SQL editor (re-runnable), or set DATABASE_MIGRATION_URL for Production; then redeploy main (Vercel → Deployments → Redeploy, or ask Claude). Claude then watches the build; no production smoke test without the owner's go-ahead.
+- (done) Owner: run `server/schema.pg.sql` in the production Supabase SQL editor (re-runnable), or set DATABASE_MIGRATION_URL for Production; then redeploy main (Vercel → Deployments → Redeploy, or ask Claude). Claude then watches the build; no production smoke test without the owner's go-ahead.
 - Build logs are readable with `npx vercel inspect <dpl> --logs` (the CLI in this session is signed in to the Ainos project).
 
 ## Speedrun status (2026-10-30): built, preview-checked, waiting for owner review
