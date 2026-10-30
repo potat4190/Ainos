@@ -4,9 +4,11 @@ import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
 import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
 import * as views from './views.js';
+import * as church from './church.js';
 
 const $ = (id) => document.getElementById(id);
-const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads'];
+const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist'];
+const VIEWS = { ...views, church: church.church, setlist: church.setlist };
 const KEY_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
 class App {
@@ -107,6 +109,8 @@ class App {
     setTxt('lbl-displayname', 'displayName');
     setTxt('lbl-password', 'password');
     setTxt('demo-login', 'demoBtn');
+    setTxt('church-demo-login', 'churchDemoBtn');
+    setTxt('nav-church-text', 'navChurch');
     setTxt('skip-link', 'skipToContent');
     setTxt('boot-text', 'loadingApp');
     setTxt('demo-hint', 'demoHint');
@@ -164,7 +168,8 @@ class App {
       this.loggingIn = true;
       busy(true);
       try {
-        const url = { login: '/api/auth/login', signup: '/api/auth/signup', demo: '/api/auth/demo' }[m];
+        const url = { login: '/api/auth/login', signup: '/api/auth/signup', demo: '/api/auth/demo', churchDemo: '/api/auth/church-demo' }[m];
+        if (m === 'churchDemo') location.hash = '#/church';
         await api.post(url, { ...body, language: getLang() });
         if (this.started) return location.reload();
         await this.loadMe();
@@ -181,6 +186,7 @@ class App {
       submit({ username: form.username.value.trim(), password: form.password.value, display_name: form.display_name.value.trim() }, mode);
     });
     $('demo-login').addEventListener('click', () => submit({}, 'demo'));
+    $('church-demo-login').addEventListener('click', () => submit({}, 'churchDemo'));
     setMode(new URLSearchParams(location.hash.split('?')[1] || '').get('signup') ? 'signup' : 'login');
     form.username.focus();
   }
@@ -196,6 +202,7 @@ class App {
     this.connect = new Connect(this.player, identity);
     this.player.connect = this.connect;
     this.connect.start();
+    church.onStart(this);
 
     this.player.addEventListener('change', () => this.onPlayerChange());
     this.player.addEventListener('debug', () => this.scheduleRight(400));
@@ -249,7 +256,7 @@ class App {
     this.cleanup?.();
     this.cleanup = null;
     const { name, id, params } = this.parseHash();
-    const view = ROUTES.includes(name) ? views[name] : null;
+    const view = ROUTES.includes(name) ? VIEWS[name] : null;
     if (name !== 'search') $('topbar-search').hidden = true;
     for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('active', a.dataset.nav === name);
     this.renderLibrary();

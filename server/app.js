@@ -23,6 +23,8 @@ import { parseAdminIds, assertAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
 import { SECTION_LABEL } from './songs.js';
+import { register as registerListenerRoutes } from './listener-routes.js';
+import { register as registerChurchRoutes } from './church-routes.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QUALITIES = ['low', 'high'];
@@ -295,6 +297,11 @@ export async function createApp({
     });
     sendJson(res, 200, await songScripture(song.id));
   }));
+
+  // Feature route modules (Phases 3-6), registered before the catalog routes.
+  const routeCtx = { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log };
+  registerListenerRoutes(routeCtx);
+  registerChurchRoutes(routeCtx);
 
   // ---------------- catalog ----------------
   r.get('/api/home', auth(async ({ res, user, query }) => {

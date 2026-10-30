@@ -310,13 +310,86 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (user_id, key)
 );
 
+-- [3] YouTube video data (official worship videos). YouTube's terms: refresh or
+-- delete within 30 days (fetched_at).
+CREATE TABLE IF NOT EXISTS youtube_video_cache (
+  video_id         TEXT PRIMARY KEY,
+  channel_id       TEXT,
+  title            TEXT,
+  channel_title    TEXT,
+  thumbnail_url    TEXT,
+  duration_ms      INTEGER,
+  embeddable       INTEGER,
+  default_language TEXT,
+  fetched_at       BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS youtube_video_cache_fetched ON youtube_video_cache(fetched_at);
+
+-- [4] Time-synced lyrics for ONE recording (song_sources row). timings: JSON
+-- [{ label, line, ms }]. org_id set = a church's private timings.
+CREATE TABLE IF NOT EXISTS lyric_timings (
+  id             TEXT PRIMARY KEY,
+  source_id      TEXT NOT NULL REFERENCES song_sources(id) ON DELETE CASCADE,
+  language       TEXT NOT NULL,
+  arrangement_id TEXT,
+  offset_ms      INTEGER NOT NULL DEFAULT 0,
+  timings        TEXT NOT NULL,
+  created_by     BIGINT,
+  org_id         TEXT,
+  updated_at     BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lyric_timings_source ON lyric_timings(source_id);
+
+-- [5] Churches and their members (roles: admin, leader, operator, member).
+CREATE TABLE IF NOT EXISTS orgs (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  default_language TEXT NOT NULL,
+  bible_version_id INTEGER,
+  created_by       BIGINT NOT NULL,
+  created_at       BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS org_members (
+  org_id    TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  user_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role      TEXT NOT NULL CHECK (role IN ('admin', 'leader', 'operator', 'member')),
+  joined_at BIGINT NOT NULL,
+  PRIMARY KEY (org_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS org_members_user ON org_members(user_id);
+
+-- [5] Sunday setlists. Items are replaced as a whole list, so (setlist_id,
+-- position) needs no deferred constraint.
+CREATE TABLE IF NOT EXISTS setlists (
+  id           TEXT PRIMARY KEY,
+  org_id       TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  service_date TEXT,
+  created_by   BIGINT,
+  updated_at   BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS setlists_org ON setlists(org_id, service_date);
+CREATE TABLE IF NOT EXISTS setlist_items (
+  id             TEXT PRIMARY KEY,
+  setlist_id     TEXT NOT NULL REFERENCES setlists(id) ON DELETE CASCADE,
+  position       INTEGER NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('song', 'scripture', 'text', 'blank')),
+  song_id        TEXT,
+  arrangement_id TEXT,
+  source_id      TEXT,
+  usfm_ref       TEXT,
+  text           TEXT,
+  UNIQUE (setlist_id, position)
+);
+
 -- The app connects as ainos_app, which can only read and write rows; this file
 -- is applied by the tables' owner. New tables need the same grant.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log, songs, song_aliases, song_themes, song_sources, song_sections,
-      song_arrangements, song_scripture, user_settings TO ainos_app;
+      song_arrangements, song_scripture, user_settings, youtube_video_cache, lyric_timings, orgs, org_members,
+      setlists, setlist_items TO ainos_app;
   END IF;
 END $$;
 
@@ -326,7 +399,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['users', 'sessions', 'artists', 'albums', 'tracks', 'track_files', 'playlists', 'playlist_tracks',
                            'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
                            'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
-                           'song_scripture', 'user_settings'] LOOP
+                           'song_scripture', 'user_settings', 'youtube_video_cache', 'lyric_timings', 'orgs',
+                           'org_members', 'setlists', 'setlist_items'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     END IF;

@@ -1925,6 +1925,14 @@ try {
 } catch { /* ignore */ }
 if (typeof document !== 'undefined') document.documentElement.lang = currentLang;
 
+// Feature string modules (Phases 3-6) merge into STRINGS, one file per feature.
+import listenerStrings from './strings/listener.js';
+import churchStrings from './strings/church.js';
+import presentStrings from './strings/present.js';
+for (const part of [listenerStrings, churchStrings, presentStrings]) {
+  for (const [lang, dict] of Object.entries(part)) Object.assign(STRINGS[lang], dict);
+}
+
 export function getLang() {
   return currentLang;
 }

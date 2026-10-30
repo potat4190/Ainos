@@ -9,6 +9,8 @@
   <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/church.css">
+  <link rel="stylesheet" href="/css/present.css">
   <script type="module" src="/js/app.js"></script>
 </head>
 <body>
@@ -18,6 +20,7 @@
     <form class="login-card" id="login-form" autocomplete="on">
       <div class="brand brand-lg"><img src="/img/icon.svg" alt="" width="40" height="40"><div><span>Ainos</span><small class="brand-sub" id="login-brand-sub">Worship &amp; Praise</small></div></div>
       <button class="btn btn-primary btn-block btn-lg" type="button" id="demo-login">Try the demo</button>
+      <button class="btn btn-ghost btn-block" type="button" id="church-demo-login">Try the church demo</button>
       <p class="demo-hint" id="demo-hint">No sign-up needed. The demo account is shared and resets each time someone starts it.</p>
       <div class="divider" aria-hidden="true"><span id="login-or">or</span></div>
       <h1 id="login-title">Log in to Ainos</h1>
@@ -36,6 +39,7 @@
         <a class="brand" href="#/"><img src="/img/icon.svg" alt="" width="28" height="28"><div><span>Ainos</span><small class="brand-sub" id="sidebar-brand-sub">Worship &amp; Praise</small></div></a>
         <a class="nav-link" href="#/" data-nav="home"><svg class="icon"><use href="#i-home"/></svg><span id="nav-home-text">Home</span></a>
         <a class="nav-link" href="#/search" data-nav="search"><svg class="icon"><use href="#i-search"/></svg><span id="nav-search-text">Search</span></a>
+        <a class="nav-link" href="#/church" data-nav="church" id="nav-church" hidden><svg class="icon"><use href="#i-library"/></svg><span id="nav-church-text">Church</span></a>
         <a class="nav-link" href="#/internals" data-nav="internals"><svg class="icon"><use href="#i-cpu"/></svg><span id="nav-internals-text">Under the hood</span></a>
       </div>
       <div class="panel library-panel">
