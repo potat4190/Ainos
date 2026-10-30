@@ -2,6 +2,8 @@
 
 A presentable prototype of the finished Ainos, for demos and a 2-minute video. It runs entirely in the browser on sample data: no backend, no database, no accounts, no npm packages, no build step. The "Prototype · sample data" badge stays in a corner.
 
+**Live:** https://ainos-prototype.vercel.app (Vercel project `ainos-prototype`, separate from the Ainos app). Redeploy after changes: `cd prototype && npx vercel@64.3.1 deploy --prod --scope rhidayas-projects`.
+
 ## Run it locally
 
 Serve this folder with any static file server, then open it in Chrome or Edge:
