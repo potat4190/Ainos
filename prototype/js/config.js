@@ -1,8 +1,4 @@
-// ┌───────────────────────────────────────────────────────────────────────┐
-// │ FILL IN: the YouTube video id of Victory Worship's OFFICIAL "Carry My │
-// │ Cross" video, from Victory Worship's own YouTube channel. It could    │
-// │ not be verified automatically (their song page links only Spotify).   │
-// │ Example: for https://www.youtube.com/watch?v=AbCdEfGhIjK, use         │
-// │ 'AbCdEfGhIjK'. While empty, the app shows a "video id not set" card.  │
-// └───────────────────────────────────────────────────────────────────────┘
-export const CARRY_MY_CROSS_VIDEO_ID = '';
+// The YouTube id of Victory Worship's official "Carry My Cross - Official Lyric
+// Video", on their own channel (@victoryworshipph); given by the owner on
+// 2026-10-29 and checked with YouTube's oEmbed (title and channel).
+export const CARRY_MY_CROSS_VIDEO_ID = 'eov9K7ALYKk';

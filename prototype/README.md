@@ -15,7 +15,7 @@ npx serve .                 # or: python -m http.server 8080
 
 (Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.) Nothing is sent anywhere. The setlist and language are kept in this browser's `localStorage`; sign out and back in to start fresh, or clear site data.
 
-**Before showing the YouTube part:** put the official video id of Victory Worship's "Carry My Cross" (from their own YouTube channel) in `js/config.js`. Until then the player shows a "video id not set" card.
+**YouTube:** `js/config.js` holds the id of Victory Worship's official "Carry My Cross" lyric video (eov9K7ALYKk, from their own channel). It plays only in YouTube's own embedded player.
 
 ## What's real and what's sample
 
