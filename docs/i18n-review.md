@@ -39,6 +39,17 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेन के भजन, जैसे लिखे गए वैसे ही बजाए गए, साथ गाने के लिए शब्दों सहित। | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | अकूस्टिक आराधना | 1 |
+| [ ] | `scriptureCard` | Scripture | पवित्रशास्त्र | 2 |
+| [ ] | `verseOfTheDay` | Verse of the Day | आज का वचन | 2 |
+| [ ] | `bibleVersionTitle` | Bible version | बाइबल संस्करण | 2 |
+| [ ] | `bibleVersionDesc` | The translation Scripture passages are shown in | वह अनुवाद जिसमें पवित्रशास्त्र के अंश दिखाए जाते हैं | 2 |
+| [ ] | `bibleVersionAuto` | Automatic | स्वचालित | 2 |
+| [ ] | `scriptureNoText` | This passage isn’t available in your language yet. | यह अंश अभी आपकी भाषा में उपलब्ध नहीं है। | 2 |
+| [ ] | `scriptureUnavailable` | Scripture couldn’t be loaded right now. | पवित्रशास्त्र अभी लोड नहीं हो सका। | 2 |
+| [ ] | `songDetails` | Song details | गीत का विवरण | 2 |
+| [ ] | `songLabel` | Song | गीत | 2 |
+| [ ] | `recordingsTitle` | Recordings | रिकॉर्डिंग | 2 |
+| [ ] | `publicDomainSong` | Public domain | सार्वजनिक डोमेन | 2 |
 
 ## Nepali (ne)
 
@@ -72,6 +83,17 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | भजन | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | सार्वजनिक डोमेनका भजनहरू, लेखिएझैँ बजाइएका, सँगै गाउन शब्दहरूसहित। | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | अकुस्टिक आराधना | 1 |
+| [ ] | `scriptureCard` | Scripture | धर्मशास्त्र | 2 |
+| [ ] | `verseOfTheDay` | Verse of the Day | आजको पद | 2 |
+| [ ] | `bibleVersionTitle` | Bible version | बाइबलको संस्करण | 2 |
+| [ ] | `bibleVersionDesc` | The translation Scripture passages are shown in | धर्मशास्त्रका खण्डहरू देखाइने अनुवाद | 2 |
+| [ ] | `bibleVersionAuto` | Automatic | स्वचालित | 2 |
+| [ ] | `scriptureNoText` | This passage isn’t available in your language yet. | यो खण्ड अहिले तपाईंको भाषामा उपलब्ध छैन। | 2 |
+| [ ] | `scriptureUnavailable` | Scripture couldn’t be loaded right now. | धर्मशास्त्र अहिले लोड गर्न सकिएन। | 2 |
+| [ ] | `songDetails` | Song details | गीतको विवरण | 2 |
+| [ ] | `songLabel` | Song | गीत | 2 |
+| [ ] | `recordingsTitle` | Recordings | रेकर्डिङहरू | 2 |
+| [ ] | `publicDomainSong` | Public domain | सार्वजनिक डोमेन | 2 |
 
 ## Chinese (zh)
 
@@ -103,6 +125,17 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 圣诗 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | 公有领域的经典圣诗，按原谱演奏，附歌词可跟唱。 | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | 原声敬拜 | 1 |
+| [ ] | `scriptureCard` | Scripture | 经文 | 2 |
+| [ ] | `verseOfTheDay` | Verse of the Day | 每日经文 | 2 |
+| [ ] | `bibleVersionTitle` | Bible version | 圣经译本 | 2 |
+| [ ] | `bibleVersionDesc` | The translation Scripture passages are shown in | 显示经文所用的译本 | 2 |
+| [ ] | `bibleVersionAuto` | Automatic | 自动 | 2 |
+| [ ] | `scriptureNoText` | This passage isn’t available in your language yet. | 这段经文暂时还没有你所用语言的版本。 | 2 |
+| [ ] | `scriptureUnavailable` | Scripture couldn’t be loaded right now. | 暂时无法加载经文。 | 2 |
+| [ ] | `songDetails` | Song details | 歌曲详情 | 2 |
+| [ ] | `songLabel` | Song | 歌曲 | 2 |
+| [ ] | `recordingsTitle` | Recordings | 录音 | 2 |
+| [ ] | `publicDomainSong` | Public domain | 公有领域 | 2 |
 
 ## Japanese (ja)
 
@@ -129,6 +162,17 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | 賛美歌 | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | パブリックドメインの賛美歌を原曲どおりに。歌詞つきで一緒に歌えます。 | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | アコースティック・ワーシップ | 1 |
+| [ ] | `scriptureCard` | Scripture | 聖書 | 2 |
+| [ ] | `verseOfTheDay` | Verse of the Day | 今日のみことば | 2 |
+| [ ] | `bibleVersionTitle` | Bible version | 聖書の訳 | 2 |
+| [ ] | `bibleVersionDesc` | The translation Scripture passages are shown in | 聖書の箇所を表示する翻訳 | 2 |
+| [ ] | `bibleVersionAuto` | Automatic | 自動 | 2 |
+| [ ] | `scriptureNoText` | This passage isn’t available in your language yet. | この箇所は、まだあなたの言語では表示できません。 | 2 |
+| [ ] | `scriptureUnavailable` | Scripture couldn’t be loaded right now. | 今は聖書の箇所を読み込めませんでした。 | 2 |
+| [ ] | `songDetails` | Song details | 曲の詳細 | 2 |
+| [ ] | `songLabel` | Song | 曲 | 2 |
+| [ ] | `recordingsTitle` | Recordings | 録音 | 2 |
+| [ ] | `publicDomainSong` | Public domain | パブリックドメイン | 2 |
 
 ## Spanish (es)
 
@@ -162,6 +206,17 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `EDITORIAL_I18N['Hymns'] (name)` | Hymns | Himnos | 1 |
 | [ ] | `EDITORIAL_I18N['Hymns'] (description)` | Public-domain hymns, played as written, with their words to sing along. | Himnos de dominio público, tocados tal como se escribieron, con la letra para cantar. | 1 |
 | [ ] | `GENRE_I18N['Acoustic']` | Acoustic Worship | Adoración Acústica | 1 |
+| [ ] | `scriptureCard` | Scripture | Escritura | 2 |
+| [ ] | `verseOfTheDay` | Verse of the Day | Versículo del día | 2 |
+| [ ] | `bibleVersionTitle` | Bible version | Versión de la Biblia | 2 |
+| [ ] | `bibleVersionDesc` | The translation Scripture passages are shown in | La traducción en la que se muestran los pasajes bíblicos | 2 |
+| [ ] | `bibleVersionAuto` | Automatic | Automática | 2 |
+| [ ] | `scriptureNoText` | This passage isn’t available in your language yet. | Este pasaje todavía no está disponible en tu idioma. | 2 |
+| [ ] | `scriptureUnavailable` | Scripture couldn’t be loaded right now. | No se pudo cargar la Escritura ahora. | 2 |
+| [ ] | `songDetails` | Song details | Detalles de la canción | 2 |
+| [ ] | `songLabel` | Song | Canción | 2 |
+| [ ] | `recordingsTitle` | Recordings | Grabaciones | 2 |
+| [ ] | `publicDomainSong` | Public domain | Dominio público | 2 |
 
 ## Catalog display names (Phase 1)
 

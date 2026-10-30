@@ -158,6 +158,15 @@ export async function home(el, _p, app) {
     h('div', { class: 'faith-banner' }, icon('sparkle'), t('faithBanner')),
     h('h1', { class: 'greeting', style: { 'font-size': '30px', 'margin-top': '10px' } }, greet),
   );
+  const votd = h('section', { class: 'votd box', 'aria-label': t('verseOfTheDay') });
+  el.append(votd);
+  api.get('/api/scripture/votd').then((v) => {
+    votd.append(h('div', { class: 'votd-label dim small' }, t('verseOfTheDay')));
+    if (v.text) votd.append(h('blockquote', { class: 'passage-text' }, v.text));
+    votd.append(h('div', { class: 'votd-ref' }, v.reference,
+      v.version ? h('span', { class: 'dim small' }, ` · ${[v.version.abbreviation, v.version.copyright].filter(Boolean).join(' · ')}`) : null));
+    if (!v.text) votd.append(h('p', { class: 'muted small' }, t('scriptureNoText')));
+  }).catch(() => votd.remove());
 
   const mixes = data.made_for_you.map((m) => translateMix(m, lang));
   const editorials = data.editorial.map(translateEditorial);
@@ -313,6 +322,60 @@ export async function album(el, { id }, app) {
   el.append(trackList(app, a.tracks, ctx, { showAlbum: false, showCover: false }));
   const dateStr = new Date(a.released_at || Date.UTC(a.year, 0, 1)).toLocaleDateString(getLang(), { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   el.append(h('p', { class: 'dim small', style: { 'margin-top': '24px' } }, t('releasedDate', { date: dateStr }), h('br'), t('synthesizedNote', { year: a.year, artist: a.artist.name })));
+}
+
+/** One passage, fetched when shown: its text and the version's attribution, or why there is no text. */
+function passage(usfm) {
+  const box = h('div', { class: 'passage', role: 'region', 'aria-live': 'polite' }, h('p', { class: 'dim small' }, '…'));
+  api.get(`/api/scripture/${encodeURIComponent(usfm)}`).then((p) => {
+    clear(box);
+    if (p.text) {
+      box.append(h('blockquote', { class: 'passage-text' }, p.text),
+        h('p', { class: 'passage-attribution dim small' }, [p.version.abbreviation, p.version.title].filter(Boolean).join(' · '), p.version.copyright ? h('br') : null, p.version.copyright || null));
+    } else {
+      box.append(h('p', { class: 'muted small' }, t('scriptureNoText')));
+    }
+  }).catch(() => { clear(box); box.append(h('p', { class: 'muted small' }, t('scriptureUnavailable'))); });
+  return box;
+}
+
+/** "Scripture" card for a song: its references, each opening its passage. */
+export function scriptureCard(songId, { link = false } = {}) {
+  const list = h('div', { class: 'scripture-refs' });
+  const card = h('div', { class: 'rp-card scripture-card' }, h('h3', {}, t('scriptureCard')), list);
+  if (link) card.append(h('a', { class: 'dim small', href: `#/song/${songId}` }, t('songDetails')));
+  api.get(`/api/songs/${encodeURIComponent(songId)}/scripture`).then(({ groups }) => {
+    if (!groups.length) { card.remove(); return; }
+    for (const g of groups) {
+      if (g.section_label) list.append(h('div', { class: 'queue-label' }, g.section_label));
+      for (const ref of g.references) {
+        const btn = h('button', { class: 'scripture-ref', 'aria-expanded': 'false' }, ref.reference);
+        let shown = null;
+        btn.addEventListener('click', () => {
+          if (shown) { shown.remove(); shown = null; btn.setAttribute('aria-expanded', 'false'); return; }
+          shown = passage(ref.usfm);
+          btn.after(shown);
+          btn.setAttribute('aria-expanded', 'true');
+        });
+        list.append(btn);
+      }
+    }
+  }).catch(() => list.append(h('p', { class: 'muted small' }, t('scriptureUnavailable'))));
+  return card;
+}
+
+export async function song(el, { id }, app) {
+  const s = await api.get(`/api/songs/${encodeURIComponent(id)}`);
+  const cover = s.tracks[0]?.album.cover;
+  el.append(pageHead({
+    art: cover ? img(cover) : h('div', { class: 'art' }), kind: t('songLabel'), title: s.title, color: s.tracks[0]?.album.color,
+    facts: facts(h('b', {}, s.artist), s.public_domain ? t('publicDomainSong') : null),
+  }));
+  if (s.tracks.length) {
+    const ctx = { uri: `ainos:song:${s.id}`, title: s.title, tracks: s.tracks };
+    el.append(section(t('recordingsTitle'), trackList(app, s.tracks, ctx)));
+  }
+  el.append(scriptureCard(s.id));
 }
 
 export async function artist(el, { id }, app) {
@@ -623,6 +686,16 @@ export async function settings(el, _p, app) {
 
   const langOptions = LANGUAGES.map((l) => [l.code, `${l.native} (${l.label})`]);
   el.append(row(t('languageSettingTitle'), t('languageSettingDesc'), select(getLang(), langOptions, (v) => app.changeLanguage(v))));
+  try {
+    const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
+    const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
+    const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];
+    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), String(bible.selected)]);
+    el.append(row(t('bibleVersionTitle'), t('bibleVersionDesc'), select(bible.selected ? String(bible.selected) : '', options, safely(async (v) => {
+      await api.put('/api/me/bible-version', { version: v ? Number(v) : null });
+      app.scriptureCards.clear();
+    }))));
+  } catch { /* the setting just isn't shown */ }
 
   el.append(h('h2', { class: 'section', style: { 'font-size': '18px', 'margin-bottom': '10px' } }, t('audioSection')));
   el.append(row(t('streamingQuality'), t('streamingQualityDesc'), select(s.quality, [['auto', t('qualityAuto')], ['low', t('qualityLow')], ['high', t('qualityHigh')]], (v) => app.player.updateSettings({ quality: v }))));

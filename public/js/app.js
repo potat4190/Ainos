@@ -6,7 +6,7 @@ import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from 
 import * as views from './views.js';
 
 const $ = (id) => document.getElementById(id);
-const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads'];
+const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads'];
 const KEY_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
 class App {
@@ -18,6 +18,7 @@ class App {
     this.renderSeq = 0;
     this.cleanup = null;
     this.artistCache = new Map();
+    this.scriptureCards = new Map(); // song id → its Scripture card, kept across re-renders so an open passage stays open
     let mode = null;
     try { mode = localStorage.getItem('ainos.right'); } catch { /* ignore */ }
     this.rightMode = mode === 'none' ? null : mode || (innerWidth > 960 ? 'now' : null);
@@ -84,6 +85,7 @@ class App {
         toast(errorText(err), { error: true });
       }
     }
+    this.scriptureCards.clear();
     this.applyI18n();
     this.renderLibrary();
     this.renderPlayerBar();
@@ -627,6 +629,10 @@ class App {
           content.append(h('div', { class: 'rp-card' }, h('h3', {}, t('audioFeaturesCard')),
             h('div', { class: 'dim small', style: { 'margin-bottom': '8px' } }, `${Math.round(f.tempo)} BPM · ${KEY_NAMES[f.key]} ${f.mode ? 'major' : 'minor'} · ${translateGenre(tr.genre)}`),
             h('div', { class: 'feature-bars' }, bar(t('energy'), f.energy), bar(t('danceability'), f.danceability), bar(t('valence'), f.valence), bar(t('acousticness'), f.acousticness))));
+        }
+        if (tr.song_id) {
+          if (!this.scriptureCards.has(tr.song_id)) this.scriptureCards.set(tr.song_id, views.scriptureCard(tr.song_id, { link: true }));
+          content.append(this.scriptureCards.get(tr.song_id));
         }
         let artist = this.artistCache.get(tr.artist.id);
         if (!artist) {

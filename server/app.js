@@ -246,6 +246,12 @@ export async function createApp({
     }
     return { song_id: songId, groups: [...groups].map(([section_label, references]) => ({ section_label, references })) };
   }
+  r.get('/api/songs/:id', auth(async ({ res, params }) => {
+    const song = await globalSong(params.id);
+    const row = await store.get('SELECT id, title, artist, language, public_domain FROM songs WHERE id = ?', [song.id]);
+    const ids = (await store.all("SELECT track_id FROM song_sources WHERE song_id = ? AND source = 'ainos' AND track_id IS NOT NULL ORDER BY id", [song.id])).map((r) => r.track_id);
+    sendJson(res, 200, { ...row, public_domain: row.public_domain === 1, tracks: ids.length ? await catalog.tracksByIds(ids) : [] });
+  }));
   r.get('/api/songs/:id/scripture', auth(async ({ res, params }) => {
     const song = await globalSong(params.id);
     sendJson(res, 200, await songScripture(song.id));

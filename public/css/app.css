@@ -445,3 +445,15 @@ dialog h2 { margin-bottom: 16px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* Scripture (Phase 2) */
+.scripture-refs { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 8px; }
+.scripture-ref { background: none; border: 0; padding: 2px 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--muted, #888); text-underline-offset: 3px; }
+.scripture-ref[aria-expanded="true"] { color: var(--accent); }
+.passage { width: 100%; margin: 2px 0 8px; }
+.passage-text { margin: 0 0 6px; padding-left: 10px; border-left: 3px solid var(--accent); line-height: 1.5; }
+.passage-attribution { margin: 0; }
+.votd { margin: 14px 0 6px; padding: 14px 16px; max-width: 720px; }
+.votd .passage-text { font-size: 15px; margin: 6px 0 8px; }
+.votd-label { text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.votd-ref { font-weight: 600; }

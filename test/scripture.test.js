@@ -246,6 +246,9 @@ test('a song lists its references by section; only a catalog admin may replace t
   const other = (await c.get('/api/search?q=a')).json.tracks.find((t) => t.genre !== 'Hymn');
   assert.equal(other.song_id, null);
 
+  const page = await c.get(`/api/songs/${songId}`);
+  assert.deepEqual([page.status, page.json.title, page.json.artist, page.json.public_domain, page.json.tracks.map((t) => t.id)], [200, 'Amazing Grace', 'Ainos Hymnal', true, [hymn.id]]);
+  assert.equal((await c.get('/api/songs/nope')).status, 404);
   const got = await c.get(`/api/songs/${songId}/scripture`);
   assert.deepEqual(got.json.groups, [{ section_label: null, references: HYMNS[0].scripture.map((usfm) => ({ usfm, reference: referenceName(usfm) })) }]);
   assert.equal((await c.get('/api/songs/nope/scripture')).status, 404);

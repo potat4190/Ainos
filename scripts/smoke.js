@@ -100,6 +100,21 @@ if (hymn) {
   check(audio.status === 206 && (await audio.arrayBuffer()).byteLength === 1024, `hymn audio streams -> ${audio.status}`);
 }
 
+// Phase 2: Scripture next to songs. The public-domain fallback counts as a
+// pass (no key, or YouVersion trouble); `source` says which text came back.
+if (hymn) {
+  const refs = (await call('GET', `/api/songs/${hymn.song_id}/scripture`)).json;
+  const first = refs?.groups?.[0]?.references?.[0];
+  check(!!first, 'the hymn lists its Scripture');
+  if (first) {
+    const p = (await call('GET', `/api/scripture/${first.usfm}`)).json;
+    check(!!p?.reference && (p.text === null || !!p.version?.abbreviation), `its passage answers, with attribution when there is text (${p?.source})`);
+  }
+}
+const votd = (await call('GET', '/api/scripture/votd')).json;
+check(!!votd?.reference, `Verse of the Day (${votd?.source})`);
+await call('GET', '/api/scripture/NOPE.1', undefined, { expect: 400 });
+
 // Writes: like/unlike, follow/unfollow, a temporary playlist, an event, the language.
 // Only undo what this script changed, so the demo account keeps its own likes,
 // follows and language. The one event sent is a pause with no track, which
