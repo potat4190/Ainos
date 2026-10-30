@@ -1,5 +1,35 @@
 # Progress
-Last updated: 2026-10-29 (session paused by the owner mid-fix) · Current phase: 2 (Scripture), phase-end reviews done, fixes half-applied · Branch: phase-2-scripture · PR #4 (open, not to be merged without the owner)
+Last updated: 2026-10-30 · **Current work: SPEEDRUN** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
+
+## Speedrun (owner instructions, 2026-10-30)
+- Scope: Phase 1 leftovers, Phase 2 (WEB fallback; YouVersion only if the key is set), Phase 3 search + YouTube playback (standard www.youtube.com embed via the IFrame API, "Watch on YouTube" fallback), Phase 4 synced lyrics view, Phase 5 church accounts + setlists + paste lyrics + church demo, Phase 6 projection (this screen / presenter view; manual / automatic). Skip Phase 7, CI polish, anything not needed for the demo.
+- Reuse the prototype's code adapted to the app's conventions (h(), t(), strict CSP). Pick my recommended option for every open question and record it below. Tests only for risky parts (org access and cross-tenant isolation, demo guards, schema migrations); no multi-agent reviews, one security self-check at the end.
+- Still ask the owner before: merging/pushing to main, production deploys, anything against the production database, anything that costs money, changing Production Vercel variables, reading or writing secrets. Preview deploys, the preview database and PRs are fine.
+- Done = push, PR, preview deploy, smoke test; report the preview URL, what works / what's rough, the SQL to run on production before merging, and the decisions list.
+
+## Decisions (speedrun)
+One line each: question → choice (why). Reversible; review at merge.
+- Q2 spec "uncommitted work" note → closed (it was committed in 8b708bf).
+- Q15 YouTube items in playlists / Liked Songs → not in this speedrun; YouTube songs play from search and the song page (the playlist schema change is the riskiest migration and the demo doesn't need it).
+- Q16 official channel handles → scripts/worship-channels.js lists @victoryworshipph (verified) plus the spec's examples (Hillsong Worship, Elevation Worship, Bethel Music, CityAlight) marked unverified and not synced (only owner-verified channels are indexed).
+- YouTube indexing without YOUTUBE_API_KEY → a curated list (scripts/youtube-videos.js) seeded by the generator/deploy sync; for now only Carry My Cross (eov9K7ALYKk); no nightly sync, cron route, live search (path B) or quota table (no key, and the demo needs one song).
+- Q17 search labels → a new "Songs" group above the existing results; existing groups and response keys unchanged (additive, nothing breaks).
+- Q18 YouTube plays → logged as events at most, never streams or recommendations (no audio features exist for them).
+- YouTube embed host → standard https://www.youtube.com/embed via the IFrame API, not youtube-nocookie (owner, 2026-10-29: the nocookie host showed YouTube's bot check; a signed-in session is recognised on www).
+- Tap-to-sync for YouTube/other recordings → not built (prototype doesn't show it); only the hymns have generator-made timings.
+- Q19 verified email and 2FA → skipped (the app sends no email).
+- Q20 church demo login → `church-demo` / `ainos-church-demo` (the spec's documented demo password), org "Ainos Demo Church", user created on first church-demo sign-in if missing.
+- Q21 church demo → shared and reset at each church-demo sign-in, like the listener demo.
+- Church demo role preview ("Viewing as") → skipped; the church demo is the demo church's admin, with guards (no other orgs, no rename, no member management).
+- Q22 last admin leaving → not reachable (no member management UI in the speedrun); guard to add with member management.
+- Q23 invites (/join/<token>) → not built; org_invites table not created (no email, demo doesn't need it).
+- Q24 demo setlist "next Sunday" → computed in UTC at reset time.
+- Q25 lyrics parser label words in other languages → English labels plus a few Nepali/Hindi/Spanish words, flagged for native review.
+- Q26 YouVersion passage caching → no cache (no published caching terms).
+- Q27 hymn Scripture references → as proposed in Phase 2.
+- Q28 Verse of the Day fallback list → as proposed in Phase 2.
+- setlist item reorder → the whole item list is replaced in one transaction (no deferred unique constraint needed).
+- Schema scope → new tables youtube_video_cache, lyric_timings, orgs, org_members, setlists, setlist_items only (no youtube_channels, search_cache, api_quota, org_invites, uploads).
 
 ## Done (newest first)
 - 2026-10-29 Phase 2 · fresh correctness + security reviews of 9b286d9..535f002: nothing critical. Security findings ALL fixed in commit c423457 (demo rate limit per demo session instead of per address; app-wide daily YouVersion budget SCRIPTURE_DAILY_BUDGET, default 20000, after which answers come from the fallback with reason "busy"; version lists de-duplicated per language with one overall deadline; /versions and PUT /api/me/bible-version rate-limited; fetch with redirect: 'error'; non-object upstream bodies fall back; demo may not change the Bible version (picker hidden for demo); audit details record before/after with section labels). npm test 144/144 at c423457. Correctness findings: fixes written but NOT committed (see "In progress" under Next)
