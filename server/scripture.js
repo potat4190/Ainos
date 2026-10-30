@@ -24,7 +24,8 @@ import { usfmRef } from './validate.js';
 export const YOUVERSION_API = 'https://api.youversion.com/v1';
 const DAY_MS = 24 * 3600 * 1000;
 const HOUR_MS = 3600 * 1000;
-const RETRY_MS = 5 * 60 * 1000; // a failed version list is retried after this
+const RETRY_MS = 5 * 60 * 1000; // a failed version list or Verse of the Day is retried after this
+const PAUSE_MS = 60 * 1000; // after a timeout, network error or 5xx, no calls for this long
 
 // Bible versions proposed per UI language once the owner approves them
 // (Q14: listed from what the key can use; no hard-coded guesses). Until then a
@@ -77,6 +78,8 @@ export function dayOfYear(date = new Date()) {
 
 class UpstreamError extends Error {}
 
+const outage = (status) => status >= 500 || status === 429;
+
 /**
  * The Scripture service. `fetch` and `appKey` are injectable for tests.
  * Every method resolves (never rejects) for API trouble: callers get the
@@ -87,19 +90,25 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
   const versionInfo = new Map(); // id → { at, version }
   const votdRefs = new Map(); // day → { at, usfm }
   const loading = new Map(); // language → the version list being fetched, shared by concurrent callers
+  let pausedUntil = 0; // during an outage, answer from the fallback at once instead of waiting on timeouts
 
   // Redirects are refused: fetch would carry the key header to wherever one points.
   async function call(pathname, params = [], deadline = null) {
     const url = new URL(YOUVERSION_API + pathname);
     for (const [k, v] of params) url.searchParams.append(k, v);
+    if (now() < pausedUntil) throw new UpstreamError('paused after an outage');
     const signal = deadline ? AbortSignal.any([AbortSignal.timeout(timeoutMs), deadline]) : AbortSignal.timeout(timeoutMs);
     let res;
     try {
       res = await fetch(url, { headers: { 'X-YVP-App-Key': appKey, Accept: 'application/json' }, signal, redirect: 'error' });
     } catch (err) {
+      pausedUntil = now() + PAUSE_MS;
       throw new UpstreamError(err.name === 'TimeoutError' ? 'timeout' : 'network error');
     }
-    if (!res.ok) throw new UpstreamError(`HTTP ${res.status}`);
+    if (!res.ok) {
+      if (outage(res.status)) pausedUntil = now() + PAUSE_MS;
+      throw new UpstreamError(`HTTP ${res.status}`);
+    }
     let body;
     try {
       body = await res.json();
@@ -142,6 +151,8 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
         token = body.next_page_token;
         if (!token) break;
       }
+      // More pages than we read: an incomplete list must not refuse a version on it.
+      if (token) throw new UpstreamError('version list longer than 5 pages');
       versions.sort((a, b) => a.abbreviation.localeCompare(b.abbreviation));
       versionLists.set(language, { at: now(), versions });
       for (const v of versions) versionInfo.set(v.id, { at: now(), version: v });
@@ -213,6 +224,9 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
           votdRefs.set(day, { at: now(), usfm });
         } catch (err) {
           log('[scripture] votd', day, err.message);
+          // The bundled list's verse, until the retry.
+          usfm = VOTD_FALLBACK[(day - 1) % VOTD_FALLBACK.length];
+          votdRefs.set(day, { at: now() - HOUR_MS + RETRY_MS, usfm });
         }
       }
     }

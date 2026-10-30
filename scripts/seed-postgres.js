@@ -20,8 +20,9 @@
 // and themes it no longer writes are removed (aliases are kept). Editorial
 // playlists gain tracks the generator adds to them (tracks removed from one by
 // hand come back). A song's Scripture references are seeded once, when it
-// has none; after that they belong to the catalog admins (PUT
-// /api/songs/:id/scripture), so their edits survive deploys. User data,
+// has none and no admin has edited them (audit_log); after that they belong
+// to the catalog admins (PUT /api/songs/:id/scripture), so their edits, even
+// clearing the list, survive deploys. User data,
 // church (org) rows and user playlists are never touched; removing an
 // existing track is a manual data migration.
 import fs from 'node:fs';
@@ -177,11 +178,13 @@ async function syncCatalog(client, src, log) {
     if (rowCount) log(`  ${p.table}: ${rowCount} removed (no longer generated)`);
   }
 
-  // Scripture references: only for the generator's songs that have none here yet.
+  // Scripture references: only for the generator's songs that have none here
+  // yet and whose references no admin has ever replaced.
   const refs = src.prepare(`SELECT * FROM song_scripture WHERE ${GLOBAL_SONG}`).all();
   if (refs.length) {
     const songIds = [...new Set(refs.map((r) => r.song_id))];
-    const have = new Set((await client.query('SELECT DISTINCT song_id FROM song_scripture WHERE song_id = ANY($1::text[])', [songIds])).rows.map((r) => r.song_id));
+    const have = new Set((await client.query(`SELECT song_id FROM song_scripture WHERE song_id = ANY($1::text[])
+      UNION SELECT target_id FROM audit_log WHERE action = 'song.scripture.replace' AND target_type = 'song' AND target_id = ANY($1::text[])`, [songIds])).rows.map((r) => r.song_id));
     const add = refs.filter((r) => !have.has(r.song_id));
     if (add.length) {
       const refCols = Object.keys(add[0]);

@@ -255,6 +255,12 @@ test('Scripture references are seeded once per song; after that the admins’ ed
   assert.deepEqual((await seed(pg, full)).synced, { inserted: 0, updated: 0, deleted: 0 });
   assert.deepEqual(await refsOf(songId), ['TIT.2.11'], 'the edit survives the next deploy');
   assert.deepEqual(await refsOf(other), otherBefore.slice(0, 1), 'a trimmed list is not refilled');
+  // Cleared to nothing by an admin (the PUT logs it): stays cleared.
+  const cleared = HYMN_IDS.song('rock-of-ages');
+  await pg.db.query('DELETE FROM song_scripture WHERE song_id = $1', [cleared]);
+  await pg.db.query("INSERT INTO audit_log (id, action, target_type, target_id, created_at) VALUES ('a1', 'song.scripture.replace', 'song', $1, 0)", [cleared]);
+  await seed(pg, full);
+  assert.deepEqual(await refsOf(cleared), [], 'a cleared list is not refilled either');
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {

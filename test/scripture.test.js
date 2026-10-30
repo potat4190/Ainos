@@ -122,6 +122,41 @@ test('a version is refused only when every language list loaded; a failed list i
   assert.equal(await createScripture({ appKey: '' }).versionStatus(111), 'unknown');
 });
 
+test('after a timeout or a 5xx, YouVersion is left alone for a minute: answers come from the fallback at once', async () => {
+  const fake = fakeYouVersion();
+  let clock = 1_000_000;
+  const s = createScripture({ appKey: KEY, fetch: fake.fetch, timeoutMs: 50, now: () => clock });
+  fake.mode = 'timeout';
+  const started = Date.now();
+  assert.equal((await s.getPassage({ usfm: 'EPH.2.8', versionId: 111 })).source, 'fallback');
+  assert.ok(Date.now() - started < 1000, 'the timeout is enforced');
+  fake.mode = 'ok';
+  const calls = fake.calls.length;
+  assert.equal((await s.getPassage({ usfm: 'EPH.2.8', versionId: 111 })).reason, 'unavailable');
+  assert.equal(fake.calls.length, calls, 'no call while paused');
+  // A failed Verse of the Day is the bundled list's verse until the retry, not a new wait on every Home load.
+  const votd = await s.getVerseOfTheDay({ date: new Date(Date.UTC(2026, 0, 1)) });
+  assert.equal(votd.usfm, VOTD_FALLBACK[0]);
+  clock += 61_000;
+  assert.equal((await s.getPassage({ usfm: 'EPH.2.8', versionId: 111 })).source, 'youversion', 'tried again after a minute');
+  assert.equal((await s.getVerseOfTheDay({ date: new Date(Date.UTC(2026, 0, 1)) })).usfm, VOTD_FALLBACK[0], 'the VOTD failure is cached for 5 minutes');
+  clock += 5 * 60_000;
+  assert.equal((await s.getVerseOfTheDay({ date: new Date(Date.UTC(2026, 0, 1)) })).usfm, 'ISA.12.2');
+  fake.mode = 'error';
+  await s.getPassage({ usfm: 'JHN.3.16', versionId: 111 });
+  fake.mode = 'ok';
+  assert.equal((await s.getPassage({ usfm: 'JHN.3.16', versionId: 111 })).reason, 'unavailable', 'a 5xx pauses too');
+});
+
+test('a version list longer than the pages read is not taken as complete', async () => {
+  const fake = fakeYouVersion();
+  const fetch = (url, init) => (new URL(url).pathname === '/v1/bibles'
+    ? Promise.resolve(new Response(JSON.stringify({ data: [], next_page_token: 'more' }), { headers: { 'Content-Type': 'application/json' } }))
+    : fake.fetch(url, init));
+  const s = createScripture({ appKey: KEY, fetch });
+  assert.equal(await s.versionStatus(999), 'unknown', 'not "not_allowed": 999 may be on a page not read');
+});
+
 test('concurrent callers share one version-list load per language', async () => {
   const fake = fakeYouVersion();
   const s = createScripture({ appKey: KEY, fetch: fake.fetch });
@@ -141,6 +176,19 @@ test('past the app-wide daily budget, Scripture answers from the fallback withou
     assert.equal(sources[2].reason, 'busy');
     const passageCalls = fake.calls.filter((x) => x.url.includes('/passages/')).length;
     assert.equal(passageCalls, 2, 'no upstream passage call once the budget is spent');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('saving a Bible version while YouVersion cannot be reached answers 503, not "not available"', async () => {
+  const down = () => Promise.reject(new TypeError('fetch failed'));
+  const srv = await startTestServer({ scripture: createScripture({ appKey: KEY, fetch: down, timeoutMs: 50 }) });
+  try {
+    const c = await signup(srv.base, 'offline');
+    const r = await c.putJson('/api/me/bible-version', { version: 111 });
+    assert.deepEqual([r.status, r.json.error.code], [503, 'scripture_unavailable']);
+    assert.equal((await c.get('/api/me')).json.bible_version, null, 'nothing saved');
   } finally {
     await srv.close();
   }

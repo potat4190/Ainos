@@ -345,7 +345,7 @@ export function scriptureCard(songId, { link = false } = {}) {
   const card = h('div', { class: 'rp-card scripture-card' }, h('h3', {}, t('scriptureCard')), list);
   if (link) card.append(h('a', { class: 'dim small', href: `#/song/${songId}` }, t('songDetails')));
   api.get(`/api/songs/${encodeURIComponent(songId)}/scripture`).then(({ groups }) => {
-    if (!groups.length) { card.remove(); return; }
+    if (!groups.length) { card.hidden = true; return; }
     for (const g of groups) {
       if (g.section_label) list.append(h('div', { class: 'queue-label' }, g.section_label));
       for (const ref of g.references) {
@@ -360,7 +360,10 @@ export function scriptureCard(songId, { link = false } = {}) {
         list.append(btn);
       }
     }
-  }).catch(() => list.append(h('p', { class: 'muted small' }, t('scriptureUnavailable'))));
+  }).catch(() => {
+    card.dataset.failedAt = String(Date.now());
+    list.append(h('p', { class: 'muted small' }, t('scriptureUnavailable')));
+  });
   return card;
 }
 

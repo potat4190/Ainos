@@ -631,8 +631,10 @@ class App {
             h('div', { class: 'feature-bars' }, bar(t('energy'), f.energy), bar(t('danceability'), f.danceability), bar(t('valence'), f.valence), bar(t('acousticness'), f.acousticness))));
         }
         if (tr.song_id) {
-          if (!this.scriptureCards.has(tr.song_id)) this.scriptureCards.set(tr.song_id, views.scriptureCard(tr.song_id, { link: true }));
-          content.append(this.scriptureCards.get(tr.song_id));
+          const cached = this.scriptureCards.get(tr.song_id);
+          if (!cached || Date.now() - Number(cached.dataset.failedAt || Infinity) > 60_000) this.scriptureCards.set(tr.song_id, views.scriptureCard(tr.song_id, { link: true }));
+          const card = this.scriptureCards.get(tr.song_id);
+          if (!card.hidden) content.append(card);
         }
         let artist = this.artistCache.get(tr.artist.id);
         if (!artist) {

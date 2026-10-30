@@ -237,7 +237,10 @@ export async function createApp({
       return sendJson(res, 200, { bible_version: null });
     }
     const id = versionParam(version);
-    if ((await scripture.versionStatus(id)) !== 'allowed') throw new HttpError(400, 'That Bible version is not available', 'invalid_input');
+    const status = await scripture.versionStatus(id);
+    // Without a key no version is available; with one, 'unknown' means YouVersion can't be reached just now.
+    if (status === 'unknown' && scripture.hasKey) throw new HttpError(503, 'Bible versions can’t be checked right now, try again in a few minutes', 'scripture_unavailable');
+    if (status !== 'allowed') throw new HttpError(400, 'That Bible version is not available', 'invalid_input');
     await store.run(`INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, 'bible_version', ?, ?)
       ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, [user.id, String(id), Date.now()]);
     sendJson(res, 200, { bible_version: id });
