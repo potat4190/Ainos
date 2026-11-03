@@ -15,11 +15,11 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
+import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_PLACEHOLDERS, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
-import { parseAdminIds, assertAdmin } from './admin.js';
+import { parseAdminIds, assertAdmin, isAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
 import { SECTION_LABEL } from './songs.js';
@@ -108,7 +108,7 @@ export async function createApp({
     const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
     // The demo accounts may not exist yet in a database (they are created on
     // first use); nobody else may claim their names.
-    if (DEMO_USERNAMES.includes(username.toLowerCase())) throw taken();
+    if (DEMO_USERNAMES.includes(username.toLowerCase()) || DEMO_PLACEHOLDERS.some((p) => p.username === username.toLowerCase())) throw taken();
     if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
     const lang = LANGUAGES.includes(language) ? language : 'en';
@@ -154,7 +154,7 @@ export async function createApp({
   r.get('/api/me', auth(async ({ res, user }) => {
     sendJson(res, 200, {
       id: user.id, username: user.username, display_name: user.display_name, language: user.language,
-      is_demo: isDemo(user), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
+      is_demo: isDemo(user), is_admin: isAdmin(user, adminIds), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
     });
   }));
 
@@ -216,15 +216,19 @@ export async function createApp({
     await scriptureLimit(req, user);
     const fallback = language === FALLBACK_SOURCE.language
       ? { abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright } : null;
+    const [versions, selected] = await Promise.all([scripture.listVersions(language), bibleVersionOf(user.id)]);
+    // A version saved while using another language isn't in this list; send its name so the picker can show it.
+    const selectedVersion = selected && !versions.some((v) => v.id === selected) ? await scripture.describeVersion(selected) : null;
     sendJson(res, 200, {
-      language, versions: await scripture.listVersions(language), default: DEFAULT_VERSIONS[language] ?? null,
-      selected: await bibleVersionOf(user.id), fallback,
+      language, versions, default: DEFAULT_VERSIONS[language] ?? null,
+      selected, selected_version: selectedVersion, fallback,
     });
   }));
   r.get('/api/scripture/votd', auth(async ({ req, res, user, query }) => {
     const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
-    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, upstream }));
+    // ?tz= is the listener's IANA time zone, so the verse changes at their midnight (unknown zones count as UTC).
+    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, timeZone: query.get('tz'), upstream }));
   }));
   r.get('/api/scripture/:ref', auth(async ({ req, res, user, params, query }) => {
     const usfm = usfmRef(params.ref);

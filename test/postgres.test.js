@@ -14,6 +14,8 @@ import { generateCatalog, HYMN_IDS, YOUTUBE_IDS, hymnTimings } from '../scripts/
 import { HYMNS } from '../scripts/hymns.js';
 import { seedPostgres, schemaColumns } from '../scripts/seed-postgres.js';
 import { ARTISTS, ALBUMS, TRACKS } from '../scripts/catalog-names.js';
+import { toPg } from '../server/store.js';
+import { resetChurchDemo, DEMO_ORG_ID, DEMO_PLACEHOLDERS } from '../server/demo.js';
 
 const PGlite = await import('@electric-sql/pglite').then((m) => m.PGlite, () => null);
 const SKIP = !PGlite && 'needs npm install (@electric-sql/pglite, a dev dependency)';
@@ -311,6 +313,52 @@ test('Phases 3-4 on an existing database: the curated YouTube song and the hymn 
   await pg.db.query(`INSERT INTO lyric_timings (id, source_id, language, offset_ms, timings, org_id, updated_at) VALUES ('church-t', $1, 'en', 0, '[]', 'org-a', 0)`, [HYMN_IDS.source('amazing-grace')]);
   await seed(pg, full);
   assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM lyric_timings WHERE id = 'church-t' AND timings = '[]'"), 1, 'church timings kept');
+});
+
+/** The app's Store interface (server/store.js) over one PGlite session, for code that takes a store. */
+function pgStore(pg) {
+  const mk = () => ({
+    async all(sql, params = []) { return (await pg.db.query(toPg(sql), params)).rows; },
+    async get(sql, params = []) { return (await pg.db.query(toPg(sql), params)).rows[0]; },
+    async run(sql, params = []) { return { changes: (await pg.db.query(toPg(sql), params)).affectedRows ?? 0 }; },
+  });
+  const inner = { ...mk(), tx: (f) => f(inner) };
+  return {
+    ...mk(),
+    async tx(fn) {
+      await pg.db.exec('BEGIN');
+      try { const out = await fn(inner); await pg.db.exec('COMMIT'); return out; } catch (err) { await pg.db.exec('ROLLBACK'); throw err; }
+    },
+  };
+}
+
+test('churches on an existing database: sessions gain demo_role, invites arrive, and the church demo resets with its placeholders', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  // A database from before role preview and invites, with a signed-in user.
+  await pg.connectTo('owner');
+  await pg.db.exec('DROP TABLE org_invites; ALTER TABLE sessions DROP COLUMN demo_role');
+  const user = Number((await rows(pg, "INSERT INTO users (username, display_name, created_at) VALUES ('ruth', 'Ruth', 0) RETURNING id"))[0].id);
+  await pg.db.query("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ('h1', $1, 0, 9)", [user]);
+  await pg.db.exec(SCHEMA);
+  await pg.db.exec(SCHEMA);
+  assert.deepEqual((await rows(pg, "SELECT token_hash, demo_role FROM sessions")).map((r) => [r.token_hash, r.demo_role]), [['h1', null]], 'the session survives the migration');
+  assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', 'org_invites', 'SELECT,INSERT,UPDATE,DELETE') AS ok"))[0].ok, true);
+
+  // The church demo resets as the app's role, twice (placeholders are made once, then reused).
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const uid = await resetChurchDemo(store, { passwordHash: 'scrypt$x' });
+  await pg.db.query("INSERT INTO org_invites (id, org_id, role, token_hash, created_at, expires_at, max_uses) VALUES ('i1', $1, 'member', 'th', 0, 1, 1)", [DEMO_ORG_ID]);
+  assert.equal(await resetChurchDemo(store, { passwordHash: 'scrypt$x' }), uid);
+  await pg.connectTo('owner');
+  const members = await rows(pg, 'SELECT u.username, u.is_simulated, u.password_hash, m.role FROM org_members m JOIN users u ON u.id = m.user_id WHERE m.org_id = $1 ORDER BY u.username', [DEMO_ORG_ID]);
+  assert.deepEqual(members.map((r) => [r.username, r.role, Number(r.is_simulated), r.password_hash]), [
+    ['church-demo', 'admin', 0, 'scrypt$x'],
+    ...DEMO_PLACEHOLDERS.map((p) => [p.username, p.role, 1, null]).sort((a, b) => a[0].localeCompare(b[0])),
+  ]);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM users WHERE username LIKE 'church-demo-%'"), 3, 'made once');
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM org_invites WHERE org_id = $1', [DEMO_ORG_ID]), 0, 'invites wiped at reset');
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {

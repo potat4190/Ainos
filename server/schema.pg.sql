@@ -26,9 +26,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at BIGINT NOT NULL,
-  expires_at BIGINT NOT NULL
+  expires_at BIGINT NOT NULL,
+  demo_role  TEXT  -- the church demo's "Viewing as" role, for this session only (spec 5.7)
 );
 CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'sessions' AND column_name = 'demo_role') THEN
+    ALTER TABLE sessions ADD COLUMN demo_role TEXT;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS artists (
   id       TEXT PRIMARY KEY,
@@ -358,6 +365,22 @@ CREATE TABLE IF NOT EXISTS org_members (
 );
 CREATE INDEX IF NOT EXISTS org_members_user ON org_members(user_id);
 
+-- [5] Invite links (spec 5.3). Only the token's SHA-256 is stored; the link is
+-- shown once, to the admin who made it.
+CREATE TABLE IF NOT EXISTS org_invites (
+  id         TEXT PRIMARY KEY,
+  org_id     TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('admin', 'leader', 'operator', 'member')),
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by BIGINT,
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  max_uses   INTEGER NOT NULL,
+  uses       INTEGER NOT NULL DEFAULT 0,
+  revoked_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS org_invites_org ON org_invites(org_id);
+
 -- [5] Sunday setlists. Items are replaced as a whole list, so (setlist_id,
 -- position) needs no deferred constraint.
 CREATE TABLE IF NOT EXISTS setlists (
@@ -389,7 +412,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log, songs, song_aliases, song_themes, song_sources, song_sections,
       song_arrangements, song_scripture, user_settings, youtube_video_cache, lyric_timings, orgs, org_members,
-      setlists, setlist_items TO ainos_app;
+      org_invites, setlists, setlist_items TO ainos_app;
   END IF;
 END $$;
 
@@ -400,7 +423,7 @@ BEGIN
                            'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
                            'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
                            'song_scripture', 'user_settings', 'youtube_video_cache', 'lyric_timings', 'orgs',
-                           'org_members', 'setlists', 'setlist_items'] LOOP
+                           'org_members', 'org_invites', 'setlists', 'setlist_items'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     END IF;

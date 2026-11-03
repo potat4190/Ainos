@@ -1,11 +1,14 @@
-import { api, rememberTracks } from './api.js';
+import { api, rememberTracks, youtubeTrack } from './api.js';
+import { syncButton } from './tapsync.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog, safely } from './ui.js';
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
 import { CROSSFADE_CHOICES } from './crossfade.js';
-import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText } from './i18n.js';
+import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText, sectionName } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
+// The device's IANA time zone ('' if the browser won't say; the server then uses UTC).
+const localTimeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 
 // ------------------------------------------------------------- components
 
@@ -160,7 +163,7 @@ export async function home(el, _p, app) {
   );
   const votd = h('section', { class: 'votd box', 'aria-label': t('verseOfTheDay') });
   el.append(votd);
-  api.get('/api/scripture/votd').then((v) => {
+  api.get(`/api/scripture/votd?tz=${encodeURIComponent(localTimeZone())}`).then((v) => {
     votd.append(h('div', { class: 'votd-label dim small' }, t('verseOfTheDay')));
     if (v.text) votd.append(h('blockquote', { class: 'passage-text' }, v.text));
     votd.append(h('div', { class: 'votd-ref' }, v.reference,
@@ -407,9 +410,13 @@ function songResult(app, sg) {
   const buttons = sg.sources.map((src) => {
     if (src.source === 'youtube') {
       const y = src.youtube;
-      return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: y.title }), onclick: () => app.playYouTube(sg, src) },
+      const play = h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: y.title }), onclick: () => app.playYouTube(sg, src) },
         icon('play'), h('span', { class: 'source-name' }, y.title),
         h('span', { class: 'dim' }, [y.channelTitle, KIND_KEYS[src.kind] ? t(KIND_KEYS[src.kind]) : null, t('sourceYouTube')].filter(Boolean).join(' · ')));
+      // Videos share the one queue with native songs (spec 3.4).
+      const queue = h('button', { class: 'icon-btn source-queue', type: 'button', 'aria-label': `${t('addToQueue')}: ${y.title}`, title: t('addToQueue'),
+        onclick: () => { app.player.addToQueue(youtubeTrack(sg, src)); toast(t('addedToQueueToast')); } }, icon('queue'));
+      return h('div', { class: 'source-row' }, play, queue);
     }
     return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: src.track.title }),
       onclick: () => app.player.playContext({ uri: `ainos:song:${sg.id}`, title: sg.name, tracks: [src.track] }, 0) },
@@ -429,13 +436,6 @@ const MANUAL_SCROLL_MS = 5000; // spec 4.5: manual scrolling pauses auto-scroll 
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 const userScrolls = new WeakMap(); // scroller -> when the user last scrolled it
 
-/** 'V2' -> "Verse 2", 'C' -> "Chorus", ... */
-export function sectionName(label) {
-  const m = /^V(\d)$/.exec(label || '');
-  if (m) return t('sectionVerse', { n: m[1] });
-  const key = { C: 'sectionChorus', C2: 'sectionChorus2', PC: 'sectionPreChorus', B: 'sectionBridge', T: 'sectionTag', I: 'sectionIntro', E: 'sectionEnding' }[label];
-  return key ? t(key) : label;
-}
 
 function watchUserScroll(scroller) {
   if (userScrolls.has(scroller)) return;
@@ -501,8 +501,27 @@ export function lyricsView(app, { track, detail, scroller }) {
     for (const label of labels) blocks.push({ label, items: byLabel.get(label).lines.map((l) => h('p', { class: 'lyric-static' }, l)) });
   }
 
+  // Tap-to-sync (spec 4.4) for leaders and admins: the lines in the order they are sung,
+  // from the timings being redone, else the church's arrangement or the recording's.
+  const syncHost = h('div', { class: 'lyrics-sync' });
+  if (source) {
+    const arrangement = detail.arrangements.find((a) => a.org_id) || detail.arrangements.find((a) => a.name === 'Recording') || detail.arrangements.find((a) => a.name === 'All verses') || detail.arrangements[0];
+    const order = (arrangement?.section_order || []).filter((l) => byLabel.has(l));
+    const labels = order.length ? order : [...byLabel.keys()].sort((a, b) => LABEL_ORDER.indexOf(a) - LABEL_ORDER.indexOf(b));
+    const syncLines = timing
+      ? timing.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null).map((x) => ({ label: x.label, line: x.line, text: byLabel.get(x.label).lines[x.line] }))
+      : labels.flatMap((label) => byLabel.get(label).lines.map((text, line) => ({ label, line, text })));
+    if (syncLines.length) {
+      syncButton(app, {
+        track, sourceId: source.id, language: lang, lines: syncLines, existing: timing?.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null) || [],
+        offsetMs: timing?.offset_ms || 0,
+        onSaved: () => { app.songDetails.delete(track.song_id); app.lyrics = null; app.renderRight(); },
+      }, syncHost);
+    }
+  }
+
   const el = h('div', { class: `lyrics${timing ? ' synced' : ''}` },
-    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced'))),
+    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost),
     h('div', { class: 'lyrics-lines' }, blocks.map((b) => sectionEl(b.label, b.items))),
     more);
 
@@ -852,7 +871,9 @@ export async function settings(el, _p, app) {
     const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
     const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
     const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];
-    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), String(bible.selected)]);
+    // Saved while using another language: label it by name (the server sends it), the bare id only if it couldn't.
+    const other = bible.selected_version;
+    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), other ? `${other.abbreviation} · ${other.title}` : String(bible.selected)]);
     el.append(row(t('bibleVersionTitle'), t('bibleVersionDesc'), select(bible.selected ? String(bible.selected) : '', options, safely(async (v) => {
       await api.put('/api/me/bible-version', { version: v ? Number(v) : null });
       app.scriptureCards.clear();

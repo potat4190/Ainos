@@ -4,8 +4,9 @@
 // Isolation rule (spec 5.2): every route starts with requireRole(), and every
 // org-scoped query carries the org in its WHERE. Child rows (setlist items)
 // are only reached through a setlist row that matched (id, org_id).
+import crypto from 'node:crypto';
 import { HttpError, sendJson, readJson } from './http.js';
-import { hashPassword, createSession, sessionCookie, rateLimiter, rateLimit } from './auth.js';
+import { hashPassword, createSession, sessionCookie, rateLimiter, rateLimit, setSessionDemoRole } from './auth.js';
 import { audit } from './audit.js';
 import { str, usfmRef } from './validate.js';
 import { randomId, searchText } from './util.js';
@@ -13,14 +14,14 @@ import { inList } from './store.js';
 import { referenceName } from './scripture.js';
 import { toSlides } from './slides.js';
 import { SECTION_LABEL } from './songs.js';
-import { requireRole, permissionsOf } from './orgs.js';
+import { requireRole, permissionsOf, effectiveRole, ROLES } from './orgs.js';
 import { assertNotDemo, resetChurchDemo, isChurchDemo, CHURCH_DEMO_USERNAME, CHURCH_DEMO_PASSWORD, DEMO_ORG_ID, DEMO_SESSION_TTL_MS } from './demo.js';
 import { parseLyrics } from '../public/js/lyrics-parse.js';
 
 // Same list as LANGUAGES in server/app.js (not imported: app.js imports this module).
 const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
 export const LIMITS = Object.freeze({
-  setlistsPerOrg: 500, itemsPerSetlist: 40, textChars: 500, songsPerOrg: 2000,
+  setlistsPerOrg: 500, itemsPerSetlist: 40, openInvitesPerOrg: 50, textChars: 500, songsPerOrg: 2000,
   sectionsPerSong: 30, linesPerSection: 12, charsPerLine: 120, arrangementLength: 100, pasteChars: 20_000, orgsPerUser: 20,
 });
 const KINDS = ['song', 'scripture', 'text', 'blank'];
@@ -46,6 +47,14 @@ function serviceDate(v) {
   if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) throw bad('service_date is not a real day');
   return v;
 }
+// Invites (spec 5.3): a week to use them; one person for admin and leader, a whole team otherwise.
+const INVITE_TTL_MS = 7 * 24 * 3600 * 1000;
+const INVITE_USES = Object.freeze({ admin: 1, leader: 1, operator: 25, member: 25 });
+const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
+const roleParam = (v) => {
+  if (!ROLES.includes(v)) throw bad(`role must be one of: ${ROLES.join(', ')}`);
+  return v;
+};
 const splitLines = (s) => String(s ?? '').split('\n');
 const firstLine = (s) => splitLines(s)[0].slice(0, 80);
 const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
@@ -93,12 +102,13 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     const rows = await store.all('SELECT o.id, o.name, m.role FROM org_members m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = ?', [user.id]);
     // The church demo only ever sees the demo church.
     const visible = isChurchDemo(user) ? rows.filter((o) => o.id === DEMO_ORG_ID) : rows;
-    sendJson(res, 200, visible.map(({ id, name, role }) => ({ id, name, role })).sort((a, b) => a.name.localeCompare(b.name)));
+    sendJson(res, 200, visible.map(({ id, name, role }) => ({ id, name, role: effectiveRole(user, id, role) })).sort((a, b) => a.name.localeCompare(b.name)));
   }));
 
   async function orgDto(user, orgId) {
     const m = await requireRole(store, user, orgId, 'org.view');
-    return { ...m.org, role: m.role, permissions: permissionsOf(m.role, user), is_demo: m.org.id === DEMO_ORG_ID };
+    const demo = m.org.id === DEMO_ORG_ID;
+    return { ...m.org, role: m.role, permissions: permissionsOf(m.role, user), is_demo: demo, ...(demo && isChurchDemo(user) ? { can_preview_roles: true } : {}) };
   }
 
   r.get('/api/orgs/:orgId', auth(async ({ res, user, params }) => {
@@ -116,13 +126,146 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     sendJson(res, 200, await orgDto(user, m.org_id));
   }));
 
-  // Members see names and roles only, within their own church (spec 5.5).
+  // Members see names and roles only, within their own church (spec 5.5). Admins
+  // also get each member's user id, which the member-management routes take.
   r.get('/api/orgs/:orgId/members', auth(async ({ res, user, params }) => {
     const m = await requireRole(store, user, params.orgId, 'org.view');
+    const manager = permissionsOf(m.role, user).includes('members.manage');
     const rows = await store.all('SELECT u.id, u.display_name, m.role FROM org_members m JOIN users u ON u.id = m.user_id WHERE m.org_id = ?', [m.org_id]);
-    const rank = (role) => ['admin', 'leader', 'operator', 'member'].indexOf(role);
-    sendJson(res, 200, rows.map((x) => ({ display_name: x.display_name, role: x.role, is_me: Number(x.id) === Number(user.id) }))
+    const rank = (role) => ROLES.indexOf(role);
+    sendJson(res, 200, rows.map((x) => ({ ...(manager ? { id: Number(x.id) } : {}), display_name: x.display_name, role: x.role, is_me: Number(x.id) === Number(user.id) }))
       .sort((a, b) => rank(a.role) - rank(b.role) || a.display_name.localeCompare(b.display_name)));
+  }));
+
+  // ---------------- member management (spec 5.2, 5.6) ----------------
+  /** A member of this org by user id ('me' = the caller), found by org AND user, or 404. */
+  async function memberRow(q, orgId, raw, user) {
+    const id = raw === 'me' ? Number(user.id) : /^[1-9]\d{0,15}$/.test(String(raw)) ? Number(raw) : null;
+    const row = id ? await q.get('SELECT user_id, role FROM org_members WHERE org_id = ? AND user_id = ?', [orgId, id]) : null;
+    if (!row) throw notFound('Member not found');
+    return { userId: Number(row.user_id), role: row.role };
+  }
+  // Touch the org row first: on Postgres this locks it, so two admins demoting
+  // each other at once run one after the other and the last-admin check holds.
+  const lockOrg = (t, orgId) => t.run('UPDATE orgs SET created_at = created_at WHERE id = ?', [orgId]);
+  /** 409 when taking `member` out of the admin role would leave the church without one. */
+  async function keepAnAdmin(t, orgId, member) {
+    if (member.role !== 'admin') return;
+    const { n } = await t.get("SELECT COUNT(*) AS n FROM org_members WHERE org_id = ? AND role = 'admin'", [orgId]);
+    if (Number(n) <= 1) throw new HttpError(409, 'A church needs at least one admin: make someone else an admin first', 'last_admin');
+  }
+
+  r.patch('/api/orgs/:orgId/members/:userId', auth(async ({ req, res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'members.manage');
+    const role = roleParam((await readJson(req)).role);
+    const changed = await store.tx(async (t) => {
+      await lockOrg(t, m.org_id);
+      const target = await memberRow(t, m.org_id, params.userId, user);
+      if (target.role === role) return { user_id: target.userId, role };
+      if (role !== 'admin') await keepAnAdmin(t, m.org_id, target);
+      await t.run('UPDATE org_members SET role = ? WHERE org_id = ? AND user_id = ?', [role, m.org_id, target.userId]);
+      await audit(t, { orgId: m.org_id, userId: user.id, action: 'member.role', targetType: 'user', targetId: String(target.userId), details: { before: target.role, after: role } });
+      return { user_id: target.userId, role };
+    });
+    sendJson(res, 200, changed);
+  }));
+
+  // An admin removes someone, or anyone leaves ('me'). The shared demo does neither.
+  r.delete('/api/orgs/:orgId/members/:userId', auth(async ({ res, user, params }) => {
+    assertNotDemo(user);
+    const self = params.userId === 'me' || params.userId === String(user.id);
+    const m = await requireRole(store, user, params.orgId, self ? 'org.view' : 'members.manage');
+    await store.tx(async (t) => {
+      await lockOrg(t, m.org_id);
+      const target = await memberRow(t, m.org_id, self ? 'me' : params.userId, user);
+      await keepAnAdmin(t, m.org_id, target);
+      await t.run('DELETE FROM org_members WHERE org_id = ? AND user_id = ?', [m.org_id, target.userId]);
+      await audit(t, { orgId: m.org_id, userId: user.id, action: self ? 'member.leave' : 'member.remove', targetType: 'user', targetId: String(target.userId), details: { role: target.role } });
+    });
+    sendJson(res, 200, { ok: true });
+  }));
+
+  // ---------------- invites (spec 5.3) ----------------
+  const inviteDto = (x) => ({
+    id: x.id, role: x.role, created_at: Number(x.created_at), expires_at: Number(x.expires_at), max_uses: Number(x.max_uses), uses: Number(x.uses),
+  });
+
+  r.post('/api/orgs/:orgId/invites', auth(async ({ req, res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'members.manage');
+    assertNotDemo(user);
+    const role = roleParam((await readJson(req)).role);
+    await rateLimit(store, `user:${user.id}:invite-create`, { limit: 30, windowSec: 86_400, message: 'Too many invites made today, try again tomorrow' });
+    // 32 random bytes; only the hash is kept, so the link can be shown this once.
+    const token = crypto.randomBytes(32).toString('base64url');
+    const now = Date.now();
+    const row = { id: randomId(), role, created_at: now, expires_at: now + INVITE_TTL_MS, max_uses: INVITE_USES[role], uses: 0 };
+    await store.tx(async (t) => {
+      const { n } = await t.get('SELECT COUNT(*) AS n FROM org_invites WHERE org_id = ? AND revoked_at IS NULL AND expires_at > ? AND uses < max_uses', [m.org_id, now]);
+      if (Number(n) >= LIMITS.openInvitesPerOrg) throw new HttpError(409, `A church can have at most ${LIMITS.openInvitesPerOrg} open invites: revoke some first`, 'limit_reached');
+      await t.run('INSERT INTO org_invites (id, org_id, role, token_hash, created_by, created_at, expires_at, max_uses, uses) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+        [row.id, m.org_id, role, sha256(token), user.id, now, row.expires_at, row.max_uses]);
+      await audit(t, { orgId: m.org_id, userId: user.id, action: 'invite.create', targetType: 'invite', targetId: row.id, details: { role, max_uses: row.max_uses, expires_at: row.expires_at } });
+    });
+    sendJson(res, 201, { ...inviteDto(row), token, path: `/#/join/${token}` });
+  }));
+
+  // Open invites only (not revoked, expired or used up); tokens are never shown again.
+  r.get('/api/orgs/:orgId/invites', auth(async ({ res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'members.manage');
+    const rows = await store.all('SELECT id, role, created_at, expires_at, max_uses, uses FROM org_invites WHERE org_id = ? AND revoked_at IS NULL AND expires_at > ? AND uses < max_uses',
+      [m.org_id, Date.now()]);
+    sendJson(res, 200, rows.map(inviteDto).sort((a, b) => b.created_at - a.created_at));
+  }));
+
+  r.delete('/api/orgs/:orgId/invites/:id', auth(async ({ res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'members.manage');
+    const id = idParam(params.id, 'Invite not found');
+    await store.tx(async (t) => {
+      const { changes } = await t.run('UPDATE org_invites SET revoked_at = ? WHERE id = ? AND org_id = ? AND revoked_at IS NULL', [Date.now(), id, m.org_id]);
+      if (!changes) throw notFound('Invite not found');
+      await audit(t, { orgId: m.org_id, userId: user.id, action: 'invite.revoke', targetType: 'invite', targetId: id });
+    });
+    sendJson(res, 200, { ok: true });
+  }));
+
+  // Every failure gives the same answer, so a link reveals nothing about why it doesn't work.
+  const inviteInvalid = () => new HttpError(404, 'This invite link isn’t valid. Ask your church’s admin for a new one.', 'invite_invalid');
+  r.post('/api/invites/redeem', auth(async ({ req, res, user }) => {
+    assertNotDemo(user);
+    const message = 'Too many invite attempts, try again in an hour';
+    await rateLimit(store, `ip:${clientIp(req)}:invite-redeem`, { limit: 10, windowSec: 3600, message });
+    await rateLimit(store, `user:${user.id}:invite-redeem`, { limit: 10, windowSec: 3600, message });
+    const { token } = await readJson(req);
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw inviteInvalid();
+    // Looked up by hash: the token itself is never compared or stored.
+    const joined = await store.tx(async (t) => {
+      const now = Date.now();
+      const inv = await t.get('SELECT id, org_id, role FROM org_invites WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND uses < max_uses', [sha256(token), now]);
+      if (!inv) throw inviteInvalid();
+      const existing = await t.get('SELECT role FROM org_members WHERE org_id = ? AND user_id = ?', [inv.org_id, user.id]);
+      if (existing) return { org_id: inv.org_id, role: existing.role, already_member: true }; // the invite isn't used up
+      const { n } = await t.get('SELECT COUNT(*) AS n FROM org_members WHERE user_id = ?', [user.id]);
+      if (Number(n) >= LIMITS.orgsPerUser) throw new HttpError(409, `You can belong to at most ${LIMITS.orgsPerUser} churches`, 'limit_reached');
+      // Counted with a guard, so two people taking the last use at once can't both get in.
+      const { changes } = await t.run('UPDATE org_invites SET uses = uses + 1 WHERE id = ? AND uses < max_uses AND revoked_at IS NULL', [inv.id]);
+      if (!changes) throw inviteInvalid();
+      await t.run('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', [inv.org_id, user.id, inv.role, now]);
+      await audit(t, { orgId: inv.org_id, userId: user.id, action: 'invite.redeem', targetType: 'invite', targetId: inv.id, details: { role: inv.role } });
+      return { org_id: inv.org_id, role: inv.role, already_member: false };
+    });
+    const org = await store.get('SELECT name FROM orgs WHERE id = ?', [joined.org_id]);
+    sendJson(res, 200, { ...joined, name: org?.name ?? '' });
+  }));
+
+  // ---------------- the church demo's role preview (spec 5.7) ----------------
+  // Stored on this session only; requireRole() honours it only for the church
+  // demo in the demo church, so it can never raise anyone's rights elsewhere.
+  r.put('/api/orgs/:orgId/demo-role', auth(async ({ req, res, user, params }) => {
+    if (!isChurchDemo(user) || params.orgId !== DEMO_ORG_ID) throw new HttpError(403, 'Only the church demo can preview roles', 'forbidden_role');
+    const role = roleParam((await readJson(req)).role);
+    const demoRole = role === 'admin' ? null : role;
+    await setSessionDemoRole(store, user.token, demoRole);
+    sendJson(res, 200, await orgDto({ ...user, demoRole }, DEMO_ORG_ID));
   }));
 
   // ---------------- setlists ----------------
