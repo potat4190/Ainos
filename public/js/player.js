@@ -685,6 +685,7 @@ export class Player extends EventTarget {
         if (this.yt !== y) return;
         console.info('[ainos] YouTube player:', reason);
         y.problem = reason;
+        y.playing = false; // nothing is playing: the bar must not say it is
         this.#changed();
       },
       onState: (state) => {
