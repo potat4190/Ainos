@@ -1,5 +1,26 @@
 # Progress
-Last updated: 2026-11-03 · **Current work: SPEEDRUN, merged (e031b6e) and live in production** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
+Last updated: 2026-11-03 · **Current work: after-speedrun polish** (owner, 2026-11-03: "Do 4, 2 and 1" from the Next list) on branch `polish-after-speedrun` (from `after-speedrun`). The speedrun (e031b6e) is live in production.
+
+## After-speedrun polish (2026-11-03): owner picked items 4, 2 and 1
+- **1. Production smoke test** (owner's go-ahead in chat): `node scripts/smoke.js https://ainos-liard.vercel.app` → 100/100 checks passed, exit 0. It reset the production listener and church demo accounts (expected).
+- **4. Phase 2 lows** · commit c059e9f: Verse of the Day uses the listener's day (`?tz=` IANA zone from the device; unknown zones = UTC); the Settings picker names a Bible version saved in another language (`selected_version` in GET /api/scripture/versions).
+- **2. Speedrun rough items**
+  - Churches · commit cdb1dd8: member management (role change, remove, leave; last admin 409 `last_admin` under an org-row lock), invite links (spec 5.3; new table `org_invites`), the church demo's role preview (new column `sessions.demo_role`, honoured only for the church demo in the demo church), three placeholder demo members, Members card + `#/join/<token>` page; one `sectionName()` replaces the three copies (chSec*/prSec* keys removed).
+  - YouTube, tap-to-sync, projection · next commit: videos join the one queue (`yt:<source id>` items; "Add to queue" on YouTube sources; repeat-one replays a video), log play_start/play_end events with `source_id` (never streams), and travel over Connect (state and queue carry the id; GET /api/sources/:id resolves it on any device; a transferred video opens in that device's visible box). Tap-to-sync dialog from the lyrics view (Space/tap per line, ±100 ms nudges, offset; PUT /api/sources/:id/timings: church leader for their church, catalog admin for everyone; `is_admin` on /api/me). Projection automatic mode plays tap-synced YouTube songs in YouTube's player, visible in a corner of the slideshow (this screen) or in the presenter window.
+- Tests: npm test green at each commit (full suite run on each commit's exact tree). New tests: VOTD time zones, selected_version, members/last admin, invites (hash only, expiry, revoke, use limits, rate limit, cross-church 404), role preview enforcement, a PGlite migration test (sessions.demo_role added to an existing database, org_invites grant, demo reset with placeholders), timings PUT (roles, validation, org vs global), YouTube events, GET /api/sources/:id.
+- **NOT browser-checked**: Claude in Chrome would not connect (the extension is signed in to a different claude.ai account than Claude Code) and the built-in browser pane is not in this session. Client code was checked statically only (syntax, every named import resolves). Needs a look in a browser: Members card, invite link + join page, role preview bar, tap-to-sync dialog, a queued video, Connect transfer of a video, automatic projection with a tap-synced YouTube song.
+- **Before merging (owner): apply `server/schema.pg.sql` to production** (adds table `org_invites` and column `sessions.demo_role`; re-runnable), or the production build's schema check fails. The preview build applies it to the preview database itself (DATABASE_MIGRATION_URL is set for Preview).
+
+## Decisions (after-speedrun polish, 2026-11-03)
+- Invite use limits: admin and leader links admit 1 person, operator and member links 25 (spec named admin/leader = 1, member = 25; operator only presents, so it gets the team limit).
+- Invites: at most 50 open per church, 30 created per admin per day; the redeem limit (10/h per address and per user) counts every attempt; one generic 404 `invite_invalid` for every failure; redeeming when already a member does not use up the link.
+- Member ids are returned only to members who may manage members; `DELETE /api/orgs/:orgId/members/me` = leave.
+- Role preview is stored per session (new nullable `sessions.demo_role`), so concurrent demo visitors preview independently; a new church-demo sign-in starts as admin.
+- Demo placeholder members are simulated users (`church-demo-leader/-operator/-member`, no password, can't sign in, names reserved at signup).
+- Section names: the lyrics view's `section*` keys are the one set; where the three sets' translations differed the majority wording was kept (hi आरंभ/समापन, ne कोरस २/प्रि-कोरस/अन्त्य, ja サビ, es Estrofa).
+- YouTube play events go in the existing `events.payload` (`{source: 'youtube', source_id}`, no track id), validated against song_sources; no schema change.
+- Tap-to-sync saves without an arrangement id; the generator's hymn timings (Recording arrangement) stay alongside an admin's global sync.
+- The "YouTube songs always advance by hand" note (prAutoYouTube) is gone: untimed YouTube songs are listed with the other untimed songs.
 
 ## Speedrun (owner instructions, 2026-10-30)
 - Scope: Phase 1 leftovers, Phase 2 (WEB fallback; YouVersion only if the key is set), Phase 3 search + YouTube playback (standard www.youtube.com embed via the IFrame API, "Watch on YouTube" fallback), Phase 4 synced lyrics view, Phase 5 church accounts + setlists + paste lyrics + church demo, Phase 6 projection (this screen / presenter view; manual / automatic). Skip Phase 7, CI polish, anything not needed for the demo.
@@ -128,14 +149,9 @@ One line each: question → choice (why). Reversible; review at merge.
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- 2026-11-03 session start: branch `after-speedrun` (PROGRESS-only commits on top of main e031b6e), working tree clean, `npm test` 169 pass / 1 skipped. No spec work is open: Phases 0-6 shipped (Phases 3-6 trimmed by the speedrun), Phase 7 needs the owner's approval.
-- **Waiting on the owner** before more work. Candidate next tasks, owner picks:
-  1. Production smoke test (`node scripts/smoke.js https://ainos-liard.vercel.app`): needs the owner's go-ahead (it resets the production demo accounts).
-  2. Speedrun "Rough" items: YouTube plays in the queue/Connect and as events (Q18), tap-to-sync, church role preview / invites (Q23) / member management with the last-admin guard (Q22), shared section-name keys (`prSec*`), automatic projection for YouTube items.
-  3. Spec items the speedrun skipped: YouTube in playlists / Liked Songs (Q15), channel indexing with YOUTUBE_API_KEY (Q16), verified email / 2FA (Q19).
-  4. Phase 2 lows: `dayOfYear` uses UTC (hi/ne/zh/ja listeners see yesterday's verse for part of the morning); the Settings picker shows a version saved in another language as a bare numeric id.
-  5. Bible versions per language (Q14): blocked until YOUVERSION_APP_KEY is in Vercel **Preview**; then list versions on a preview and propose one default per language (method in git history of this file, before 2026-11-03).
-  6. Native review of the ~820 new translations (docs/i18n-review.md).
+- Push `polish-after-speedrun`, open a PR to main, let the preview build apply the schema to the preview database, and check the preview (smoke needs VERCEL_AUTOMATION_BYPASS_SECRET in the environment).
+- Owner: look at the UI listed under "NOT browser-checked" above (or fix the Claude in Chrome account so Claude can), then merge; apply `server/schema.pg.sql` to production first.
+- Still open from the 2026-11-03 list: 3 (YouTube in playlists / Liked Songs Q15, channel indexing Q16, verified email / 2FA Q19), 5 (Bible versions per language, blocked on YOUVERSION_APP_KEY in Preview), 6 (native review of the translations, now ~860 rows in docs/i18n-review.md).
 - Owner (still open): make `test` a required status check in the main ruleset; confirm Q26-Q28 (taken as recommended); production `ainos_app` password rotation if not done.
 
 ## Open questions and answers
