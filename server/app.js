@@ -216,15 +216,19 @@ export async function createApp({
     await scriptureLimit(req, user);
     const fallback = language === FALLBACK_SOURCE.language
       ? { abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright } : null;
+    const [versions, selected] = await Promise.all([scripture.listVersions(language), bibleVersionOf(user.id)]);
+    // A version saved while using another language isn't in this list; send its name so the picker can show it.
+    const selectedVersion = selected && !versions.some((v) => v.id === selected) ? await scripture.describeVersion(selected) : null;
     sendJson(res, 200, {
-      language, versions: await scripture.listVersions(language), default: DEFAULT_VERSIONS[language] ?? null,
-      selected: await bibleVersionOf(user.id), fallback,
+      language, versions, default: DEFAULT_VERSIONS[language] ?? null,
+      selected, selected_version: selectedVersion, fallback,
     });
   }));
   r.get('/api/scripture/votd', auth(async ({ req, res, user, query }) => {
     const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
-    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, upstream }));
+    // ?tz= is the listener's IANA time zone, so the verse changes at their midnight (unknown zones count as UTC).
+    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, timeZone: query.get('tz'), upstream }));
   }));
   r.get('/api/scripture/:ref', auth(async ({ req, res, user, params, query }) => {
     const usfm = usfmRef(params.ref);

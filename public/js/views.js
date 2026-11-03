@@ -6,6 +6,8 @@ import { CROSSFADE_CHOICES } from './crossfade.js';
 import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
+// The device's IANA time zone ('' if the browser won't say; the server then uses UTC).
+const localTimeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 
 // ------------------------------------------------------------- components
 
@@ -160,7 +162,7 @@ export async function home(el, _p, app) {
   );
   const votd = h('section', { class: 'votd box', 'aria-label': t('verseOfTheDay') });
   el.append(votd);
-  api.get('/api/scripture/votd').then((v) => {
+  api.get(`/api/scripture/votd?tz=${encodeURIComponent(localTimeZone())}`).then((v) => {
     votd.append(h('div', { class: 'votd-label dim small' }, t('verseOfTheDay')));
     if (v.text) votd.append(h('blockquote', { class: 'passage-text' }, v.text));
     votd.append(h('div', { class: 'votd-ref' }, v.reference,
@@ -852,7 +854,9 @@ export async function settings(el, _p, app) {
     const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
     const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
     const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];
-    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), String(bible.selected)]);
+    // Saved while using another language: label it by name (the server sends it), the bare id only if it couldn't.
+    const other = bible.selected_version;
+    if (bible.selected && !bible.versions.some((v) => v.id === bible.selected)) options.push([String(bible.selected), other ? `${other.abbreviation} · ${other.title}` : String(bible.selected)]);
     el.append(row(t('bibleVersionTitle'), t('bibleVersionDesc'), select(bible.selected ? String(bible.selected) : '', options, safely(async (v) => {
       await api.put('/api/me/bible-version', { version: v ? Number(v) : null });
       app.scriptureCards.clear();
