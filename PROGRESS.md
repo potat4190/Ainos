@@ -1,5 +1,5 @@
 # Progress
-Last updated: 2026-10-30 · **Current work: SPEEDRUN, merged (e031b6e) and live in production** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
+Last updated: 2026-11-03 · **Current work: SPEEDRUN, merged (e031b6e) and live in production** (owner, 2026-10-30): finish the real app (Phases 3-6, trimmed to what the prototype shows) on branch `speedrun` (from phase-2-scripture), one PR · The prototype (branch `prototype`, https://ainos-prototype.vercel.app) is the UI reference.
 
 ## Speedrun (owner instructions, 2026-10-30)
 - Scope: Phase 1 leftovers, Phase 2 (WEB fallback; YouVersion only if the key is set), Phase 3 search + YouTube playback (standard www.youtube.com embed via the IFrame API, "Watch on YouTube" fallback), Phase 4 synced lyrics view, Phase 5 church accounts + setlists + paste lyrics + church demo, Phase 6 projection (this screen / presenter view; manual / automatic). Skip Phase 7, CI polish, anything not needed for the demo.
@@ -128,17 +128,15 @@ One line each: question → choice (why). Reversible; review at merge.
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- **In progress, uncommitted (working tree on phase-2-scripture, paused by the owner before the tests finished):** fixes for the Phase 2 correctness review. Files: scripts/seed-postgres.js, server/scripture.js, server/app.js, public/js/views.js, public/js/app.js, test/scripture.test.js, test/postgres.test.js. What they do:
-  1. Seeding skips songs whose references an admin replaced (an `audit_log` row with action `song.scripture.replace`), so an admin who clears a song's list keeps it cleared. PGlite test added ("a cleared list is not refilled either").
-  2. server/scripture.js: after a timeout, network error, 5xx or 429, no YouVersion calls for 60 s (PAUSE_MS), answering from the fallback at once; a failed Verse of the Day lookup caches the bundled list's verse for 5 min (RETRY_MS); a version list with more than 5 pages counts as failed, so versionStatus says 'unknown' rather than wrongly 'not_allowed'. Unit tests added.
-  3. PUT /api/me/bible-version returns 503 `scripture_unavailable` when versions can't be checked ('unknown'), 400 only for 'not_allowed'.
-  4. The now-playing Scripture card is hidden (not re-appended empty) when a song has no references, and a failed load is retried after a minute (dataset.failedAt in views.js, check in app.js renderRight).
-  - Next session: run `npm test`; fix anything failing (the existing route-level "API error or timeout" test may now hit the 60 s pause after its 'error' step: check that its expectations still hold); then commit via green-commit, update the Phase 2 follow-ups note (the "cleared list comes back" limitation is fixed), push, and smoke the PR #4 preview with `node scripts/smoke.js <preview>` (VERCEL_AUTOMATION_BYPASS_SECRET from the environment).
-- Not yet fixed from the correctness review (low, decide or note): `dayOfYear` uses UTC, so hi/ne/zh/ja listeners see the previous day's verse until 05:15-09:00 local time; the Settings picker shows a saved version from another language as its bare numeric id.
-- Then: when the owner has set YOUVERSION_APP_KEY for Preview, redeploy the PR #4 preview and run `node <scratchpad>/list-versions.mjs <preview url>` (a copy of the logic: demo sign-in, GET /api/scripture/versions?lang= for en hi ne zh ja es, then passages JHN.3.16, PHP.4.6-7, PSA.23, REV.4.8-11 and the VOTD in the first English version). Check that YouVersion accepts the short range form (PHP.4.6-7) and what `content` looks like with format=text. Propose one default version per language for the owner's approval (Q14), then fill DEFAULT_VERSIONS in server/scripture.js. If the language range "ne" returns nothing, try "npi"; the docs say BCP 47 basic ranges, a blog used ISO 639-3 ("eng").
-- Phase 2 end after that: preview smoke, update PROGRESS, summarize, stop for owner review. Do not merge PR #4 without the owner.
-- Owner (Phase 2): add YOUVERSION_APP_KEY (and ADMIN_USER_IDS, with the preview account's id) to Vercel's **Preview** environment; answer Q26-Q28 (passage caching; hymn references; VOTD fallback list); approve default versions once listed.
-- Owner (still open from before): make `test` a required status check in the main ruleset.
+- 2026-11-03 session start: branch `after-speedrun` (PROGRESS-only commits on top of main e031b6e), working tree clean, `npm test` 169 pass / 1 skipped. No spec work is open: Phases 0-6 shipped (Phases 3-6 trimmed by the speedrun), Phase 7 needs the owner's approval.
+- **Waiting on the owner** before more work. Candidate next tasks, owner picks:
+  1. Production smoke test (`node scripts/smoke.js https://ainos-liard.vercel.app`): needs the owner's go-ahead (it resets the production demo accounts).
+  2. Speedrun "Rough" items: YouTube plays in the queue/Connect and as events (Q18), tap-to-sync, church role preview / invites (Q23) / member management with the last-admin guard (Q22), shared section-name keys (`prSec*`), automatic projection for YouTube items.
+  3. Spec items the speedrun skipped: YouTube in playlists / Liked Songs (Q15), channel indexing with YOUTUBE_API_KEY (Q16), verified email / 2FA (Q19).
+  4. Phase 2 lows: `dayOfYear` uses UTC (hi/ne/zh/ja listeners see yesterday's verse for part of the morning); the Settings picker shows a version saved in another language as a bare numeric id.
+  5. Bible versions per language (Q14): blocked until YOUVERSION_APP_KEY is in Vercel **Preview**; then list versions on a preview and propose one default per language (method in git history of this file, before 2026-11-03).
+  6. Native review of the ~820 new translations (docs/i18n-review.md).
+- Owner (still open): make `test` a required status check in the main ruleset; confirm Q26-Q28 (taken as recommended); production `ainos_app` password rotation if not done.
 
 ## Open questions and answers
 - NEW (2026-10-29) Q26 YouVersion caching: the Platform docs state no caching terms per version, so passage text is not cached at all (each passage is fetched when shown, rate-limited per listener). May Ainos cache passage text briefly (spec: ~1 h, ≤500 entries, in memory), or keep fetching every time? → waiting
