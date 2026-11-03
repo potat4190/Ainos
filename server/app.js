@@ -15,7 +15,7 @@ import { Recommender } from './recommend.js';
 import { EventPipeline, STREAM_THRESHOLD_MS } from './events.js';
 import { ConnectHub } from './connect.js';
 import { normalizationGainDb } from './loudness.js';
-import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
+import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_PLACEHOLDERS, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
@@ -108,7 +108,7 @@ export async function createApp({
     const taken = () => new HttpError(409, 'That username is taken', 'username_taken');
     // The demo accounts may not exist yet in a database (they are created on
     // first use); nobody else may claim their names.
-    if (DEMO_USERNAMES.includes(username.toLowerCase())) throw taken();
+    if (DEMO_USERNAMES.includes(username.toLowerCase()) || DEMO_PLACEHOLDERS.some((p) => p.username === username.toLowerCase())) throw taken();
     if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
     const lang = LANGUAGES.includes(language) ? language : 'en';

@@ -126,14 +126,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chRole_leader` | Leader | अगुवा | 5 |
 | [ ] | `chRole_operator` | Operator | ऑपरेटर | 5 |
 | [ ] | `chRole_member` | Member | सदस्य | 5 |
-| [ ] | `chSecV` | Verse {n} | पद {n} | 5 |
-| [ ] | `chSecC` | Chorus | कोरस | 5 |
-| [ ] | `chSecC2` | Chorus 2 | कोरस 2 | 5 |
-| [ ] | `chSecPC` | Pre-chorus | प्री-कोरस | 5 |
-| [ ] | `chSecB` | Bridge | ब्रिज | 5 |
-| [ ] | `chSecT` | Tag | टैग | 5 |
-| [ ] | `chSecI` | Intro | इंट्रो | 5 |
-| [ ] | `chSecE` | Ending | अंत | 5 |
 | [ ] | `prTitle` | Present | प्रस्तुत करें | 6 |
 | [ ] | `prWhere` | Where | कहाँ | 6 |
 | [ ] | `prMode` | How the slides advance | स्लाइड कैसे आगे बढ़ें | 6 |
@@ -176,14 +168,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prPaused` | Paused | रुका हुआ | 6 |
 | [ ] | `prLoading` | Loading… | लोड हो रहा है… | 6 |
 | [ ] | `prAudioFailed` | Couldn’t play “{title}”. Its slides advance by hand. | “{title}” नहीं चल सका। इसकी स्लाइड हाथ से आगे बढ़ेंगी। | 6 |
-| [ ] | `prSecV` | Verse {n} | पद {n} | 6 |
-| [ ] | `prSecC` | Chorus | कोरस | 6 |
-| [ ] | `prSecC2` | Chorus 2 | कोरस 2 | 6 |
-| [ ] | `prSecPC` | Pre-chorus | प्री-कोरस | 6 |
-| [ ] | `prSecB` | Bridge | ब्रिज | 6 |
-| [ ] | `prSecT` | Tag | टैग | 6 |
-| [ ] | `prSecE` | Ending | समापन | 6 |
-| [ ] | `prSecI` | Intro | आरंभ | 6 |
 | [ ] | `songsGroup` | Songs | गीत | 3-4 |
 | [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos रिकॉर्डिंग और YouTube के आधिकारिक वीडियो | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
@@ -214,6 +198,37 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | टैग | 3-4 |
 | [ ] | `sectionIntro` | Intro | आरंभ | 3-4 |
 | [ ] | `sectionEnding` | Ending | समापन | 3-4 |
+| [ ] | `chMembers` | Members | सदस्य | 5 |
+| [ ] | `chMembersSub` | Who belongs to this church and what each person can do | इस चर्च में कौन है और हर व्यक्ति क्या कर सकता है | 5 |
+| [ ] | `chYou` | (you) | (आप) | 5 |
+| [ ] | `chRemoveMember` | Remove from church | चर्च से हटाएँ | 5 |
+| [ ] | `chRemoveMemberConfirm` | Remove {name} from this church? | {name} को इस चर्च से हटाएँ? | 5 |
+| [ ] | `chMemberRemoved` | {name} was removed | {name} को हटा दिया गया | 5 |
+| [ ] | `chRoleUpdated` | Role updated | भूमिका बदल दी गई | 5 |
+| [ ] | `chLeave` | Leave this church | यह चर्च छोड़ें | 5 |
+| [ ] | `chLeaveConfirm` | Leave {name}? You’ll need a new invite to come back. | {name} छोड़ें? वापस आने के लिए आपको नया आमंत्रण चाहिए होगा। | 5 |
+| [ ] | `chLeft` | You left {name} | आपने {name} छोड़ दिया | 5 |
+| [ ] | `chInvites` | Invite links | आमंत्रण लिंक | 5 |
+| [ ] | `chInvitesSub` | Anyone with a link joins with its role. Links last a week; admin and leader links work once. | लिंक वाला कोई भी व्यक्ति उसकी भूमिका के साथ जुड़ता है। लिंक एक सप्ताह तक चलते हैं; एडमिन और अगुवा के लिंक एक ही बार काम करते हैं। | 5 |
+| [ ] | `chCreateInvite` | Create link | लिंक बनाएँ | 5 |
+| [ ] | `chInviteRole` | Role | भूमिका | 5 |
+| [ ] | `chInviteShowOnce` | Copy this link now: for safety it won’t be shown again. | यह लिंक अभी कॉपी करें: सुरक्षा के लिए यह दोबारा नहीं दिखाया जाएगा। | 5 |
+| [ ] | `chCopy` | Copy | कॉपी करें | 5 |
+| [ ] | `chCopied` | Link copied | लिंक कॉपी हो गया | 5 |
+| [ ] | `chInviteUses` | {uses} of {max} used · until {date} | {max} में से {uses} उपयोग हुए · {date} तक | 5 |
+| [ ] | `chRevoke` | Revoke | रद्द करें | 5 |
+| [ ] | `chRevoked` | Link revoked | लिंक रद्द कर दिया गया | 5 |
+| [ ] | `chNoInvites` | No open invite links | कोई खुला आमंत्रण लिंक नहीं है | 5 |
+| [ ] | `chInvitesDemo` | Invites and member changes are off in the shared demo. Sign up to invite your team. | साझा डेमो में आमंत्रण और सदस्यों में बदलाव बंद हैं। अपनी टीम को आमंत्रित करने के लिए साइन अप करें। | 5 |
+| [ ] | `chViewingAs` | Viewing as | इस भूमिका में देखें | 5 |
+| [ ] | `chViewingAsHelp` | Try what each role can do. The server checks the role you pick. | देखें कि हर भूमिका क्या कर सकती है। आपकी चुनी भूमिका सर्वर पर जाँची जाती है। | 5 |
+| [ ] | `chJoinTitle` | Join a church | किसी चर्च से जुड़ें | 5 |
+| [ ] | `chJoinSub` | You’ve been invited to join a church on Ainos. Accept to see its setlists and lyrics. | आपको Ainos पर एक चर्च से जुड़ने का आमंत्रण मिला है। उसकी सेटलिस्ट और गीतों के बोल देखने के लिए स्वीकार करें। | 5 |
+| [ ] | `chJoinBtn` | Accept invite | आमंत्रण स्वीकार करें | 5 |
+| [ ] | `chJoined` | Welcome to {name} | {name} में आपका स्वागत है | 5 |
+| [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | साझा डेमो किसी चर्च से नहीं जुड़ सकता। यह आमंत्रण स्वीकार करने के लिए साइन अप करें। | 5 |
+| [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | हर चर्च में कम से कम एक एडमिन होना चाहिए। पहले किसी और को एडमिन बनाएँ। | 5 |
+| [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | यह आमंत्रण लिंक मान्य नहीं है। अपने चर्च के एडमिन से नया लिंक माँगें। | 5 |
 
 ## Nepali (ne)
 
@@ -334,14 +349,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chRole_leader` | Leader | अगुवा | 5 |
 | [ ] | `chRole_operator` | Operator | सञ्चालक | 5 |
 | [ ] | `chRole_member` | Member | सदस्य | 5 |
-| [ ] | `chSecV` | Verse {n} | पद {n} | 5 |
-| [ ] | `chSecC` | Chorus | कोरस | 5 |
-| [ ] | `chSecC2` | Chorus 2 | कोरस २ | 5 |
-| [ ] | `chSecPC` | Pre-chorus | प्रि-कोरस | 5 |
-| [ ] | `chSecB` | Bridge | ब्रिज | 5 |
-| [ ] | `chSecT` | Tag | ट्याग | 5 |
-| [ ] | `chSecI` | Intro | सुरुवात | 5 |
-| [ ] | `chSecE` | Ending | अन्त्य | 5 |
 | [ ] | `prTitle` | Present | प्रस्तुत गर्नुहोस् | 6 |
 | [ ] | `prWhere` | Where | कहाँ | 6 |
 | [ ] | `prMode` | How the slides advance | स्लाइडहरू कसरी अघि बढ्छन् | 6 |
@@ -384,14 +391,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prPaused` | Paused | रोकिएको | 6 |
 | [ ] | `prLoading` | Loading… | लोड हुँदै… | 6 |
 | [ ] | `prAudioFailed` | Couldn’t play “{title}”. Its slides advance by hand. | “{title}” बजाउन सकिएन। यसका स्लाइडहरू आफैँ अघि बढाउनुपर्छ। | 6 |
-| [ ] | `prSecV` | Verse {n} | पद {n} | 6 |
-| [ ] | `prSecC` | Chorus | कोरस | 6 |
-| [ ] | `prSecC2` | Chorus 2 | कोरस 2 | 6 |
-| [ ] | `prSecPC` | Pre-chorus | प्रि-कोरस | 6 |
-| [ ] | `prSecB` | Bridge | ब्रिज | 6 |
-| [ ] | `prSecT` | Tag | ट्याग | 6 |
-| [ ] | `prSecE` | Ending | अन्त्य | 6 |
-| [ ] | `prSecI` | Intro | सुरुवात | 6 |
 | [ ] | `songsGroup` | Songs | गीतहरू | 3-4 |
 | [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos रेकर्डिङ र YouTube का आधिकारिक भिडियोहरू | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
@@ -417,11 +416,42 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionVerse` | Verse {n} | पद {n} | 3-4 |
 | [ ] | `sectionChorus` | Chorus | कोरस | 3-4 |
 | [ ] | `sectionChorus2` | Chorus 2 | कोरस २ | 3-4 |
-| [ ] | `sectionPreChorus` | Pre-chorus | प्री-कोरस | 3-4 |
+| [ ] | `sectionPreChorus` | Pre-chorus | प्रि-कोरस | 3-4 |
 | [ ] | `sectionBridge` | Bridge | ब्रिज | 3-4 |
 | [ ] | `sectionTag` | Tag | ट्याग | 3-4 |
 | [ ] | `sectionIntro` | Intro | सुरुवात | 3-4 |
-| [ ] | `sectionEnding` | Ending | समापन | 3-4 |
+| [ ] | `sectionEnding` | Ending | अन्त्य | 3-4 |
+| [ ] | `chMembers` | Members | सदस्यहरू | 5 |
+| [ ] | `chMembersSub` | Who belongs to this church and what each person can do | यो मण्डलीमा को-को छन् र हरेकले के गर्न सक्छन् | 5 |
+| [ ] | `chYou` | (you) | (तपाईं) | 5 |
+| [ ] | `chRemoveMember` | Remove from church | मण्डलीबाट हटाउनुहोस् | 5 |
+| [ ] | `chRemoveMemberConfirm` | Remove {name} from this church? | {name} लाई यो मण्डलीबाट हटाउने? | 5 |
+| [ ] | `chMemberRemoved` | {name} was removed | {name} लाई हटाइयो | 5 |
+| [ ] | `chRoleUpdated` | Role updated | भूमिका बदलियो | 5 |
+| [ ] | `chLeave` | Leave this church | यो मण्डली छोड्नुहोस् | 5 |
+| [ ] | `chLeaveConfirm` | Leave {name}? You’ll need a new invite to come back. | {name} छोड्ने? फर्कन तपाईंलाई नयाँ निमन्त्रणा चाहिन्छ। | 5 |
+| [ ] | `chLeft` | You left {name} | तपाईंले {name} छोड्नुभयो | 5 |
+| [ ] | `chInvites` | Invite links | निमन्त्रणा लिङ्क | 5 |
+| [ ] | `chInvitesSub` | Anyone with a link joins with its role. Links last a week; admin and leader links work once. | लिङ्क भएको जो कोही त्यसको भूमिकासहित जोडिन्छ। लिङ्क एक हप्ता चल्छ; एडमिन र अगुवाका लिङ्क एक पटक मात्र चल्छन्। | 5 |
+| [ ] | `chCreateInvite` | Create link | लिङ्क बनाउनुहोस् | 5 |
+| [ ] | `chInviteRole` | Role | भूमिका | 5 |
+| [ ] | `chInviteShowOnce` | Copy this link now: for safety it won’t be shown again. | यो लिङ्क अहिले नै कपी गर्नुहोस्: सुरक्षाका लागि यो फेरि देखाइँदैन। | 5 |
+| [ ] | `chCopy` | Copy | कपी गर्नुहोस् | 5 |
+| [ ] | `chCopied` | Link copied | लिङ्क कपी भयो | 5 |
+| [ ] | `chInviteUses` | {uses} of {max} used · until {date} | {max} मध्ये {uses} प्रयोग भयो · {date} सम्म | 5 |
+| [ ] | `chRevoke` | Revoke | रद्द गर्नुहोस् | 5 |
+| [ ] | `chRevoked` | Link revoked | लिङ्क रद्द भयो | 5 |
+| [ ] | `chNoInvites` | No open invite links | खुला निमन्त्रणा लिङ्क छैन | 5 |
+| [ ] | `chInvitesDemo` | Invites and member changes are off in the shared demo. Sign up to invite your team. | साझा डेमोमा निमन्त्रणा र सदस्य परिवर्तन बन्द छन्। आफ्नो टोलीलाई निमन्त्रणा दिन साइन अप गर्नुहोस्। | 5 |
+| [ ] | `chViewingAs` | Viewing as | यो भूमिकामा हेर्दै | 5 |
+| [ ] | `chViewingAsHelp` | Try what each role can do. The server checks the role you pick. | हरेक भूमिकाले के गर्न सक्छ हेर्नुहोस्। तपाईंले रोजेको भूमिका सर्भरले जाँच्छ। | 5 |
+| [ ] | `chJoinTitle` | Join a church | मण्डलीमा जोडिनुहोस् | 5 |
+| [ ] | `chJoinSub` | You’ve been invited to join a church on Ainos. Accept to see its setlists and lyrics. | तपाईंलाई Ainos मा एउटा मण्डलीमा जोडिन निमन्त्रणा आएको छ। यसका सेटलिस्ट र गीतका शब्द हेर्न स्वीकार गर्नुहोस्। | 5 |
+| [ ] | `chJoinBtn` | Accept invite | निमन्त्रणा स्वीकार गर्नुहोस् | 5 |
+| [ ] | `chJoined` | Welcome to {name} | {name} मा स्वागत छ | 5 |
+| [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | साझा डेमो कुनै मण्डलीमा जोडिन सक्दैन। यो निमन्त्रणा स्वीकार गर्न साइन अप गर्नुहोस्। | 5 |
+| [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | मण्डलीमा कम्तीमा एक जना एडमिन चाहिन्छ। पहिले अरू कसैलाई एडमिन बनाउनुहोस्। | 5 |
+| [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | यो निमन्त्रणा लिङ्क मान्य छैन। आफ्नो मण्डलीका एडमिनसँग नयाँ लिङ्क माग्नुहोस्। | 5 |
 
 ## Chinese (zh)
 
@@ -540,14 +570,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chRole_leader` | Leader | 带领人 | 5 |
 | [ ] | `chRole_operator` | Operator | 操作员 | 5 |
 | [ ] | `chRole_member` | Member | 成员 | 5 |
-| [ ] | `chSecV` | Verse {n} | 第 {n} 节 | 5 |
-| [ ] | `chSecC` | Chorus | 副歌 | 5 |
-| [ ] | `chSecC2` | Chorus 2 | 副歌 2 | 5 |
-| [ ] | `chSecPC` | Pre-chorus | 导歌 | 5 |
-| [ ] | `chSecB` | Bridge | 桥段 | 5 |
-| [ ] | `chSecT` | Tag | 尾句 | 5 |
-| [ ] | `chSecI` | Intro | 前奏 | 5 |
-| [ ] | `chSecE` | Ending | 结尾 | 5 |
 | [ ] | `prTitle` | Present | 演示 | 6 |
 | [ ] | `prWhere` | Where | 在哪里演示 | 6 |
 | [ ] | `prMode` | How the slides advance | 幻灯片如何切换 | 6 |
@@ -590,14 +612,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prPaused` | Paused | 已暂停 | 6 |
 | [ ] | `prLoading` | Loading… | 正在加载… | 6 |
 | [ ] | `prAudioFailed` | Couldn’t play “{title}”. Its slides advance by hand. | 无法播放“{title}”。其幻灯片需手动切换。 | 6 |
-| [ ] | `prSecV` | Verse {n} | 第 {n} 节 | 6 |
-| [ ] | `prSecC` | Chorus | 副歌 | 6 |
-| [ ] | `prSecC2` | Chorus 2 | 副歌 2 | 6 |
-| [ ] | `prSecPC` | Pre-chorus | 导歌 | 6 |
-| [ ] | `prSecB` | Bridge | 桥段 | 6 |
-| [ ] | `prSecT` | Tag | 尾句 | 6 |
-| [ ] | `prSecE` | Ending | 结尾 | 6 |
-| [ ] | `prSecI` | Intro | 前奏 | 6 |
 | [ ] | `songsGroup` | Songs | 诗歌 | 3-4 |
 | [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos 录音和 YouTube 官方视频 | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
@@ -628,6 +642,37 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | 尾句 | 3-4 |
 | [ ] | `sectionIntro` | Intro | 前奏 | 3-4 |
 | [ ] | `sectionEnding` | Ending | 结尾 | 3-4 |
+| [ ] | `chMembers` | Members | 成员 | 5 |
+| [ ] | `chMembersSub` | Who belongs to this church and what each person can do | 这个教会有哪些人，以及每个人可以做什么 | 5 |
+| [ ] | `chYou` | (you) | （你） | 5 |
+| [ ] | `chRemoveMember` | Remove from church | 移出教会 | 5 |
+| [ ] | `chRemoveMemberConfirm` | Remove {name} from this church? | 要将 {name} 移出这个教会吗？ | 5 |
+| [ ] | `chMemberRemoved` | {name} was removed | 已移除 {name} | 5 |
+| [ ] | `chRoleUpdated` | Role updated | 角色已更新 | 5 |
+| [ ] | `chLeave` | Leave this church | 退出这个教会 | 5 |
+| [ ] | `chLeaveConfirm` | Leave {name}? You’ll need a new invite to come back. | 要退出 {name} 吗？之后需要新的邀请才能重新加入。 | 5 |
+| [ ] | `chLeft` | You left {name} | 你已退出 {name} | 5 |
+| [ ] | `chInvites` | Invite links | 邀请链接 | 5 |
+| [ ] | `chInvitesSub` | Anyone with a link joins with its role. Links last a week; admin and leader links work once. | 持有链接的人会以链接设定的角色加入。链接有效期为一周；管理员和带领人的链接只能使用一次。 | 5 |
+| [ ] | `chCreateInvite` | Create link | 创建链接 | 5 |
+| [ ] | `chInviteRole` | Role | 角色 | 5 |
+| [ ] | `chInviteShowOnce` | Copy this link now: for safety it won’t be shown again. | 请现在复制此链接：为了安全，它不会再次显示。 | 5 |
+| [ ] | `chCopy` | Copy | 复制 | 5 |
+| [ ] | `chCopied` | Link copied | 链接已复制 | 5 |
+| [ ] | `chInviteUses` | {uses} of {max} used · until {date} | 已使用 {uses}/{max} 次 · 有效期至 {date} | 5 |
+| [ ] | `chRevoke` | Revoke | 撤销 | 5 |
+| [ ] | `chRevoked` | Link revoked | 链接已撤销 | 5 |
+| [ ] | `chNoInvites` | No open invite links | 没有有效的邀请链接 | 5 |
+| [ ] | `chInvitesDemo` | Invites and member changes are off in the shared demo. Sign up to invite your team. | 共享演示中无法邀请或更改成员。注册后即可邀请你的团队。 | 5 |
+| [ ] | `chViewingAs` | Viewing as | 当前视角 | 5 |
+| [ ] | `chViewingAsHelp` | Try what each role can do. The server checks the role you pick. | 试试每个角色能做什么。服务器会按你选择的角色进行检查。 | 5 |
+| [ ] | `chJoinTitle` | Join a church | 加入教会 | 5 |
+| [ ] | `chJoinSub` | You’ve been invited to join a church on Ainos. Accept to see its setlists and lyrics. | 你受邀加入 Ainos 上的一个教会。接受后即可查看它的歌单和歌词。 | 5 |
+| [ ] | `chJoinBtn` | Accept invite | 接受邀请 | 5 |
+| [ ] | `chJoined` | Welcome to {name} | 欢迎加入 {name} | 5 |
+| [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | 共享演示无法加入教会。注册后即可接受此邀请。 | 5 |
+| [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | 教会至少需要一位管理员。请先将其他人设为管理员。 | 5 |
+| [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | 此邀请链接无效。请向你的教会管理员索取新链接。 | 5 |
 
 ## Japanese (ja)
 
@@ -741,14 +786,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chRole_leader` | Leader | リーダー | 5 |
 | [ ] | `chRole_operator` | Operator | オペレーター | 5 |
 | [ ] | `chRole_member` | Member | メンバー | 5 |
-| [ ] | `chSecV` | Verse {n} | {n} 番 | 5 |
-| [ ] | `chSecC` | Chorus | サビ | 5 |
-| [ ] | `chSecC2` | Chorus 2 | サビ 2 | 5 |
-| [ ] | `chSecPC` | Pre-chorus | プレコーラス | 5 |
-| [ ] | `chSecB` | Bridge | ブリッジ | 5 |
-| [ ] | `chSecT` | Tag | タグ | 5 |
-| [ ] | `chSecI` | Intro | イントロ | 5 |
-| [ ] | `chSecE` | Ending | エンディング | 5 |
 | [ ] | `prTitle` | Present | プレゼンテーション | 6 |
 | [ ] | `prWhere` | Where | 表示する場所 | 6 |
 | [ ] | `prMode` | How the slides advance | スライドの進め方 | 6 |
@@ -791,14 +828,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prPaused` | Paused | 一時停止中 | 6 |
 | [ ] | `prLoading` | Loading… | 読み込み中… | 6 |
 | [ ] | `prAudioFailed` | Couldn’t play “{title}”. Its slides advance by hand. | 「{title}」を再生できませんでした。スライドは手動で進めます。 | 6 |
-| [ ] | `prSecV` | Verse {n} | {n} 番 | 6 |
-| [ ] | `prSecC` | Chorus | サビ | 6 |
-| [ ] | `prSecC2` | Chorus 2 | サビ 2 | 6 |
-| [ ] | `prSecPC` | Pre-chorus | プレコーラス | 6 |
-| [ ] | `prSecB` | Bridge | ブリッジ | 6 |
-| [ ] | `prSecT` | Tag | タグ | 6 |
-| [ ] | `prSecE` | Ending | エンディング | 6 |
-| [ ] | `prSecI` | Intro | イントロ | 6 |
 | [ ] | `songsGroup` | Songs | 賛美歌 | 3-4 |
 | [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos の録音と YouTube の公式動画 | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
@@ -822,13 +851,44 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `lyricsNotSynced` | Synced lyrics aren’t available for this version. | このバージョンには同期された歌詞がありません。 | 3-4 |
 | [ ] | `lyricsMoreVerses` | More verses | ほかの節 | 3-4 |
 | [ ] | `sectionVerse` | Verse {n} | {n} 番 | 3-4 |
-| [ ] | `sectionChorus` | Chorus | コーラス | 3-4 |
-| [ ] | `sectionChorus2` | Chorus 2 | コーラス 2 | 3-4 |
+| [ ] | `sectionChorus` | Chorus | サビ | 3-4 |
+| [ ] | `sectionChorus2` | Chorus 2 | サビ 2 | 3-4 |
 | [ ] | `sectionPreChorus` | Pre-chorus | プレコーラス | 3-4 |
 | [ ] | `sectionBridge` | Bridge | ブリッジ | 3-4 |
 | [ ] | `sectionTag` | Tag | タグ | 3-4 |
 | [ ] | `sectionIntro` | Intro | イントロ | 3-4 |
 | [ ] | `sectionEnding` | Ending | エンディング | 3-4 |
+| [ ] | `chMembers` | Members | メンバー | 5 |
+| [ ] | `chMembersSub` | Who belongs to this church and what each person can do | この教会のメンバーと、それぞれができること | 5 |
+| [ ] | `chYou` | (you) | （あなた） | 5 |
+| [ ] | `chRemoveMember` | Remove from church | 教会から外す | 5 |
+| [ ] | `chRemoveMemberConfirm` | Remove {name} from this church? | {name} さんをこの教会から外しますか？ | 5 |
+| [ ] | `chMemberRemoved` | {name} was removed | {name} さんを外しました | 5 |
+| [ ] | `chRoleUpdated` | Role updated | 役割を変更しました | 5 |
+| [ ] | `chLeave` | Leave this church | この教会を抜ける | 5 |
+| [ ] | `chLeaveConfirm` | Leave {name}? You’ll need a new invite to come back. | {name} を抜けますか？戻るには新しい招待が必要です。 | 5 |
+| [ ] | `chLeft` | You left {name} | {name} を抜けました | 5 |
+| [ ] | `chInvites` | Invite links | 招待リンク | 5 |
+| [ ] | `chInvitesSub` | Anyone with a link joins with its role. Links last a week; admin and leader links work once. | リンクを持つ人は、そのリンクの役割で参加します。リンクの有効期間は1週間で、管理者とリーダーのリンクは1回だけ使えます。 | 5 |
+| [ ] | `chCreateInvite` | Create link | リンクを作成 | 5 |
+| [ ] | `chInviteRole` | Role | 役割 | 5 |
+| [ ] | `chInviteShowOnce` | Copy this link now: for safety it won’t be shown again. | 今このリンクをコピーしてください。安全のため、二度と表示されません。 | 5 |
+| [ ] | `chCopy` | Copy | コピー | 5 |
+| [ ] | `chCopied` | Link copied | リンクをコピーしました | 5 |
+| [ ] | `chInviteUses` | {uses} of {max} used · until {date} | {max} 回中 {uses} 回使用 · {date} まで | 5 |
+| [ ] | `chRevoke` | Revoke | 取り消す | 5 |
+| [ ] | `chRevoked` | Link revoked | リンクを取り消しました | 5 |
+| [ ] | `chNoInvites` | No open invite links | 有効な招待リンクはありません | 5 |
+| [ ] | `chInvitesDemo` | Invites and member changes are off in the shared demo. Sign up to invite your team. | 共有デモでは招待とメンバーの変更はできません。チームを招待するには登録してください。 | 5 |
+| [ ] | `chViewingAs` | Viewing as | 表示中の役割 | 5 |
+| [ ] | `chViewingAsHelp` | Try what each role can do. The server checks the role you pick. | それぞれの役割でできることを試せます。選んだ役割はサーバーで確認されます。 | 5 |
+| [ ] | `chJoinTitle` | Join a church | 教会に参加 | 5 |
+| [ ] | `chJoinSub` | You’ve been invited to join a church on Ainos. Accept to see its setlists and lyrics. | Ainos の教会に招待されています。承諾すると、その教会のセットリストと歌詞を見られます。 | 5 |
+| [ ] | `chJoinBtn` | Accept invite | 招待を承諾 | 5 |
+| [ ] | `chJoined` | Welcome to {name} | {name} へようこそ | 5 |
+| [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | 共有デモでは教会に参加できません。この招待を承諾するには登録してください。 | 5 |
+| [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | 教会には少なくとも1人の管理者が必要です。先にほかの人を管理者にしてください。 | 5 |
+| [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | この招待リンクは無効です。教会の管理者に新しいリンクを依頼してください。 | 5 |
 
 ## Spanish (es)
 
@@ -949,14 +1009,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chRole_leader` | Leader | Líder | 5 |
 | [ ] | `chRole_operator` | Operator | Operador | 5 |
 | [ ] | `chRole_member` | Member | Miembro | 5 |
-| [ ] | `chSecV` | Verse {n} | Verso {n} | 5 |
-| [ ] | `chSecC` | Chorus | Coro | 5 |
-| [ ] | `chSecC2` | Chorus 2 | Coro 2 | 5 |
-| [ ] | `chSecPC` | Pre-chorus | Precoro | 5 |
-| [ ] | `chSecB` | Bridge | Puente | 5 |
-| [ ] | `chSecT` | Tag | Tag | 5 |
-| [ ] | `chSecI` | Intro | Intro | 5 |
-| [ ] | `chSecE` | Ending | Final | 5 |
 | [ ] | `prTitle` | Present | Presentar | 6 |
 | [ ] | `prWhere` | Where | Dónde | 6 |
 | [ ] | `prMode` | How the slides advance | Cómo avanzan las diapositivas | 6 |
@@ -999,14 +1051,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prPaused` | Paused | En pausa | 6 |
 | [ ] | `prLoading` | Loading… | Cargando… | 6 |
 | [ ] | `prAudioFailed` | Couldn’t play “{title}”. Its slides advance by hand. | No se pudo reproducir «{title}». Sus diapositivas avanzan a mano. | 6 |
-| [ ] | `prSecV` | Verse {n} | Estrofa {n} | 6 |
-| [ ] | `prSecC` | Chorus | Coro | 6 |
-| [ ] | `prSecC2` | Chorus 2 | Coro 2 | 6 |
-| [ ] | `prSecPC` | Pre-chorus | Precoro | 6 |
-| [ ] | `prSecB` | Bridge | Puente | 6 |
-| [ ] | `prSecT` | Tag | Tag | 6 |
-| [ ] | `prSecE` | Ending | Final | 6 |
-| [ ] | `prSecI` | Intro | Intro | 6 |
 | [ ] | `songsGroup` | Songs | Canciones | 3-4 |
 | [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Grabaciones de Ainos y videos oficiales de YouTube | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
@@ -1037,6 +1081,37 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | Tag | 3-4 |
 | [ ] | `sectionIntro` | Intro | Intro | 3-4 |
 | [ ] | `sectionEnding` | Ending | Final | 3-4 |
+| [ ] | `chMembers` | Members | Miembros | 5 |
+| [ ] | `chMembersSub` | Who belongs to this church and what each person can do | Quién pertenece a esta iglesia y qué puede hacer cada persona | 5 |
+| [ ] | `chYou` | (you) | (tú) | 5 |
+| [ ] | `chRemoveMember` | Remove from church | Quitar de la iglesia | 5 |
+| [ ] | `chRemoveMemberConfirm` | Remove {name} from this church? | ¿Quitar a {name} de esta iglesia? | 5 |
+| [ ] | `chMemberRemoved` | {name} was removed | Se quitó a {name} | 5 |
+| [ ] | `chRoleUpdated` | Role updated | Rol actualizado | 5 |
+| [ ] | `chLeave` | Leave this church | Salir de esta iglesia | 5 |
+| [ ] | `chLeaveConfirm` | Leave {name}? You’ll need a new invite to come back. | ¿Salir de {name}? Necesitarás una nueva invitación para volver. | 5 |
+| [ ] | `chLeft` | You left {name} | Saliste de {name} | 5 |
+| [ ] | `chInvites` | Invite links | Enlaces de invitación | 5 |
+| [ ] | `chInvitesSub` | Anyone with a link joins with its role. Links last a week; admin and leader links work once. | Quien tenga un enlace se une con su rol. Los enlaces duran una semana; los de administrador y líder sirven una sola vez. | 5 |
+| [ ] | `chCreateInvite` | Create link | Crear enlace | 5 |
+| [ ] | `chInviteRole` | Role | Rol | 5 |
+| [ ] | `chInviteShowOnce` | Copy this link now: for safety it won’t be shown again. | Copia este enlace ahora: por seguridad, no se volverá a mostrar. | 5 |
+| [ ] | `chCopy` | Copy | Copiar | 5 |
+| [ ] | `chCopied` | Link copied | Enlace copiado | 5 |
+| [ ] | `chInviteUses` | {uses} of {max} used · until {date} | {uses} de {max} usados · hasta el {date} | 5 |
+| [ ] | `chRevoke` | Revoke | Revocar | 5 |
+| [ ] | `chRevoked` | Link revoked | Enlace revocado | 5 |
+| [ ] | `chNoInvites` | No open invite links | No hay enlaces de invitación abiertos | 5 |
+| [ ] | `chInvitesDemo` | Invites and member changes are off in the shared demo. Sign up to invite your team. | En la demo compartida no se puede invitar ni cambiar miembros. Regístrate para invitar a tu equipo. | 5 |
+| [ ] | `chViewingAs` | Viewing as | Ver como | 5 |
+| [ ] | `chViewingAsHelp` | Try what each role can do. The server checks the role you pick. | Prueba lo que puede hacer cada rol. El servidor comprueba el rol que elijas. | 5 |
+| [ ] | `chJoinTitle` | Join a church | Unirse a una iglesia | 5 |
+| [ ] | `chJoinSub` | You’ve been invited to join a church on Ainos. Accept to see its setlists and lyrics. | Te han invitado a unirte a una iglesia en Ainos. Acepta para ver sus listas y letras. | 5 |
+| [ ] | `chJoinBtn` | Accept invite | Aceptar invitación | 5 |
+| [ ] | `chJoined` | Welcome to {name} | Bienvenido a {name} | 5 |
+| [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | La demo compartida no puede unirse a una iglesia. Regístrate para aceptar esta invitación. | 5 |
+| [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | Una iglesia necesita al menos un administrador. Primero haz administrador a otra persona. | 5 |
+| [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | Este enlace de invitación no es válido. Pide uno nuevo al administrador de tu iglesia. | 5 |
 
 ## Catalog display names (Phase 1)
 

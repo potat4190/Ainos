@@ -8,8 +8,8 @@ import * as church from './church.js';
 import { watchUrl } from './youtube.js';
 
 const $ = (id) => document.getElementById(id);
-const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist'];
-const VIEWS = { ...views, church: church.church, setlist: church.setlist };
+const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist', 'join'];
+const VIEWS = { ...views, church: church.church, setlist: church.setlist, join: church.join };
 const KEY_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
 class App {

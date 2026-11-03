@@ -3,7 +3,7 @@ import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber,
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
 import { CROSSFADE_CHOICES } from './crossfade.js';
-import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText } from './i18n.js';
+import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText, sectionName } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
 // The device's IANA time zone ('' if the browser won't say; the server then uses UTC).
@@ -431,13 +431,6 @@ const MANUAL_SCROLL_MS = 5000; // spec 4.5: manual scrolling pauses auto-scroll 
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 const userScrolls = new WeakMap(); // scroller -> when the user last scrolled it
 
-/** 'V2' -> "Verse 2", 'C' -> "Chorus", ... */
-export function sectionName(label) {
-  const m = /^V(\d)$/.exec(label || '');
-  if (m) return t('sectionVerse', { n: m[1] });
-  const key = { C: 'sectionChorus', C2: 'sectionChorus2', PC: 'sectionPreChorus', B: 'sectionBridge', T: 'sectionTag', I: 'sectionIntro', E: 'sectionEnding' }[label];
-  return key ? t(key) : label;
-}
 
 function watchUserScroll(scroller) {
   if (userScrolls.has(scroller)) return;

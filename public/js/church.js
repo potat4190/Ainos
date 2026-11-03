@@ -4,7 +4,7 @@
 // buttons shown here are only a convenience.
 import { h, icon, clear, toast, promptDialog, safely } from './ui.js';
 import { api } from './api.js';
-import { t, getLang, errorText } from './i18n.js';
+import { t, getLang, errorText, sectionName } from './i18n.js';
 import { parseLyrics } from './lyrics-parse.js';
 import { openPresentDialog } from './present/present.js';
 
@@ -37,12 +37,6 @@ const num = (n) => new Intl.NumberFormat(getLang()).format(n);
 const plural = (base, n) => t(n === 1 ? `${base}1` : `${base}N`, { n: num(n) });
 const enc = encodeURIComponent;
 const orgUrl = (orgId, rest = '') => `/api/orgs/${enc(orgId)}${rest}`;
-
-/** "Verse 2", "Chorus"… for a section label. */
-export function sectionName(label) {
-  if (/^V\d$/.test(label)) return t('chSecV', { n: num(Number(label.slice(1))) });
-  return ['C', 'C2', 'PC', 'B', 'T', 'I', 'E'].includes(label) ? t(`chSec${label}`) : label;
-}
 
 function nextSundayUtc() {
   const d = new Date();
@@ -386,7 +380,7 @@ async function renderEditor(el, { org, orgs, setlistId, setlists, app, onChurchC
     h('div', { class: 'ch-card-head' }, h('div', {}, h('h2', {}, t('chSlidesTitle'), ' ', stripCount), h('p', { class: 'muted small' }, t('chSlidesSub')))),
     strip) : null;
 
-  el.append(h('div', { class: 'church' }, header, setlistCard, slidesCard, setlistsCard({ org, setlists, current: setlist.id, app })));
+  el.append(h('div', { class: 'church' }, rolePreview(org, app), header, setlistCard, slidesCard, setlistsCard({ org, setlists, current: setlist.id, app }), membersCard(org, app)));
   await refresh();
 }
 
@@ -458,6 +452,142 @@ function upcoming(setlists) {
   return dated[0] || setlists[0] || null;
 }
 
+// ---------------------------------------------------------------- members and invites
+
+const ROLES = ['admin', 'leader', 'operator', 'member'];
+const roleSelect = (value, label) => h('select', { class: 'ch-switch', 'aria-label': label },
+  ROLES.map((r) => h('option', { value: r, selected: r === value }, t(`chRole_${r}`))));
+const fmtDay = (ms) => { try { return new Intl.DateTimeFormat(getLang(), { day: 'numeric', month: 'long' }).format(new Date(ms)); } catch { return ''; } };
+
+/** The church demo's "Viewing as" picker (spec 5.7). The server enforces the role picked here. */
+function rolePreview(org, app) {
+  if (!org.can_preview_roles) return null;
+  const sel = roleSelect(org.role, t('chViewingAs'));
+  sel.addEventListener('change', safely(async () => {
+    await api.put(orgUrl(org.id, '/demo-role'), { role: sel.value });
+    await app.refresh();
+  }, { onError: () => { sel.value = org.role; } }));
+  return h('div', { class: 'ch-preview' },
+    h('label', { class: 'ch-preview-label' }, h('strong', {}, t('chViewingAs')), sel),
+    h('span', { class: 'dim small' }, t('chViewingAsHelp')));
+}
+
+/** An invite link, shown this once (only its hash is kept on the server). */
+function madeInvite(path) {
+  const url = new URL(path, location.origin).href;
+  const input = h('input', { class: 'ch-input', type: 'text', readonly: true, value: url, 'aria-label': t('chInvites') });
+  input.addEventListener('focus', () => input.select());
+  const copy = h('button', { type: 'button', class: 'btn btn-primary btn-sm' }, t('chCopy'));
+  copy.addEventListener('click', safely(async () => {
+    await navigator.clipboard.writeText(url);
+    toast(t('chCopied'));
+  }));
+  return h('div', { class: 'ch-invite-made', role: 'status' }, h('p', { class: 'small' }, t('chInviteShowOnce')), h('div', { class: 'ch-invite-copy' }, input, copy));
+}
+
+/** Members (everyone sees names and roles), role changes and invites for admins, and "Leave". */
+function membersCard(org, app) {
+  const manage = org.permissions.includes('members.manage');
+  const demo = isChurchDemo(app);
+  const list = h('ul', { class: 'ch-setlists ch-members' });
+  const invites = h('div', { class: 'ch-invites' });
+
+  async function loadMembers() {
+    const members = await api.get(orgUrl(org.id, '/members'));
+    clear(list);
+    for (const m of members) {
+      let control = h('span', { class: 'ch-pill' }, t(`chRole_${m.role}`));
+      let remove = null;
+      if (manage && m.id != null) {
+        const sel = roleSelect(m.role, `${t('chInviteRole')}: ${m.display_name}`);
+        sel.addEventListener('change', safely(async () => {
+          try {
+            await api.patch(orgUrl(org.id, `/members/${m.id}`), { role: sel.value });
+            toast(t('chRoleUpdated'));
+          } finally {
+            // Back to what the server has (e.g. after "last admin"); your own change can alter what you may do.
+            await (m.is_me ? app.refresh() : loadMembers());
+          }
+        }));
+        control = sel;
+        if (!m.is_me) {
+          remove = h('button', { type: 'button', class: 'icon-btn ch-del', 'aria-label': `${t('chRemoveMember')}: ${m.display_name}`, title: t('chRemoveMember') }, icon('close'));
+          remove.addEventListener('click', safely(async () => {
+            if (!confirm(t('chRemoveMemberConfirm', { name: m.display_name }))) return;
+            await api.del(orgUrl(org.id, `/members/${m.id}`));
+            toast(t('chMemberRemoved', { name: m.display_name }));
+            await loadMembers();
+          }));
+        }
+      }
+      list.append(h('li', { class: 'ch-setlist ch-member' },
+        h('span', { class: 'ch-row-title' }, m.display_name, m.is_me ? h('span', { class: 'dim' }, ' ', t('chYou')) : null),
+        control, remove));
+    }
+  }
+
+  async function loadInvites(made = null) {
+    clear(invites);
+    invites.append(h('h3', { class: 'ch-modal-h' }, t('chInvites')), h('p', { class: 'muted small' }, t('chInvitesSub')));
+    if (made) invites.append(madeInvite(made.path));
+    const role = roleSelect('member', t('chInviteRole'));
+    const create = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, icon('plus'), t('chCreateInvite'));
+    create.addEventListener('click', safely(async () => loadInvites(await api.post(orgUrl(org.id, '/invites'), { role: role.value }))));
+    invites.append(h('div', { class: 'ch-invite-new' }, h('label', { class: 'ch-preview-label' }, t('chInviteRole'), role), create));
+    const open = await api.get(orgUrl(org.id, '/invites'));
+    if (!open.length) { invites.append(h('p', { class: 'dim small' }, t('chNoInvites'))); return; }
+    invites.append(h('ul', { class: 'ch-setlists' }, open.map((x) => {
+      const revoke = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, t('chRevoke'));
+      revoke.addEventListener('click', safely(async () => {
+        await api.del(orgUrl(org.id, `/invites/${enc(x.id)}`));
+        toast(t('chRevoked'));
+        await loadInvites();
+      }));
+      return h('li', { class: 'ch-setlist ch-member' },
+        h('span', { class: 'ch-row-main' }, h('span', { class: 'ch-row-title' }, t(`chRole_${x.role}`)),
+          h('span', { class: 'ch-row-sub' }, t('chInviteUses', { uses: num(x.uses), max: num(x.max_uses), date: fmtDay(x.expires_at) }))),
+        revoke);
+    })));
+  }
+
+  const leave = demo ? null : h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, t('chLeave'));
+  leave?.addEventListener('click', safely(async () => {
+    if (!confirm(t('chLeaveConfirm', { name: org.name }))) return;
+    await api.del(orgUrl(org.id, '/members/me'));
+    toast(t('chLeft', { name: org.name }));
+    await app.refresh();
+  }));
+
+  const card = h('section', { class: 'ch-card' },
+    h('div', { class: 'ch-card-head' }, h('div', {}, h('h2', {}, t('chMembers')), h('p', { class: 'muted small' }, t('chMembersSub'))), leave),
+    list,
+    manage ? invites : demo ? h('p', { class: 'dim small ch-readonly' }, t('chInvitesDemo')) : null);
+  loadMembers().catch((err) => toast(errorText(err), { error: true }));
+  if (manage) loadInvites().catch((err) => toast(errorText(err), { error: true }));
+  return card;
+}
+
+/** #/join/<token>: accept an invite link (spec 5.3). */
+export async function join(el, params, app) {
+  const body = [h('h1', { class: 'page-title' }, t('chJoinTitle')), h('p', { class: 'muted' }, t('chJoinSub'))];
+  if (app.me?.is_demo) {
+    body.push(h('p', { class: 'dim' }, t('chJoinDemo')));
+  } else {
+    const accept = h('button', { type: 'button', class: 'btn btn-primary btn-sm' }, t('chJoinBtn'));
+    accept.addEventListener('click', safely(async () => {
+      const joined = await api.post('/api/invites/redeem', { token: params.id || '' });
+      rememberChurch(joined.org_id);
+      const nav = document.getElementById('nav-church');
+      if (nav) nav.hidden = false;
+      toast(t('chJoined', { name: joined.name }));
+      // Replace this history entry, so the link's token doesn't stay in Back.
+      location.replace('#/church');
+    }));
+    body.push(h('div', {}, accept));
+  }
+  el.append(h('section', { class: 'ch-card ch-nochurch' }, body));
+}
+
 // ---------------------------------------------------------------- views
 
 /** #/church: the church dashboard. */
@@ -467,10 +597,10 @@ export async function church(el, params, app) {
   const onChurchChange = (id) => { rememberChurch(id); app.refresh(); };
   const s = upcoming(setlists);
   if (!s) {
-    el.append(h('div', { class: 'church' },
+    el.append(h('div', { class: 'church' }, rolePreview(org, app),
       h('header', { class: 'ch-head' }, h('div', { class: 'ch-badge' }, icon('library')),
         h('div', { class: 'ch-head-text' }, h('div', { class: 'ch-eyebrow' }, t(`chRole_${org.role}`)), h('h1', { class: 'ch-name' }, org.name))),
-      setlistsCard({ org, setlists, current: null })));
+      setlistsCard({ org, setlists, current: null }), membersCard(org, app)));
     return;
   }
   await renderEditor(el, { org, orgs, setlistId: s.id, setlists, app, onChurchChange });

@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
+  expires_at INTEGER NOT NULL,
+  demo_role  TEXT  -- the church demo's "Viewing as" role, for this session only (spec 5.7)
 );
 CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
 
@@ -333,6 +334,22 @@ CREATE TABLE IF NOT EXISTS org_members (
 );
 CREATE INDEX IF NOT EXISTS org_members_user ON org_members(user_id);
 
+-- [5] Invite links (spec 5.3). Only the token's SHA-256 is stored; the link is
+-- shown once, to the admin who made it.
+CREATE TABLE IF NOT EXISTS org_invites (
+  id         TEXT PRIMARY KEY,
+  org_id     TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('admin', 'leader', 'operator', 'member')),
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by INTEGER,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  max_uses   INTEGER NOT NULL,
+  uses       INTEGER NOT NULL DEFAULT 0,
+  revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS org_invites_org ON org_invites(org_id);
+
 -- [5] Sunday setlists. Items are replaced as a whole list, so (setlist_id,
 -- position) needs no deferred constraint.
 CREATE TABLE IF NOT EXISTS setlists (
@@ -391,6 +408,8 @@ function migrate(db) {
     db.exec("INSERT OR IGNORE INTO search_index (kind, ref_id, title, subtitle) SELECT kind, ref_id, title, COALESCE(subtitle, '') FROM search_fts");
     db.exec('DROP TABLE search_fts');
   }
+  if (!columns(db, 'sessions').includes('demo_role')) db.exec('ALTER TABLE sessions ADD COLUMN demo_role TEXT');
+
   // The app fills in folded for these rows when it starts (Catalog.foldMissing).
   if (!columns(db, 'search_index').includes('folded')) db.exec("ALTER TABLE search_index ADD COLUMN folded TEXT NOT NULL DEFAULT ''");
 }

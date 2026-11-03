@@ -3,7 +3,7 @@
 // route is tried from another church.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startTestServer, signup, client } from './helpers.js';
+import { startTestServer, signup, login, client } from './helpers.js';
 import { parseLyrics } from '../public/js/lyrics-parse.js';
 import { HYMN_IDS } from '../scripts/generate.js';
 import { hymnSongId, DEMO_ORG_ID, nextSundayUtc } from '../server/demo.js';
@@ -222,6 +222,171 @@ test('church demo: signs in to the seeded church, edits it, and is confined to i
   const L = client(srv.base);
   assert.equal((await L.post('/api/auth/login', { username: 'church-demo', password: 'ainos-church-demo' })).status, 200);
   assert.equal((await client(srv.base).post('/api/auth/signup', { username: 'Church-Demo', password: 'correct horse battery' })).status, 409);
+});
+
+test('admins change roles and remove members, anyone can leave, and a church always keeps an admin', async () => {
+  const L = await login(srv.base, 'lena-leader', 'correct horse battery');
+  const M = await login(srv.base, 'mia-member', 'correct horse battery');
+  const O = await login(srv.base, 'oscar-operator', 'correct horse battery');
+  const idOf = async (username) => Number((await db().get('SELECT id FROM users WHERE username = ?', [username])).id);
+  const [aliceId, lenaId, oscarId, bobId] = await Promise.all(['alice-church', 'lena-leader', 'oscar-operator', 'bob-church'].map(idOf));
+  const url = (id) => `/api/orgs/${orgA}/members/${id}`;
+
+  // Only admins see user ids, which the management routes take.
+  assert.ok((await M.get(`/api/orgs/${orgA}/members`)).json.every((x) => !('id' in x)));
+  assert.ok((await A.get(`/api/orgs/${orgA}/members`)).json.every((x) => Number.isInteger(x.id)));
+
+  for (const c of [L, M, O]) assert.equal((await c.patch(url(oscarId), { role: 'member' })).status, 403, 'only admins manage members');
+  assert.equal((await A.patch(url(lenaId), { role: 'owner' })).status, 400);
+  assert.equal((await A.patch(url(lenaId), { role: 'admin' })).json.role, 'admin');
+  // Lena demotes Alice; now Lena is the only admin and cannot step down or leave.
+  assert.equal((await L.patch(url(aliceId), { role: 'leader' })).status, 200);
+  const last = await L.patch(url(lenaId), { role: 'member' });
+  assert.deepEqual([last.status, last.json.error.code], [409, 'last_admin']);
+  assert.equal((await L.del(`/api/orgs/${orgA}/members/me`)).status, 409);
+  assert.equal((await L.patch(url(aliceId), { role: 'admin' })).status, 200);
+  // Two admins: one may leave or be removed, never both.
+  assert.equal((await A.del(url(lenaId))).status, 200);
+  assert.equal((await L.get(`/api/orgs/${orgA}`)).status, 404, 'a removed member is out');
+  assert.equal((await A.del(`/api/orgs/${orgA}/members/me`)).status, 409, 'the last admin cannot leave');
+
+  assert.equal((await O.del(`/api/orgs/${orgA}/members/me`)).status, 200, 'anyone can leave');
+  assert.equal((await O.get(`/api/orgs/${orgA}`)).status, 404);
+  assert.equal((await A.patch(url(oscarId), { role: 'leader' })).status, 404, 'no longer a member');
+  for (const bad of ['0', '-1', 'abc', '9'.repeat(30), String(bobId)]) {
+    assert.equal((await A.patch(url(bad), { role: 'member' })).status, 404, `user ${bad}`);
+    assert.equal((await A.del(url(bad))).status, 404, `user ${bad}`);
+  }
+  // Church B's members can't be reached from A, through either org.
+  assert.equal((await A.patch(`/api/orgs/${orgB}/members/${bobId}`, { role: 'member' })).status, 404);
+  assert.equal((await A.del(`/api/orgs/${orgB}/members/${bobId}`)).status, 404);
+  assert.equal((await B.get(`/api/orgs/${orgB}`)).json.role, 'admin');
+
+  const actions = (await db().all('SELECT action FROM audit_log WHERE org_id = ?', [orgA])).map((x) => x.action);
+  for (const a of ['member.role', 'member.remove', 'member.leave']) assert.ok(actions.includes(a), a);
+});
+
+test('invites: the link is shown once and only its hash stored; they expire, are revoked and get used up', async () => {
+  const base = `/api/orgs/${orgA}/invites`;
+  const made = await A.post(base, { role: 'leader' });
+  assert.equal(made.status, 201, made.text);
+  assert.match(made.json.token, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(made.json.path, `/#/join/${made.json.token}`);
+  assert.deepEqual([made.json.role, made.json.max_uses, made.json.uses], ['leader', 1, 0]);
+  assert.ok(Math.abs(made.json.expires_at - Date.now() - 7 * 86_400_000) < 60_000, 'a week to use it');
+  const stored = await db().get('SELECT * FROM org_invites WHERE id = ?', [made.json.id]);
+  assert.equal(stored.token_hash.length, 64);
+  assert.ok(!Object.values(stored).some((v) => String(v).includes(made.json.token)), 'the token itself is not stored');
+  const listed = (await A.get(base)).json;
+  assert.ok(listed.some((x) => x.id === made.json.id) && listed.every((x) => !('token' in x) && !('token_hash' in x)));
+
+  const N = await signup(srv.base, 'nina-newcomer');
+  const P = await signup(srv.base, 'paul-pew');
+  const joined = await N.post('/api/invites/redeem', { token: made.json.token });
+  assert.equal(joined.status, 200, joined.text);
+  assert.deepEqual([joined.json.org_id, joined.json.role, joined.json.name, joined.json.already_member], [orgA, 'leader', 'Grace Church', false]);
+  assert.equal((await N.get(`/api/orgs/${orgA}`)).json.role, 'leader');
+  const usedUp = await P.post('/api/invites/redeem', { token: made.json.token });
+  assert.deepEqual([usedUp.status, usedUp.json.error.code], [404, 'invite_invalid'], 'a leader invite admits one person');
+
+  const team = (await A.post(base, { role: 'member' })).json;
+  assert.equal(team.max_uses, 25);
+  assert.equal((await P.post('/api/invites/redeem', { token: team.token })).json.role, 'member');
+
+  const revoked = (await A.post(base, { role: 'member' })).json;
+  assert.equal((await A.del(`${base}/${revoked.id}`)).status, 200);
+  assert.equal((await A.del(`${base}/${revoked.id}`)).status, 404, 'already revoked');
+  const expired = (await A.post(base, { role: 'member' })).json;
+  await db().run('UPDATE org_invites SET expires_at = ? WHERE id = ?', [Date.now() - 1, expired.id]);
+  const late = await signup(srv.base, 'larry-late');
+  for (const token of [revoked.token, expired.token]) assert.equal((await late.post('/api/invites/redeem', { token })).status, 404);
+  assert.ok(!(await A.get(base)).json.some((x) => [revoked.id, expired.id, made.json.id].includes(x.id)), 'only open invites are listed');
+
+  // Only admins of this church; other churches get 404.
+  assert.equal((await P.post(base, { role: 'member' })).status, 403);
+  assert.equal((await N.get(base)).status, 403, 'leaders do not manage members');
+  assert.equal((await B.get(base)).status, 404);
+  assert.equal((await B.del(`${base}/${team.id}`)).status, 404);
+  assert.equal((await B.post(base, { role: 'admin' })).status, 404);
+  const bInvite = (await B.post(`/api/orgs/${orgB}/invites`, { role: 'member' })).json;
+  assert.equal((await A.del(`${base}/${bInvite.id}`)).status, 404, 'B’s invite through A’s church');
+  assert.equal((await A.post(base, { role: 'pastor' })).status, 400);
+
+  const actions = (await db().all('SELECT action FROM audit_log WHERE org_id = ?', [orgA])).map((x) => x.action);
+  for (const a of ['invite.create', 'invite.redeem', 'invite.revoke']) assert.ok(actions.includes(a), a);
+
+  // Redeeming is limited to 10 tries an hour; every failure looks the same until then.
+  const guesser = await signup(srv.base, 'gus-guesser');
+  let limited = null;
+  for (let i = 0; i < 12 && !limited; i++) {
+    const r = await guesser.post('/api/invites/redeem', { token: i % 2 ? 'x'.repeat(43) : 'short' });
+    if (r.status === 429) limited = r;
+    else assert.deepEqual([r.status, r.json.error.code], [404, 'invite_invalid']);
+  }
+  assert.ok(limited, 'rate-limited');
+  assert.ok(Number(limited.headers.get('retry-after')) > 0);
+});
+
+test('church demo: role preview is enforced on the server, only for the demo and only in the demo church', async () => {
+  const C = await churchDemo();
+  const org = (await C.get(`/api/orgs/${DEMO_ORG_ID}`)).json;
+  assert.deepEqual([org.role, org.can_preview_roles], ['admin', true]);
+  const members = (await C.get(`/api/orgs/${DEMO_ORG_ID}/members`)).json;
+  assert.deepEqual(members.map((x) => [x.display_name, x.role]),
+    [['Church Demo', 'admin'], ['Demo Leader', 'leader'], ['Demo Operator', 'operator'], ['Demo Member', 'member']]);
+  assert.ok(members.every((x) => !('id' in x)), 'the demo cannot manage members, so it gets no ids');
+  const [list] = (await C.get(`/api/orgs/${DEMO_ORG_ID}/setlists`)).json;
+  const items = `/api/orgs/${DEMO_ORG_ID}/setlists/${list.id}/items`;
+  const slides = `/api/orgs/${DEMO_ORG_ID}/setlists/${list.id}/slides`;
+
+  const asRole = async (role) => {
+    const r = await C.putJson(`/api/orgs/${DEMO_ORG_ID}/demo-role`, { role });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.role, role);
+    return r.json;
+  };
+  assert.deepEqual((await asRole('member')).permissions, ['org.view']);
+  assert.equal((await C.get('/api/me/orgs')).json[0].role, 'member');
+  const denied = await C.putJson(items, { items: [{ kind: 'blank' }] });
+  assert.deepEqual([denied.status, denied.json.error.code], [403, 'forbidden_role']);
+  assert.equal((await C.get(slides)).status, 403);
+  await asRole('operator');
+  assert.equal((await C.get(slides)).status, 200);
+  assert.equal((await C.putJson(items, { items: [{ kind: 'blank' }] })).status, 403);
+  await asRole('leader');
+  assert.equal((await C.putJson(items, { items: [{ kind: 'blank' }] })).status, 200);
+  assert.equal((await C.putJson(`/api/orgs/${DEMO_ORG_ID}/demo-role`, { role: 'pastor' })).status, 400);
+
+  // Per session: the next visitor starts as admin, and this one keeps its preview.
+  const C2 = await churchDemo();
+  assert.equal((await C2.get(`/api/orgs/${DEMO_ORG_ID}`)).json.role, 'admin');
+  assert.equal((await C.get(`/api/orgs/${DEMO_ORG_ID}`)).json.role, 'leader');
+
+  // Previewing as admin never unlocks what the demo may not do.
+  await asRole('admin');
+  for (const [method, url, body] of [
+    ['post', `/api/orgs/${DEMO_ORG_ID}/invites`, { role: 'member' }], ['get', `/api/orgs/${DEMO_ORG_ID}/invites`],
+    ['patch', `/api/orgs/${DEMO_ORG_ID}/members/1`, { role: 'member' }], ['del', `/api/orgs/${DEMO_ORG_ID}/members/me`],
+    ['post', '/api/invites/redeem', { token: 'x'.repeat(43) }], ['patch', `/api/orgs/${DEMO_ORG_ID}`, { name: 'Mine' }],
+  ]) {
+    const r = await C[method](url, body);
+    assert.deepEqual([r.status, r.json.error.code], [403, 'demo_not_allowed'], `${method} ${url}`);
+  }
+
+  // Anyone else: no preview route, and a stored demo_role is ignored.
+  assert.equal((await A.putJson(`/api/orgs/${orgA}/demo-role`, { role: 'admin' })).status, 403);
+  assert.equal((await A.putJson(`/api/orgs/${DEMO_ORG_ID}/demo-role`, { role: 'admin' })).status, 403);
+  const P = await login(srv.base, 'paul-pew', 'correct horse battery');
+  const pId = (await db().get("SELECT id FROM users WHERE username = 'paul-pew'")).id;
+  await db().run("UPDATE sessions SET demo_role = 'admin' WHERE user_id = ?", [pId]);
+  assert.equal((await P.get(`/api/orgs/${orgA}`)).json.role, 'member');
+  assert.equal((await P.post(`/api/orgs/${orgA}/setlists`, { name: 'x' })).status, 403);
+
+  // The placeholder members are not accounts: nobody can sign in as them or take their names.
+  for (const name of ['church-demo-leader', 'Church-Demo-Member']) {
+    assert.equal((await client(srv.base).post('/api/auth/login', { username: name, password: 'correct horse battery' })).status, 401);
+    assert.equal((await client(srv.base).post('/api/auth/signup', { username: name, password: 'correct horse battery' })).status, 409);
+  }
 });
 
 test('parseLyrics handles messy pastes', () => {

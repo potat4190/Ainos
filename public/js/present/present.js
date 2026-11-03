@@ -7,7 +7,7 @@
 // DECISION: YouTube items are always manual in automatic mode (their slides still show, and
 // the YouTube player is never used or hidden here); the dialog lists them.
 import { h, icon, toast, clear, fmtTime } from '../ui.js';
-import { t } from '../i18n.js';
+import { t, sectionName } from '../i18n.js';
 import { api } from '../api.js';
 import { renderSlide } from './stage.js';
 
@@ -22,15 +22,6 @@ let active = null;
 const str = (v) => (v == null ? '' : String(v));
 const strLines = (lines) => (Array.isArray(lines) ? lines : typeof lines === 'string' ? lines.split('\n') : []).map(str);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
-
-/** A section label ('V2', 'C', 'B', …) as shown on the slide, in the UI language. */
-export function sectionName(label) {
-  const l = str(label);
-  const v = /^V(\d+)$/.exec(l);
-  if (v) return t('prSecV', { n: v[1] });
-  const key = { C: 'prSecC', C2: 'prSecC2', PC: 'prSecPC', B: 'prSecB', T: 'prSecT', E: 'prSecE', I: 'prSecI' }[l];
-  return key ? t(key) : l;
-}
 
 /** Whether automatic mode can play this item: a native track with timings. */
 export function isAutoItem(item) {
