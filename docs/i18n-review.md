@@ -139,7 +139,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prAutoSub` | The song plays and the slides follow its synced lyrics. Other items wait for a click. | गीत बजता है और स्लाइड उसके सिंक किए गए बोलों के साथ चलती हैं। बाकी आइटम क्लिक का इंतज़ार करते हैं। | 6 |
 | [ ] | `prAutoUnavailable` | No song in this setlist has synced lyrics yet, so the slides advance by hand. | इस सूची के किसी भी गीत के बोल अभी सिंक नहीं हैं, इसलिए स्लाइड हाथ से आगे बढ़ेंगी। | 6 |
 | [ ] | `prAutoFallback` | These songs have no synced lyrics, so their slides advance by hand: | इन गीतों के बोल सिंक नहीं हैं, इसलिए इनकी स्लाइड हाथ से आगे बढ़ेंगी: | 6 |
-| [ ] | `prAutoYouTube` | YouTube songs always advance by hand: | YouTube गीत हमेशा हाथ से आगे बढ़ते हैं: | 6 |
 | [ ] | `prStart` | Start | शुरू करें | 6 |
 | [ ] | `prSlideCount` | {n} slides | {n} स्लाइड | 6 |
 | [ ] | `prEmpty` | This setlist has nothing to show yet | इस सूची में दिखाने के लिए अभी कुछ नहीं है | 6 |
@@ -229,6 +228,24 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | साझा डेमो किसी चर्च से नहीं जुड़ सकता। यह आमंत्रण स्वीकार करने के लिए साइन अप करें। | 5 |
 | [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | हर चर्च में कम से कम एक एडमिन होना चाहिए। पहले किसी और को एडमिन बनाएँ। | 5 |
 | [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | यह आमंत्रण लिंक मान्य नहीं है। अपने चर्च के एडमिन से नया लिंक माँगें। | 5 |
+| [ ] | `syncLyrics` | Sync lyrics | बोल सिंक करें | 4 |
+| [ ] | `syncTitle` | Sync the lyrics to this recording | बोलों को इस रिकॉर्डिंग से मिलाएँ | 4 |
+| [ ] | `syncHelp` | Play the recording and tap (or press Space) as each line begins. Nudge any line by a tenth of a second, then save. | रिकॉर्डिंग चलाएँ और हर पंक्ति शुरू होते ही टैप करें (या स्पेस दबाएँ)। किसी भी पंक्ति को सेकंड के दसवें हिस्से से आगे-पीछे करें, फिर सेव करें। | 4 |
+| [ ] | `syncFor` | Save for | किसके लिए सेव करें | 4 |
+| [ ] | `syncEveryone` | Everyone (catalog) | सभी (कैटलॉग) | 4 |
+| [ ] | `syncStart` | Play from the start | शुरू से चलाएँ | 4 |
+| [ ] | `syncTap` | Tap: next line | टैप: अगली पंक्ति | 4 |
+| [ ] | `syncUndo` | Undo last tap | पिछला टैप हटाएँ | 4 |
+| [ ] | `syncOffset` | Shift every line (ms) | सभी पंक्तियाँ खिसकाएँ (ms) | 4 |
+| [ ] | `syncSave` | Save timings | समय सेव करें | 4 |
+| [ ] | `syncSaved` | Timings saved | समय सेव हो गया | 4 |
+| [ ] | `syncIncomplete` | Tap every line first ({n} left). | पहले हर पंक्ति पर टैप करें ({n} बाकी)। | 4 |
+| [ ] | `syncOrder` | Each line must start after the one before it. | हर पंक्ति पिछली पंक्ति के बाद शुरू होनी चाहिए। | 4 |
+| [ ] | `syncNudgeEarlier` | Earlier | पहले | 4 |
+| [ ] | `syncNudgeLater` | Later | बाद में | 4 |
+| [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | बोल सिंक करने के लिए पहले यह गीत चलाएँ। | 4 |
+| [ ] | `syncLeft` | {n} lines to go | {n} पंक्तियाँ बाकी | 4 |
+| [ ] | `syncAllTapped` | Every line is timed: check them, then save. | हर पंक्ति का समय तय है: जाँचें, फिर सेव करें। | 4 |
 
 ## Nepali (ne)
 
@@ -362,7 +379,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prAutoSub` | The song plays and the slides follow its synced lyrics. Other items wait for a click. | गीत बज्छ र स्लाइडहरू यसका मिलाइएका शब्दसँगै अघि बढ्छन्। अरू वस्तुहरूले क्लिक पर्खन्छन्। | 6 |
 | [ ] | `prAutoUnavailable` | No song in this setlist has synced lyrics yet, so the slides advance by hand. | यो सूचीका कुनै पनि गीतका शब्द अझै मिलाइएका छैनन्, त्यसैले स्लाइडहरू आफैँ अघि बढाउनुपर्छ। | 6 |
 | [ ] | `prAutoFallback` | These songs have no synced lyrics, so their slides advance by hand: | यी गीतका शब्द मिलाइएका छैनन्, त्यसैले यिनका स्लाइडहरू आफैँ अघि बढाउनुपर्छ: | 6 |
-| [ ] | `prAutoYouTube` | YouTube songs always advance by hand: | YouTube गीतहरू सधैँ आफैँ अघि बढाउनुपर्छ: | 6 |
 | [ ] | `prStart` | Start | सुरु गर्नुहोस् | 6 |
 | [ ] | `prSlideCount` | {n} slides | {n} स्लाइड | 6 |
 | [ ] | `prEmpty` | This setlist has nothing to show yet | यो सूचीमा देखाउन अझै केही छैन | 6 |
@@ -452,6 +468,24 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | साझा डेमो कुनै मण्डलीमा जोडिन सक्दैन। यो निमन्त्रणा स्वीकार गर्न साइन अप गर्नुहोस्। | 5 |
 | [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | मण्डलीमा कम्तीमा एक जना एडमिन चाहिन्छ। पहिले अरू कसैलाई एडमिन बनाउनुहोस्। | 5 |
 | [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | यो निमन्त्रणा लिङ्क मान्य छैन। आफ्नो मण्डलीका एडमिनसँग नयाँ लिङ्क माग्नुहोस्। | 5 |
+| [ ] | `syncLyrics` | Sync lyrics | शब्द मिलाउनुहोस् | 4 |
+| [ ] | `syncTitle` | Sync the lyrics to this recording | शब्दलाई यो रेकर्डिङसँग मिलाउनुहोस् | 4 |
+| [ ] | `syncHelp` | Play the recording and tap (or press Space) as each line begins. Nudge any line by a tenth of a second, then save. | रेकर्डिङ बजाउनुहोस् र हरेक हरफ सुरु हुँदा ट्याप गर्नुहोस् (वा स्पेस थिच्नुहोस्)। कुनै पनि हरफलाई सेकेन्डको दशौं भागले सार्नुहोस्, अनि सेभ गर्नुहोस्। | 4 |
+| [ ] | `syncFor` | Save for | कसका लागि सेभ गर्ने | 4 |
+| [ ] | `syncEveryone` | Everyone (catalog) | सबैका लागि (क्याटलग) | 4 |
+| [ ] | `syncStart` | Play from the start | सुरुदेखि बजाउनुहोस् | 4 |
+| [ ] | `syncTap` | Tap: next line | ट्याप: अर्को हरफ | 4 |
+| [ ] | `syncUndo` | Undo last tap | अघिल्लो ट्याप हटाउनुहोस् | 4 |
+| [ ] | `syncOffset` | Shift every line (ms) | सबै हरफ सार्नुहोस् (ms) | 4 |
+| [ ] | `syncSave` | Save timings | समय सेभ गर्नुहोस् | 4 |
+| [ ] | `syncSaved` | Timings saved | समय सेभ भयो | 4 |
+| [ ] | `syncIncomplete` | Tap every line first ({n} left). | पहिले हरेक हरफमा ट्याप गर्नुहोस् ({n} बाँकी)। | 4 |
+| [ ] | `syncOrder` | Each line must start after the one before it. | हरेक हरफ अघिल्लो हरफपछि सुरु हुनुपर्छ। | 4 |
+| [ ] | `syncNudgeEarlier` | Earlier | अघि | 4 |
+| [ ] | `syncNudgeLater` | Later | पछि | 4 |
+| [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | शब्द मिलाउन पहिले यो गीत बजाउनुहोस्। | 4 |
+| [ ] | `syncLeft` | {n} lines to go | {n} हरफ बाँकी | 4 |
+| [ ] | `syncAllTapped` | Every line is timed: check them, then save. | हरेक हरफको समय राखियो: जाँच्नुहोस्, अनि सेभ गर्नुहोस्। | 4 |
 
 ## Chinese (zh)
 
@@ -583,7 +617,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prAutoSub` | The song plays and the slides follow its synced lyrics. Other items wait for a click. | 歌曲播放时，幻灯片随同步歌词切换。其他项目等待点击。 | 6 |
 | [ ] | `prAutoUnavailable` | No song in this setlist has synced lyrics yet, so the slides advance by hand. | 此歌单中还没有歌曲有同步歌词，因此幻灯片需手动切换。 | 6 |
 | [ ] | `prAutoFallback` | These songs have no synced lyrics, so their slides advance by hand: | 以下歌曲没有同步歌词，其幻灯片需手动切换： | 6 |
-| [ ] | `prAutoYouTube` | YouTube songs always advance by hand: | YouTube 歌曲始终手动切换： | 6 |
 | [ ] | `prStart` | Start | 开始 | 6 |
 | [ ] | `prSlideCount` | {n} slides | {n} 张幻灯片 | 6 |
 | [ ] | `prEmpty` | This setlist has nothing to show yet | 此歌单还没有可显示的内容 | 6 |
@@ -673,6 +706,24 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | 共享演示无法加入教会。注册后即可接受此邀请。 | 5 |
 | [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | 教会至少需要一位管理员。请先将其他人设为管理员。 | 5 |
 | [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | 此邀请链接无效。请向你的教会管理员索取新链接。 | 5 |
+| [ ] | `syncLyrics` | Sync lyrics | 同步歌词 | 4 |
+| [ ] | `syncTitle` | Sync the lyrics to this recording | 将歌词与此录音同步 | 4 |
+| [ ] | `syncHelp` | Play the recording and tap (or press Space) as each line begins. Nudge any line by a tenth of a second, then save. | 播放录音，在每一行开始时轻点（或按空格键）。可将任意一行微调十分之一秒，然后保存。 | 4 |
+| [ ] | `syncFor` | Save for | 保存给 | 4 |
+| [ ] | `syncEveryone` | Everyone (catalog) | 所有人（曲库） | 4 |
+| [ ] | `syncStart` | Play from the start | 从头播放 | 4 |
+| [ ] | `syncTap` | Tap: next line | 轻点：下一行 | 4 |
+| [ ] | `syncUndo` | Undo last tap | 撤销上一次轻点 | 4 |
+| [ ] | `syncOffset` | Shift every line (ms) | 整体偏移（毫秒） | 4 |
+| [ ] | `syncSave` | Save timings | 保存时间 | 4 |
+| [ ] | `syncSaved` | Timings saved | 时间已保存 | 4 |
+| [ ] | `syncIncomplete` | Tap every line first ({n} left). | 请先为每一行轻点（还剩 {n} 行）。 | 4 |
+| [ ] | `syncOrder` | Each line must start after the one before it. | 每一行都必须在上一行之后开始。 | 4 |
+| [ ] | `syncNudgeEarlier` | Earlier | 提前 | 4 |
+| [ ] | `syncNudgeLater` | Later | 推后 | 4 |
+| [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | 请先播放这首歌，再同步歌词。 | 4 |
+| [ ] | `syncLeft` | {n} lines to go | 还剩 {n} 行 | 4 |
+| [ ] | `syncAllTapped` | Every line is timed: check them, then save. | 每一行都已计时：检查后保存。 | 4 |
 
 ## Japanese (ja)
 
@@ -799,7 +850,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prAutoSub` | The song plays and the slides follow its synced lyrics. Other items wait for a click. | 曲が流れ、同期された歌詞に合わせてスライドが進みます。ほかの項目はクリックを待ちます。 | 6 |
 | [ ] | `prAutoUnavailable` | No song in this setlist has synced lyrics yet, so the slides advance by hand. | このセットリストには同期された歌詞のある曲がまだないため、スライドは手動で進めます。 | 6 |
 | [ ] | `prAutoFallback` | These songs have no synced lyrics, so their slides advance by hand: | 次の曲には同期された歌詞がないため、スライドは手動で進めます： | 6 |
-| [ ] | `prAutoYouTube` | YouTube songs always advance by hand: | YouTube の曲は常に手動で進めます： | 6 |
 | [ ] | `prStart` | Start | 開始 | 6 |
 | [ ] | `prSlideCount` | {n} slides | {n} 枚のスライド | 6 |
 | [ ] | `prEmpty` | This setlist has nothing to show yet | このセットリストにはまだ表示するものがありません | 6 |
@@ -889,6 +939,24 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | 共有デモでは教会に参加できません。この招待を承諾するには登録してください。 | 5 |
 | [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | 教会には少なくとも1人の管理者が必要です。先にほかの人を管理者にしてください。 | 5 |
 | [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | この招待リンクは無効です。教会の管理者に新しいリンクを依頼してください。 | 5 |
+| [ ] | `syncLyrics` | Sync lyrics | 歌詞を同期 | 4 |
+| [ ] | `syncTitle` | Sync the lyrics to this recording | 歌詞をこの録音に合わせる | 4 |
+| [ ] | `syncHelp` | Play the recording and tap (or press Space) as each line begins. Nudge any line by a tenth of a second, then save. | 録音を再生し、各行が始まるときにタップ（またはスペースキー）してください。どの行も0.1秒ずつ調整でき、最後に保存します。 | 4 |
+| [ ] | `syncFor` | Save for | 保存先 | 4 |
+| [ ] | `syncEveryone` | Everyone (catalog) | 全員（カタログ） | 4 |
+| [ ] | `syncStart` | Play from the start | 最初から再生 | 4 |
+| [ ] | `syncTap` | Tap: next line | タップ：次の行 | 4 |
+| [ ] | `syncUndo` | Undo last tap | 最後のタップを取り消す | 4 |
+| [ ] | `syncOffset` | Shift every line (ms) | 全行をずらす（ミリ秒） | 4 |
+| [ ] | `syncSave` | Save timings | タイミングを保存 | 4 |
+| [ ] | `syncSaved` | Timings saved | タイミングを保存しました | 4 |
+| [ ] | `syncIncomplete` | Tap every line first ({n} left). | 先にすべての行をタップしてください（残り {n} 行）。 | 4 |
+| [ ] | `syncOrder` | Each line must start after the one before it. | 各行は前の行より後に始まる必要があります。 | 4 |
+| [ ] | `syncNudgeEarlier` | Earlier | 早める | 4 |
+| [ ] | `syncNudgeLater` | Later | 遅らせる | 4 |
+| [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | 歌詞を同期するには、まずこの曲を再生してください。 | 4 |
+| [ ] | `syncLeft` | {n} lines to go | 残り {n} 行 | 4 |
+| [ ] | `syncAllTapped` | Every line is timed: check them, then save. | すべての行にタイミングが付きました。確認して保存してください。 | 4 |
 
 ## Spanish (es)
 
@@ -1022,7 +1090,6 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prAutoSub` | The song plays and the slides follow its synced lyrics. Other items wait for a click. | La canción suena y las diapositivas siguen su letra sincronizada. Los demás elementos esperan un clic. | 6 |
 | [ ] | `prAutoUnavailable` | No song in this setlist has synced lyrics yet, so the slides advance by hand. | Ninguna canción de esta lista tiene letra sincronizada todavía, así que las diapositivas avanzan a mano. | 6 |
 | [ ] | `prAutoFallback` | These songs have no synced lyrics, so their slides advance by hand: | Estas canciones no tienen letra sincronizada, así que sus diapositivas avanzan a mano: | 6 |
-| [ ] | `prAutoYouTube` | YouTube songs always advance by hand: | Las canciones de YouTube siempre avanzan a mano: | 6 |
 | [ ] | `prStart` | Start | Empezar | 6 |
 | [ ] | `prSlideCount` | {n} slides | {n} diapositivas | 6 |
 | [ ] | `prEmpty` | This setlist has nothing to show yet | Esta lista todavía no tiene nada que mostrar | 6 |
@@ -1112,6 +1179,24 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `chJoinDemo` | The shared demo can’t join a church. Sign up to accept this invite. | La demo compartida no puede unirse a una iglesia. Regístrate para aceptar esta invitación. | 5 |
 | [ ] | `errLastAdmin` | A church needs at least one admin. Make someone else an admin first. | Una iglesia necesita al menos un administrador. Primero haz administrador a otra persona. | 5 |
 | [ ] | `errInviteInvalid` | This invite link isn’t valid. Ask your church’s admin for a new one. | Este enlace de invitación no es válido. Pide uno nuevo al administrador de tu iglesia. | 5 |
+| [ ] | `syncLyrics` | Sync lyrics | Sincronizar letra | 4 |
+| [ ] | `syncTitle` | Sync the lyrics to this recording | Sincroniza la letra con esta grabación | 4 |
+| [ ] | `syncHelp` | Play the recording and tap (or press Space) as each line begins. Nudge any line by a tenth of a second, then save. | Reproduce la grabación y toca (o pulsa Espacio) cuando empiece cada línea. Ajusta cualquier línea una décima de segundo y luego guarda. | 4 |
+| [ ] | `syncFor` | Save for | Guardar para | 4 |
+| [ ] | `syncEveryone` | Everyone (catalog) | Todos (catálogo) | 4 |
+| [ ] | `syncStart` | Play from the start | Reproducir desde el inicio | 4 |
+| [ ] | `syncTap` | Tap: next line | Tocar: siguiente línea | 4 |
+| [ ] | `syncUndo` | Undo last tap | Deshacer el último toque | 4 |
+| [ ] | `syncOffset` | Shift every line (ms) | Desplazar todas las líneas (ms) | 4 |
+| [ ] | `syncSave` | Save timings | Guardar tiempos | 4 |
+| [ ] | `syncSaved` | Timings saved | Tiempos guardados | 4 |
+| [ ] | `syncIncomplete` | Tap every line first ({n} left). | Primero toca cada línea (faltan {n}). | 4 |
+| [ ] | `syncOrder` | Each line must start after the one before it. | Cada línea debe empezar después de la anterior. | 4 |
+| [ ] | `syncNudgeEarlier` | Earlier | Antes | 4 |
+| [ ] | `syncNudgeLater` | Later | Después | 4 |
+| [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | Reproduce primero esta canción para sincronizar su letra. | 4 |
+| [ ] | `syncLeft` | {n} lines to go | Faltan {n} líneas | 4 |
+| [ ] | `syncAllTapped` | Every line is timed: check them, then save. | Todas las líneas tienen tiempo: revísalas y guarda. | 4 |
 
 ## Catalog display names (Phase 1)
 

@@ -86,11 +86,13 @@ export class Player extends EventTarget {
     this.downloads = store.get('ainos.downloads', {});
     this.xfade = null;       // { outgoing deck, ms, timers } while two decks overlap
     this.pendingXfade = null;
-    this.yt = null;          // an official YouTube video playing in its visible embed: { track, ctrl, playing, problem }
+    this.yt = null;          // an official YouTube video playing in its visible embed: { track, ctrl, playing, problem, msPlayed, since }
+    this.youtubeMount = null; // (track) => { host, title }: the app's visible box for a video
 
     setInterval(() => this.flush(), 15_000);
     addEventListener('pagehide', () => {
       this.#endSession('endplay');
+      this.#endYouTubeSession('endplay');
       this.flush({ beacon: true });
     });
     this.#mediaSessionHandlers();
@@ -220,6 +222,12 @@ export class Player extends EventTarget {
 
   async startTrack(track, { reason = 'clickrow', positionMs = 0, autoplay = true } = {}) {
     if (!track) return;
+    if (track.youtube) {
+      // A video in the queue (or transferred here) plays in the app's visible YouTube box.
+      const mount = this.youtubeMount?.(track);
+      if (mount) this.playYouTube(track, mount.host, { title: mount.title, reason, positionMs, autoplay });
+      return;
+    }
     this.stopYouTube({ silent: true }); // a native song replaces the video
     const token = ++this.loadToken;
     const t0 = performance.now();
@@ -308,7 +316,7 @@ export class Player extends EventTarget {
 
   async #prefetchNext() {
     const next = this.peekNext();
-    if (!next || next.id === this.track?.id) { this.prefetch = { trackId: null, state: 'none' }; return; }
+    if (!next || next.id === this.track?.id || next.youtube) { this.prefetch = { trackId: null, state: 'none' }; return; }
     const prefetch = { trackId: next.id, state: 'loading' };
     this.prefetch = prefetch;
     const deck = this.spare;
@@ -443,9 +451,16 @@ export class Player extends EventTarget {
 
   async next(reason = 'fwdbtn') {
     if (this.yt) {
-      // The video was played on its own, over the native queue: Next goes on with that queue.
-      this.stopYouTube({ silent: true });
-      if (!this.userQueue.length && !this.context) return this.#changed();
+      if (this.repeat === 'track' && reason === 'trackdone') {
+        this.#endYouTubeSession(reason);
+        this.#beginYouTubeSession('trackdone', 0);
+        this.yt.ctrl.seekTo(0);
+        this.yt.ctrl.play();
+        return;
+      }
+      // Videos share the queue: Next goes on with whatever comes after this one.
+      this.stopYouTube({ silent: true, reason });
+      if (!this.userQueue.length && !this.context) { this.reportState(true); return this.#changed(); }
     }
     if (this.isRemote) return this.connect.command({ type: 'next' });
     if (this.userQueue.length) {
@@ -655,13 +670,14 @@ export class Player extends EventTarget {
    * pauses; the player bar's controls then drive the embed. `track` is the
    * song record shown in the player bar, with `youtube: { videoId, ... }`.
    */
-  playYouTube(track, host, { title } = {}) {
+  playYouTube(track, host, { title, reason = 'clickrow', positionMs = 0, autoplay = true } = {}) {
     this.stopYouTube({ silent: true });
     this.#endCrossfade();
     this.#endSession('endplay');
     this.pause();
     this.loadToken++; // a native song still loading must not start over the video
-    const y = { track, playing: true, problem: null, ctrl: null };
+    rememberTracks([track]);
+    const y = { track, playing: autoplay, problem: null, ctrl: null, msPlayed: 0, since: null };
     this.yt = y;
     y.ctrl = mountYouTube(host, {
       videoId: track.youtube.videoId, title, volume: this.settings.volume, muted: this.settings.muted,
@@ -673,24 +689,51 @@ export class Player extends EventTarget {
       },
       onState: (state) => {
         if (this.yt !== y) return;
-        if (state === YT_STATE.PLAYING) { y.playing = true; y.problem = null; }
-        else if (state === YT_STATE.PAUSED) y.playing = false;
+        // Time actually playing, for the play_end event (YouTube reports no progress events of its own).
+        if (state === YT_STATE.PLAYING) { y.since ??= Date.now(); y.playing = true; y.problem = null; }
+        else if (y.since !== null) { y.msPlayed += Date.now() - y.since; y.since = null; }
+        if (state === YT_STATE.PAUSED) y.playing = false;
         else if (state === YT_STATE.ENDED) {
           y.playing = false;
           if (this.peekNext()) { this.next('trackdone'); return; }
         }
+        this.reportState(true);
         this.#changed();
       },
     });
+    if (!autoplay) y.ctrl.pause();
+    if (positionMs > 0) y.ctrl.seekTo(positionMs);
+    this.#beginYouTubeSession(reason, positionMs);
     this.#changed();
+    this.reportState(true);
+  }
+
+  // A video's play is logged like a song's, with its source instead of a track
+  // (spec 3.4): the server keeps it as an event and never counts it as a stream.
+  #beginYouTubeSession(reason, positionMs) {
+    const y = this.yt;
+    y.msPlayed = 0;
+    y.since = y.playing && y.since !== null ? Date.now() : null;
+    y.reasonStart = reason;
+    this.#log('play_start', { source_id: y.track.youtube.sourceId, reason, position_ms: Math.round(positionMs) });
+  }
+
+  #endYouTubeSession(reason) {
+    const y = this.yt;
+    if (!y || y.ended) return;
+    if (y.since !== null) { y.msPlayed += Date.now() - y.since; y.since = y.playing ? Date.now() : null; }
+    this.#log('play_end', { source_id: y.track.youtube.sourceId, reason, ms_played: Math.round(y.msPlayed), position_ms: Math.round(y.ctrl.currentMs()), data: { reason_start: y.reasonStart } });
+    y.msPlayed = 0;
   }
 
   /** Remove the embed (it never plays hidden). */
-  stopYouTube({ silent = false } = {}) {
+  stopYouTube({ silent = false, reason = 'endplay' } = {}) {
     if (!this.yt) return;
+    this.#endYouTubeSession(reason);
+    this.yt.ended = true;
     this.yt.ctrl.destroy();
     this.yt = null;
-    if (!silent) this.#changed();
+    if (!silent) { this.#changed(); this.reportState(true); }
   }
 
   /** What the UI should show, whether playback is local or on another device. */
@@ -739,16 +782,17 @@ export class Player extends EventTarget {
 
   // -------------------------------------------------------------- connect
   snapshot() {
+    const y = this.yt;
     return {
-      track_id: this.track?.id || null, position_ms: Math.round(this.positionMs), duration_ms: Math.round(this.view().durationMs),
-      is_playing: this.isPlaying, shuffle: this.shuffle, repeat: this.repeat, volume: this.settings.volume,
+      track_id: (y ? y.track.id : this.track?.id) || null, position_ms: Math.round(y ? y.ctrl.currentMs() : this.positionMs), duration_ms: Math.round(this.view().durationMs),
+      is_playing: y ? y.playing : this.isPlaying, shuffle: this.shuffle, repeat: this.repeat, volume: this.settings.volume,
       context: this.context ? { uri: this.context.uri, title: this.context.title, track_ids: this.context.tracks.map((t) => t.id) } : null,
       index: this.index, order: this.order, user_queue: this.userQueue.map((t) => t.id),
     };
   }
 
   reportState(force = false) {
-    if (!this.connect || this.isRemote || !this.track) return;
+    if (!this.connect || this.isRemote || !(this.track || this.yt)) return;
     if (!force && Date.now() - this.lastReport < 1000) return;
     this.lastReport = Date.now();
     this.connect.report(this.snapshot());
@@ -795,7 +839,7 @@ export class Player extends EventTarget {
     if (this.isRemote) return;
     switch (cmd.type) {
       case 'pause': this.pause(); break;
-      case 'resume': if (this.track) this.toggle(); break;
+      case 'resume': if (this.yt ? !this.yt.playing : this.track) this.toggle(); break;
       case 'next': this.next('fwdbtn'); break;
       case 'previous': this.previous(); break;
       case 'seek': this.seek(cmd.position_ms); break;
@@ -819,7 +863,7 @@ export class Player extends EventTarget {
   }
 
   onRelease() {
-    this.stopYouTube({ silent: true });
+    this.stopYouTube({ silent: true, reason: 'remote' });
     this.#endSession('remote');
     this.pause();
     this.remote = { ...this.snapshot(), device_id: 'pending', track: this.track, receivedAt: Date.now() };

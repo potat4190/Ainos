@@ -19,7 +19,7 @@ import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_PLACEHOLDERS, DEMO_SESS
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
-import { parseAdminIds, assertAdmin } from './admin.js';
+import { parseAdminIds, assertAdmin, isAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
 import { SECTION_LABEL } from './songs.js';
@@ -154,7 +154,7 @@ export async function createApp({
   r.get('/api/me', auth(async ({ res, user }) => {
     sendJson(res, 200, {
       id: user.id, username: user.username, display_name: user.display_name, language: user.language,
-      is_demo: isDemo(user), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
+      is_demo: isDemo(user), is_admin: isAdmin(user, adminIds), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
     });
   }));
 

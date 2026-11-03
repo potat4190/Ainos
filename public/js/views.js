@@ -1,4 +1,5 @@
-import { api, rememberTracks } from './api.js';
+import { api, rememberTracks, youtubeTrack } from './api.js';
+import { syncButton } from './tapsync.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog, safely } from './ui.js';
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
@@ -409,9 +410,13 @@ function songResult(app, sg) {
   const buttons = sg.sources.map((src) => {
     if (src.source === 'youtube') {
       const y = src.youtube;
-      return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: y.title }), onclick: () => app.playYouTube(sg, src) },
+      const play = h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: y.title }), onclick: () => app.playYouTube(sg, src) },
         icon('play'), h('span', { class: 'source-name' }, y.title),
         h('span', { class: 'dim' }, [y.channelTitle, KIND_KEYS[src.kind] ? t(KIND_KEYS[src.kind]) : null, t('sourceYouTube')].filter(Boolean).join(' · ')));
+      // Videos share the one queue with native songs (spec 3.4).
+      const queue = h('button', { class: 'icon-btn source-queue', type: 'button', 'aria-label': `${t('addToQueue')}: ${y.title}`, title: t('addToQueue'),
+        onclick: () => { app.player.addToQueue(youtubeTrack(sg, src)); toast(t('addedToQueueToast')); } }, icon('queue'));
+      return h('div', { class: 'source-row' }, play, queue);
     }
     return h('button', { class: 'source-btn', type: 'button', 'aria-label': t('playTitle', { title: src.track.title }),
       onclick: () => app.player.playContext({ uri: `ainos:song:${sg.id}`, title: sg.name, tracks: [src.track] }, 0) },
@@ -496,8 +501,27 @@ export function lyricsView(app, { track, detail, scroller }) {
     for (const label of labels) blocks.push({ label, items: byLabel.get(label).lines.map((l) => h('p', { class: 'lyric-static' }, l)) });
   }
 
+  // Tap-to-sync (spec 4.4) for leaders and admins: the lines in the order they are sung,
+  // from the timings being redone, else the church's arrangement or the recording's.
+  const syncHost = h('div', { class: 'lyrics-sync' });
+  if (source) {
+    const arrangement = detail.arrangements.find((a) => a.org_id) || detail.arrangements.find((a) => a.name === 'Recording') || detail.arrangements.find((a) => a.name === 'All verses') || detail.arrangements[0];
+    const order = (arrangement?.section_order || []).filter((l) => byLabel.has(l));
+    const labels = order.length ? order : [...byLabel.keys()].sort((a, b) => LABEL_ORDER.indexOf(a) - LABEL_ORDER.indexOf(b));
+    const syncLines = timing
+      ? timing.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null).map((x) => ({ label: x.label, line: x.line, text: byLabel.get(x.label).lines[x.line] }))
+      : labels.flatMap((label) => byLabel.get(label).lines.map((text, line) => ({ label, line, text })));
+    if (syncLines.length) {
+      syncButton(app, {
+        track, sourceId: source.id, language: lang, lines: syncLines, existing: timing?.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null) || [],
+        offsetMs: timing?.offset_ms || 0,
+        onSaved: () => { app.songDetails.delete(track.song_id); app.lyrics = null; app.renderRight(); },
+      }, syncHost);
+    }
+  }
+
   const el = h('div', { class: `lyrics${timing ? ' synced' : ''}` },
-    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced'))),
+    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost),
     h('div', { class: 'lyrics-lines' }, blocks.map((b) => sectionEl(b.label, b.items))),
     more);
 
