@@ -332,6 +332,18 @@ CREATE TABLE IF NOT EXISTS youtube_video_cache (
 );
 CREATE INDEX IF NOT EXISTS youtube_video_cache_fetched ON youtube_video_cache(fetched_at);
 
+-- [3] Live YouTube searches already made (spec 3.3 path B), by folded query and
+-- language. results: JSON list of video ids; an empty list means "nothing
+-- found", so a query goes to YouTube at most once a week. Deleted within 30 days.
+CREATE TABLE IF NOT EXISTS search_cache (
+  query_folded TEXT NOT NULL,
+  language     TEXT NOT NULL,
+  results      TEXT NOT NULL,
+  fetched_at   BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS search_cache_query ON search_cache(query_folded, language);
+CREATE INDEX IF NOT EXISTS search_cache_fetched ON search_cache(fetched_at);
+
 -- [4] Time-synced lyrics for ONE recording (song_sources row). timings: JSON
 -- [{ label, line, ms }]. org_id set = a church's private timings.
 CREATE TABLE IF NOT EXISTS lyric_timings (
@@ -411,7 +423,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log, songs, song_aliases, song_themes, song_sources, song_sections,
-      song_arrangements, song_scripture, user_settings, youtube_video_cache, lyric_timings, orgs, org_members,
+      song_arrangements, song_scripture, user_settings, youtube_video_cache, search_cache, lyric_timings, orgs, org_members,
       org_invites, setlists, setlist_items TO ainos_app;
   END IF;
 END $$;
@@ -422,7 +434,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['users', 'sessions', 'artists', 'albums', 'tracks', 'track_files', 'playlists', 'playlist_tracks',
                            'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
                            'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
-                           'song_scripture', 'user_settings', 'youtube_video_cache', 'lyric_timings', 'orgs',
+                           'song_scripture', 'user_settings', 'youtube_video_cache', 'search_cache', 'lyric_timings', 'orgs',
                            'org_members', 'org_invites', 'setlists', 'setlist_items'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);

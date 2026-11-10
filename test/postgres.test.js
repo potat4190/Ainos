@@ -361,6 +361,31 @@ test('churches on an existing database: sessions gain demo_role, invites arrive,
   assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM org_invites WHERE org_id = $1', [DEMO_ORG_ID]), 0, 'invites wiped at reset');
 });
 
+test('live search on an existing database: search_cache arrives, the app role keeps one row per query and language, and a deploy leaves it alone', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  await pg.connectTo('owner');
+  await pg.db.exec('DROP TABLE search_cache');
+  await pg.db.exec(SCHEMA);
+  await pg.db.exec(SCHEMA);
+  assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', 'search_cache', 'SELECT,INSERT,UPDATE,DELETE') AS ok"))[0].ok, true);
+  assert.equal((await rows(pg, "SELECT relrowsecurity AS on FROM pg_class WHERE relname = 'search_cache'"))[0].on, true);
+
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const save = (q, lang, ids, at) => store.run(`INSERT INTO search_cache (query_folded, language, results, fetched_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (query_folded, language) DO UPDATE SET results = excluded.results, fetched_at = excluded.fetched_at`, [q, lang, JSON.stringify(ids), at]);
+  await save('way maker', 'en', [], 1);
+  await save('way maker', 'en', ['abcdefghijk'], 2);
+  await save('way maker', 'es', [], 3);
+  const saved = await store.all('SELECT language, results, fetched_at FROM search_cache ORDER BY language');
+  assert.deepEqual(saved.map((r) => [r.language, r.results, Number(r.fetched_at)]), [['en', '["abcdefghijk"]', 2], ['es', '[]', 3]]);
+
+  // The generated catalog has no such table rows: a deploy's catalog sync never touches them.
+  await seed(pg, full);
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM search_cache'), 2);
+});
+
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {
   const pg = await newDatabase();
   await seed(pg, full);

@@ -244,3 +244,13 @@ test('GET /api/sources/:id: a source with its song, so a queued or transferred v
   assert.equal((await c.get('/api/sources/orgsrc-1')).status, 404);
   assert.equal((await client(srv.base).get(`/api/sources/${yt}`)).status, 401);
 });
+
+test('search_cache keeps one row per folded query and language (an empty list is a remembered miss)', async () => {
+  const save = (q, lang, ids, at) => srv.app.store.run(`INSERT INTO search_cache (query_folded, language, results, fetched_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (query_folded, language) DO UPDATE SET results = excluded.results, fetched_at = excluded.fetched_at`, [q, lang, JSON.stringify(ids), at]);
+  await save('way maker', 'en', [], 1);
+  await save('way maker', 'en', ['abcdefghijk'], 2);
+  await save('way maker', 'es', [], 3);
+  const rows = await srv.app.store.all("SELECT language, results, fetched_at FROM search_cache WHERE query_folded = 'way maker' ORDER BY language");
+  assert.deepEqual(rows.map((r) => [r.language, r.results, Number(r.fetched_at)]), [['en', '["abcdefghijk"]', 2], ['es', '[]', 3]]);
+});

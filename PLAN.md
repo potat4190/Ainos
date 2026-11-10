@@ -123,6 +123,57 @@ Shorthand used below:
 - **P6.5** Automatic mode for native and YouTube sources, player visible. (S17)
 - **P6.6** Present button on the song page.
 
+## Live YouTube search — `live-youtube-search` (owner request, 2026-11-10)
+
+"If the song the user searched doesn't appear, search YouTube with the API and add the video to
+the list, so later searches for that song don't use the API key." This is the spec's 3.3 path B
+(P3.7 above) plus the pieces it needs from P3.1, P3.2, P3.5 and the 30-day rule of P3.3; the
+speedrun skipped all of them. The channel sync (P3.3/P3.4 as written) stays out of scope.
+
+Rules that shape it: YouTube gives about 100 `search.list` calls a day, so a live search is the
+exception (daily cap, per-user and per-address limits, misses remembered for 7 days, never for
+the demos). Only the video id and YouTube's own title, channel and thumbnail are stored (never
+audio, never lyrics), and that cached data is refreshed or deleted within 30 days. The key is
+read on the server only. External calls are never made in tests (injected `fetch`).
+
+- **L0 Groundwork** (no YouTube calls, nothing visible changes)
+  - L0.1 This plan; owner questions in `PROGRESS.md`.
+  - L0.2 `search_cache` table: one row per folded query and language, holding the video ids
+    found (an empty list = "nothing found"), so a query is sent to YouTube at most once a week. SYNC-DB.
+- **L1 YouTube client** `server/youtube.js` (P3.2)
+  - `search.list` (`type=video`, `videoEmbeddable=true`, `relevanceLanguage`) then one `videos.list`
+    for duration, embeddable and channel; `fetch` injected, timeout, `redirect: 'error'`, key never
+    logged or returned; errors and quota answers become "no live results", never a failed search.
+  - Pure helpers with tests: cleaned song title ("(Official Lyric Video)", "| Victory Worship",
+    "[Live]" stripped), kind (official / lyric / live), ISO 8601 duration.
+  - `createApp` options `youtube` (the client) and `youtubeDailySearchCap` (`YOUTUBE_DAILY_SEARCH_CAP`, default 80).
+- **L2 Importer** `server/youtube-import.js`
+  - One transaction per video: find the song by folded title + artist (or alias) or create it;
+    `song_sources` row (one per video id, so importing twice is a no-op); `youtube_video_cache`
+    row; `search_index` entry. Ids are random, so no existing id changes.
+  - `POST /api/admin/youtube/import` (P3.5): a catalog admin pastes a YouTube URL; also the way to
+    fix a wrong automatic match. Audit entries for both paths.
+- **L3 Live fallback in `GET /api/search`** (P3.7, S15)
+  - Runs only when: the local search has fewer than 3 song results, the client asked for it
+    (`live=1`, sent once typing has stopped), the user is signed in and not a demo, the folded
+    query is not in `search_cache` from the last 7 days, the daily cap is not reached, and the
+    user (10/hour, 30/day) and address (30/hour) limits allow it.
+  - Then: one live search, import the accepted videos (L2), write `search_cache` (also when
+    empty), run the local search again and answer with it. The response says what happened
+    (`live: 'searched' | 'cached' | 'capped' | 'off'`) so the UI can explain.
+  - Tests: a missing song triggers exactly one live call and is found locally afterwards; demo,
+    cap, limits and the negative cache each stop it; the key appears in no response or log.
+- **L4 Frontend**
+  - Search asks for the live fallback only after the user stops typing or presses Enter, shows
+    "Searching YouTube…" while it runs, and a plain note when the daily limit is reached. I18N, SW.
+- **L5 30-day rule** (S16, S17)
+  - `GET /api/cron/refresh-youtube` behind `CRON_SECRET` (constant-time compare) + `vercel.json`
+    cron: re-fetch `videos.list` for cache rows older than 25 days (50 ids per unit); deleted,
+    private or no-longer-embeddable videos get `available = 0` and lose their cache row; rows
+    that could not be refreshed within 30 days are deleted. `search_cache` rows older than 30
+    days are deleted too. Mocked-clock tests.
+- **L6 Reviews, preview smoke test, docs** (the "after every phase" steps below; `context.md`, `README.md`).
+
 ## After every phase (process, not commits except fixes)
 
 Correctness review and security review by fresh subagents → fixes → re-review until clean →

@@ -301,6 +301,18 @@ CREATE TABLE IF NOT EXISTS youtube_video_cache (
 );
 CREATE INDEX IF NOT EXISTS youtube_video_cache_fetched ON youtube_video_cache(fetched_at);
 
+-- [3] Live YouTube searches already made (spec 3.3 path B), by folded query and
+-- language. results: JSON list of video ids; an empty list means "nothing
+-- found", so a query goes to YouTube at most once a week. Deleted within 30 days.
+CREATE TABLE IF NOT EXISTS search_cache (
+  query_folded TEXT NOT NULL,
+  language     TEXT NOT NULL,
+  results      TEXT NOT NULL,
+  fetched_at   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS search_cache_query ON search_cache(query_folded, language);
+CREATE INDEX IF NOT EXISTS search_cache_fetched ON search_cache(fetched_at);
+
 -- [4] Time-synced lyrics for ONE recording (song_sources row). timings: JSON
 -- [{ label, line, ms }]. org_id set = a church's private timings.
 CREATE TABLE IF NOT EXISTS lyric_timings (
