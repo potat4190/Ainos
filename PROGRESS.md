@@ -1,5 +1,12 @@
 # Progress
-Last updated: 2026-11-10 · **Current work: after-speedrun polish** (owner, 2026-11-03: "Do 4, 2 and 1" from the Next list) on branch `polish-after-speedrun` (from `after-speedrun`). The speedrun (e031b6e) is live in production.
+Last updated: 2026-11-10 · **Current work: live YouTube search** (owner, 2026-11-10; plan L0-L6 in `PLAN.md`; L0 done, stopped there as asked) on branch `live-youtube-search` (from `polish-after-speedrun`, which is not pushed yet). The speedrun (e031b6e) is live in production.
+
+## Live YouTube search (owner request, 2026-11-10)
+- Owner: "if the song the user searched doesn't appear, it automatically searches youtube using an api call and adds the video id automatically to the list so that future searches of that song doesn't use the api key. Make the plan in phases and then execute only phase 0 for now."
+- Plan: `PLAN.md`, section "Live YouTube search" (L0 groundwork, L1 YouTube client, L2 importer + admin import route, L3 live fallback in GET /api/search, L4 frontend, L5 30-day refresh cron, L6 reviews/preview/docs). It is the spec's 3.3 path B, which the speedrun skipped.
+- **L0 done** · commit 7b7435f: the plan; table `search_cache` (folded query + language → JSON video ids, empty list = remembered miss; unique index on (query_folded, language), index on fetched_at) in `server/db.js` and `server/schema.pg.sql` with grant and RLS. No YouTube calls, no visible change. npm test 179 pass, 1 skipped; new tests: PGlite migration on an existing database (table, grant, RLS, upsert as the app role, untouched by a deploy sync) and a SQLite upsert test.
+- Decisions taken in the plan (say if you want otherwise): the daily cap uses the existing `rate_limits` table (like the Scripture budget), no `api_quota` table; no channel sync and no `youtube_channels` table (out of scope); the client asks for the live search only after typing stops (`live=1`), so keystrokes don't spend quota; songs and sources made by a live search get random ids.
+- **Before merging (owner): apply `server/schema.pg.sql` to production** (now also adds `search_cache`; re-runnable).
 
 ## After-speedrun polish (2026-11-03): owner picked items 4, 2 and 1
 - **1. Production smoke test** (owner's go-ahead in chat): `node scripts/smoke.js https://ainos-liard.vercel.app` → 100/100 checks passed, exit 0. It reset the production listener and church demo accounts (expected).
@@ -152,12 +159,16 @@ One line each: question → choice (why). Reversible; review at merge.
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
+- Live YouTube search: wait for the owner's go-ahead and answers to Q29-Q31, then L1 (YouTube client `server/youtube.js` with an injected fetch; no key needed for its tests).
 - Push `polish-after-speedrun`, open a PR to main, let the preview build apply the schema to the preview database, and check the preview (smoke needs VERCEL_AUTOMATION_BYPASS_SECRET in the environment).
 - Owner: look at the UI listed under "NOT browser-checked" above (or fix the Claude in Chrome account so Claude can), then merge; apply `server/schema.pg.sql` to production first.
 - Still open from the 2026-11-03 list: 3 (YouTube in playlists / Liked Songs Q15, channel indexing Q16, verified email / 2FA Q19), 5 (Bible versions per language, blocked on YOUVERSION_APP_KEY in Preview), 6 (native review of the translations, now ~860 rows in docs/i18n-review.md).
 - Owner (still open): make `test` a required status check in the main ruleset; confirm Q26-Q28 (taken as recommended); production `ainos_app` password rotation if not done.
 
 ## Open questions and answers
+- NEW (2026-11-10) Q29 Which YouTube results may a live search add on its own? Proposed: embeddable videos in YouTube's Music category only, at most the top 3 per search, verified channels (scripts/worship-channels.js) ranked first, and a catalog admin can hide a wrong one. Stricter alternative: only videos from verified channels (safer, but most songs would find nothing until more channels are verified). → waiting
+- NEW (2026-11-10) Q30 `YOUTUBE_API_KEY`: the owner creates it in Google Cloud (restricted to the YouTube Data API v3) and sets it in Vercel (Production and Preview) and locally; needed from L3 to try the feature for real (L1-L2 are tested with a fake fetch). → waiting
+- NEW (2026-11-10) Q31 The 30-day rule needs a nightly Vercel cron (`CRON_SECRET`, L5) that re-checks stored videos; OK to add it? Without it, live-added videos would have to be deleted after 30 days. → waiting
 - NEW (2026-10-29) Q26 YouVersion caching: the Platform docs state no caching terms per version, so passage text is not cached at all (each passage is fetched when shown, rate-limited per listener). May Ainos cache passage text briefly (spec: ~1 h, ≤500 entries, in memory), or keep fetching every time? → waiting
 - NEW (2026-10-29) Q27 Hymn Scripture references (Phase 2.4, proposed): Amazing Grace EPH.2.8, 1CH.17.16, JHN.9.25 · Be Thou My Vision PSA.73.25-26, PSA.16.5, EPH.1.18 · It Is Well 2KI.4.26, PHP.4.7, COL.2.14 · Holy, Holy, Holy ISA.6.3, REV.4.8-11 · Come, Thou Fount 1SA.7.12, LUK.15.4, JAS.1.17 · All Hail the Power PHP.2.9-11, REV.19.16 · Rock of Ages 1CO.10.4, JHN.19.34, ISA.26.4 · Abide with Me LUK.24.29, 1CO.15.55. Approve or change? (After a song's first deploy, changes go through PUT /api/songs/:id/scripture or a one-off update.) → waiting
 - NEW (2026-10-29) Q28 Verse of the Day fallback list (used when YouVersion's can't be had): JHN.3.16, PSA.23.1, ROM.8.28, PHP.4.6-7, ISA.40.31, JER.29.11, PRO.3.5-6, MAT.11.28, ROM.12.2, 2CO.5.17, GAL.2.20, EPH.2.8-9, PSA.46.1, PSA.119.105, JOS.1.9, ROM.15.13, HEB.11.1, 1JN.4.19, LAM.3.22-23, MAT.6.33, PSA.27.1, ISA.41.10, JHN.14.6, ROM.5.8, 1PE.5.7, PSA.37.4, COL.3.23, MIC.6.8, ZEP.3.17, 2TI.1.7, PSA.100.4-5. Approve or change? → waiting
