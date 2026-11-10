@@ -501,19 +501,25 @@ export function lyricsView(app, { track, detail, scroller }) {
     for (const label of labels) blocks.push({ label, items: byLabel.get(label).lines.map((l) => h('p', { class: 'lyric-static' }, l)) });
   }
 
-  // Tap-to-sync (spec 4.4) for leaders and admins: the lines in the order they are sung,
-  // from the timings being redone, else the church's arrangement or the recording's.
+  // Tap-to-sync (spec 4.4) for leaders and admins: the lines in the order they are sung.
+  // That is the earlier sync's order when it covers every line shown, else the church's
+  // arrangement or the recording's (so lines missing from an earlier sync can be timed).
   const syncHost = h('div', { class: 'lyrics-sync' });
   if (source) {
     const arrangement = detail.arrangements.find((a) => a.org_id) || detail.arrangements.find((a) => a.name === 'Recording') || detail.arrangements.find((a) => a.name === 'All verses') || detail.arrangements[0];
     const order = (arrangement?.section_order || []).filter((l) => byLabel.has(l));
     const labels = order.length ? order : [...byLabel.keys()].sort((a, b) => LABEL_ORDER.indexOf(a) - LABEL_ORDER.indexOf(b));
-    const syncLines = timing
-      ? timing.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null).map((x) => ({ label: x.label, line: x.line, text: byLabel.get(x.label).lines[x.line] }))
+    const existing = timing ? timing.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null) : [];
+    const timed = new Set(existing.map((x) => `${x.label}|${x.line}`));
+    const coversAll = existing.length > 0 && [...byLabel.values()].every((x) => x.lines.every((_, line) => timed.has(`${x.label}|${line}`)));
+    const syncLines = coversAll
+      ? existing.map((x) => ({ label: x.label, line: x.line, text: byLabel.get(x.label).lines[x.line] }))
       : labels.flatMap((label) => byLabel.get(label).lines.map((text, line) => ({ label, line, text })));
+    // A church's own section text can only be synced for that church (the server checks the lines against it).
+    const lineOrgs = [...new Set(syncLines.map((x) => byLabel.get(x.label).org_id).filter(Boolean))];
     if (syncLines.length) {
       syncButton(app, {
-        track, sourceId: source.id, language: lang, lines: syncLines, existing: timing?.timings.filter((x) => byLabel.get(x.label)?.lines[x.line] != null) || [],
+        track, sourceId: source.id, language: lang, lines: syncLines, existing, lineOrgs,
         offsetMs: timing?.offset_ms || 0,
         onSaved: () => { app.songDetails.delete(track.song_id); app.lyrics = null; app.renderRight(); },
       }, syncHost);

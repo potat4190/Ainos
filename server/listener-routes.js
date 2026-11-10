@@ -150,6 +150,9 @@ export function register({ r, store, auth, catalog, adminIds }) {
     }
 
     await store.tx(async (t) => {
+      // Touch the source row first: on Postgres this locks it, so two saves for the same
+      // recording run one after the other and the delete-then-insert leaves one row.
+      await t.run('UPDATE song_sources SET available = available WHERE id = ?', [source.id]);
       const scope = orgId === null ? 'org_id IS NULL' : 'org_id = ?';
       const scopeParams = orgId === null ? [] : [orgId];
       await t.run(`DELETE FROM lyric_timings WHERE source_id = ? AND language = ? AND ${scope} AND ${arrangementId ? 'arrangement_id = ?' : 'arrangement_id IS NULL'}`,

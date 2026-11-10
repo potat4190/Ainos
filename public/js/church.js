@@ -7,6 +7,7 @@ import { api } from './api.js';
 import { t, getLang, errorText, sectionName } from './i18n.js';
 import { parseLyrics } from './lyrics-parse.js';
 import { openPresentDialog } from './present/present.js';
+import { forgetSyncTargets } from './tapsync.js';
 
 const CHURCH_DEMO = 'church-demo';
 const isChurchDemo = (app) => app?.me?.username?.toLowerCase() === CHURCH_DEMO;
@@ -465,6 +466,7 @@ function rolePreview(org, app) {
   const sel = roleSelect(org.role, t('chViewingAs'));
   sel.addEventListener('change', safely(async () => {
     await api.put(orgUrl(org.id, '/demo-role'), { role: sel.value });
+    forgetSyncTargets(); // the Sync lyrics button follows the role being previewed
     await app.refresh();
   }, { onError: () => { sel.value = org.role; } }));
   return h('div', { class: 'ch-preview' },
@@ -506,6 +508,7 @@ function membersCard(org, app) {
             toast(t('chRoleUpdated'));
           } finally {
             // Back to what the server has (e.g. after "last admin"); your own change can alter what you may do.
+            if (m.is_me) forgetSyncTargets();
             await (m.is_me ? app.refresh() : loadMembers());
           }
         }));
@@ -554,6 +557,7 @@ function membersCard(org, app) {
   leave?.addEventListener('click', safely(async () => {
     if (!confirm(t('chLeaveConfirm', { name: org.name }))) return;
     await api.del(orgUrl(org.id, '/members/me'));
+    forgetSyncTargets();
     toast(t('chLeft', { name: org.name }));
     await app.refresh();
   }));
@@ -576,6 +580,7 @@ export async function join(el, params, app) {
     const accept = h('button', { type: 'button', class: 'btn btn-primary btn-sm' }, t('chJoinBtn'));
     accept.addEventListener('click', safely(async () => {
       const joined = await api.post('/api/invites/redeem', { token: params.id || '' });
+      forgetSyncTargets();
       rememberChurch(joined.org_id);
       const nav = document.getElementById('nav-church');
       if (nav) nav.hidden = false;

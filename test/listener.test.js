@@ -195,8 +195,14 @@ test('tap-to-sync: a church leader saves its church’s timings, a catalog admin
     assert.ok(seen.some((x) => x.org_id === null && x.arrangement_id === null && JSON.stringify(x.timings) === JSON.stringify(hymnTiming)), 'global: seen by all');
     assert.ok(seen.some((x) => x.arrangement_id !== null), 'the generator’s timings for its Recording arrangement stay');
 
+    // Two saves at once (a double-click on Save) leave one row for the church, not two.
+    const both = await Promise.all([leader.putJson(url, body), leader.putJson(url, body)]);
+    assert.deepEqual(both.map((x) => x.status), [200, 200]);
+    const rows = await own.app.store.all('SELECT id FROM lyric_timings WHERE source_id = ? AND org_id = ?', [ytSource, orgId]);
+    assert.equal(rows.length, 1, 'saves at the same time replace each other, they do not pile up');
+
     const actions = await own.app.store.all("SELECT org_id, action FROM audit_log WHERE action = 'timings.replace'");
-    assert.deepEqual(actions.map((x) => x.org_id), [orgId, orgId, null]);
+    assert.deepEqual(actions.map((x) => x.org_id), [orgId, orgId, null, orgId, orgId]);
   } finally {
     await own.close();
   }

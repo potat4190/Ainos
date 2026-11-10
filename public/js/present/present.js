@@ -491,7 +491,7 @@ class Session {
     }
   }
 
-  /** A video item: YouTube's player in the visible box, started at atMs; 'loading' until it plays. */
+  /** A video item: YouTube's player in the visible box, started at atMs; 'loading' until the player is ready. */
   loadVideo(itemIndex, item, atMs) {
     this.stopAudioOnly();
     this.stopVideo();
@@ -504,6 +504,8 @@ class Session {
     y.ctrl = mountYouTube(host, {
       videoId: item.source.videoId, title: str(item.title),
       onProblem: () => { if (this.yt === y && this.alive) this.audioFailed(itemIndex); },
+      // Ready (it has taken the seek), even if paused meanwhile: Play and slide changes work from here.
+      onReady: () => { if (this.yt === y && this.alive) { this.loading = false; this.updateAuto(); } },
       onState: (state) => {
         if (this.yt !== y || !this.alive) return;
         if (state === YT_STATE.PLAYING) { y.playing = true; this.loading = false; }

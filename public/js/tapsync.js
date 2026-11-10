@@ -14,14 +14,23 @@ let targets = null;
 /** Where this user may save timings: their churches as admin or leader, and "everyone" for catalog admins. Cached for a minute. */
 export function syncTargets() {
   if (targets && Date.now() - targets.at < 60_000) return targets.promise;
-  const promise = Promise.all([api.get('/api/me'), api.get('/api/me/orgs')])
+  const entry = { at: Date.now(), promise: null };
+  entry.promise = Promise.all([api.get('/api/me'), api.get('/api/me/orgs')])
     .then(([me, orgs]) => [
       ...orgs.filter((o) => SYNC_ROLES.includes(o.role)).map((o) => ({ orgId: o.id, name: o.name })),
       ...(me.is_admin ? [{ orgId: null, name: t('syncEveryone') }] : []),
     ])
-    .catch(() => []);
-  targets = { at: Date.now(), promise };
-  return promise;
+    .catch(() => {
+      if (targets === entry) targets = null; // a failed lookup isn't kept: try again next time
+      return [];
+    });
+  targets = entry;
+  return entry.promise;
+}
+
+/** Drop the cached targets (after a role changes, or the church demo's "Viewing as"). */
+export function forgetSyncTargets() {
+  targets = null;
 }
 
 const fmtMs = (ms) => {
@@ -36,9 +45,16 @@ const fmtMs = (ms) => {
  * `existing`: [{ label, line, ms }] from an earlier sync to start from.
  */
 export function openTapSync(app, { track, sourceId, language, lines, existing = [], offsetMs = 0, targetList, onSaved }) {
-  const times = lines.map((ln, i) => {
-    const hit = existing[i];
-    return hit && hit.label === ln.label && hit.line === ln.line ? hit.ms : NaN;
+  // Earlier times by line and by how many times it has come round (a chorus sung three times has three).
+  const lineKey = (x) => `${x.label}|${x.line}`;
+  const earlier = new Map();
+  for (const x of existing) earlier.set(lineKey(x), [...(earlier.get(lineKey(x)) || []), x.ms]);
+  const seen = new Map();
+  const times = lines.map((ln) => {
+    const n = seen.get(lineKey(ln)) || 0;
+    seen.set(lineKey(ln), n + 1);
+    const ms = earlier.get(lineKey(ln))?.[n];
+    return Number.isFinite(ms) ? ms : NaN;
   });
   let cursor = times.findIndex((x) => !Number.isFinite(x));
   if (cursor < 0) cursor = lines.length;
@@ -106,10 +122,15 @@ export function openTapSync(app, { track, sourceId, language, lines, existing = 
     if (left) { toast(t('syncIncomplete', { n: left }), { error: true }); return; }
     if (times.some((x, i) => i > 0 && x <= times[i - 1])) { toast(t('syncOrder'), { error: true }); return; }
     const where = targetList[Number(target.value)] || targetList[0];
-    await api.put(`/api/sources/${encodeURIComponent(sourceId)}/timings`, {
-      org_id: where.orgId, language, offset_ms: Math.round(Number(offset.value) || 0),
-      timings: lines.map((ln, i) => ({ label: ln.label, line: ln.line, ms: times[i] })),
-    });
+    save.disabled = true; // one save at a time
+    try {
+      await api.put(`/api/sources/${encodeURIComponent(sourceId)}/timings`, {
+        org_id: where.orgId, language, offset_ms: Math.round(Number(offset.value) || 0),
+        timings: lines.map((ln, i) => ({ label: ln.label, line: ln.line, ms: times[i] })),
+      });
+    } finally {
+      save.disabled = false;
+    }
     toast(t('syncSaved'));
     dlg.close();
     onSaved?.();
@@ -129,9 +150,10 @@ export function openTapSync(app, { track, sourceId, language, lines, existing = 
     h('div', { class: 'dialog-actions' }, cancel, save));
 
   // Space taps, unless typing in a field; the YouTube player itself keeps its own keys.
-  dlg.addEventListener('keydown', (e) => {
-    if ((e.key === ' ' || e.key === 'Spacebar') && !e.target.closest('input, select, textarea')) { e.preventDefault(); tap(); }
-  });
+  // Its keyup is cancelled too, so a focused button (Tap starts focused) isn't also clicked.
+  const isTapKey = (e) => (e.key === ' ' || e.key === 'Spacebar') && !e.target.closest('input, select, textarea');
+  dlg.addEventListener('keydown', (e) => { if (isTapKey(e)) { e.preventDefault(); if (!e.repeat) tap(); } });
+  dlg.addEventListener('keyup', (e) => { if (isTapKey(e)) e.preventDefault(); });
   // The time shown, four times a second while the dialog is open.
   const timer = setInterval(() => { clock.textContent = playingThis() ? fmtMs(app.player.view().positionMs) : '—'; }, 250);
   dlg.addEventListener('close', () => { clearInterval(timer); dlg.remove(); });
@@ -142,9 +164,13 @@ export function openTapSync(app, { track, sourceId, language, lines, existing = 
   return dlg;
 }
 
-/** The "Sync lyrics" button for the lyrics view, added once the user turns out to be allowed to sync. */
-export function syncButton(app, opts, host) {
-  syncTargets().then((list) => {
+/**
+ * The "Sync lyrics" button for the lyrics view, added once the user turns out to be allowed to sync.
+ * `lineOrgs`: churches whose own section text is in the lines; only those churches can take these timings.
+ */
+export function syncButton(app, { lineOrgs = [], ...opts }, host) {
+  syncTargets().then((all) => {
+    const list = all.filter((x) => lineOrgs.every((o) => o === x.orgId));
     if (!list.length) return;
     clear(host).append(h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => openTapSync(app, { ...opts, targetList: list }) },
       icon('clock'), t('syncLyrics')));

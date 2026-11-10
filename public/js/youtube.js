@@ -42,20 +42,29 @@ export const STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING
 /**
  * Mount a player in `host` (an element the API replaces with its iframe).
  * onProblem(reason) is called once: on an onError event, or when the video
- * hasn't reached PLAYING within `timeoutMs`. onState(state) reports every
- * YT.PlayerState change.
+ * hasn't reached PLAYING within `timeoutMs` while it is meant to play (a
+ * paused player is waiting, not failing). onReady() is called once the player
+ * can take commands; onState(state) reports every YT.PlayerState change.
  * Returns a controller right away; commands made before onReady are applied then.
  */
-export function mountYouTube(host, { videoId, title, timeoutMs = 8000, volume = 1, muted = false, onProblem, onState } = {}) {
+export function mountYouTube(host, { videoId, title, timeoutMs = 8000, volume = 1, muted = false, onProblem, onReady, onState } = {}) {
   let player = null;
   let ready = false;
   let wanted = 'play';
   let done = false;
   let reported = false;
+  let started = false; // reached PLAYING at least once
   let pendingSeek = null;
   let level = { volume, muted };
   const report = (reason) => { if (!reported && !done) { reported = true; onProblem?.(reason); } };
-  const timer = setTimeout(() => report(`not playing after ${Math.round(timeoutMs / 1000)} s`), timeoutMs);
+  // The "not playing" clock runs only while the video is meant to play and hasn't yet.
+  let timer = null;
+  const disarm = () => { clearTimeout(timer); timer = null; };
+  const arm = () => {
+    if (started || reported || done || timer) return;
+    timer = setTimeout(() => { timer = null; report(`not playing after ${Math.round(timeoutMs / 1000)} s`); }, timeoutMs);
+  };
+  arm();
   const applyLevel = () => {
     player.setVolume(Math.round(Math.max(0, Math.min(1, level.volume)) * 100));
     if (level.muted) player.mute(); else player.unMute();
@@ -79,29 +88,30 @@ export function mountYouTube(host, { videoId, title, timeoutMs = 8000, volume = 
           applyLevel();
           if (pendingSeek !== null) { e.target.seekTo(pendingSeek / 1000, true); pendingSeek = null; }
           if (wanted === 'play') e.target.playVideo(); else e.target.pauseVideo();
+          onReady?.();
         },
         onStateChange: (e) => {
           if (done) return;
-          if (e.data === STATE.PLAYING) clearTimeout(timer);
+          if (e.data === STATE.PLAYING) { started = true; disarm(); }
           onState?.(e.data);
         },
         onError: (e) => {
-          clearTimeout(timer);
+          disarm();
           report(`error ${e.data}${ERROR_CODES[e.data] ? ` (${ERROR_CODES[e.data]})` : ''}`);
         },
       },
     });
-  }).catch((err) => { clearTimeout(timer); report(err.message); });
+  }).catch((err) => { disarm(); report(err.message); });
 
   const call = (fn) => { if (ready && !done) { try { fn(player); } catch { /* player gone */ } } };
   return {
-    play() { wanted = 'play'; call((p) => p.playVideo()); },
-    pause() { wanted = 'pause'; call((p) => p.pauseVideo()); },
+    play() { wanted = 'play'; arm(); call((p) => p.playVideo()); },
+    pause() { wanted = 'pause'; disarm(); call((p) => p.pauseVideo()); },
     seekTo(ms) { if (ready) call((p) => p.seekTo(Math.max(0, ms) / 1000, true)); else pendingSeek = ms; },
     setLevel(next) { level = { ...level, ...next }; call(applyLevel); },
     currentMs() { let ms = 0; call((p) => { ms = (p.getCurrentTime() || 0) * 1000; }); return ms; },
     durationMs() { let ms = 0; call((p) => { ms = (p.getDuration() || 0) * 1000; }); return ms; },
     get ready() { return ready; },
-    destroy() { done = true; clearTimeout(timer); try { player?.destroy(); } catch { /* already gone */ } },
+    destroy() { done = true; disarm(); try { player?.destroy(); } catch { /* already gone */ } },
   };
 }

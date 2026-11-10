@@ -93,7 +93,14 @@ export class Player extends EventTarget {
     addEventListener('pagehide', () => {
       this.#endSession('endplay');
       this.#endYouTubeSession('endplay');
+      if (this.yt) this.yt.ended = true; // its play is logged; nothing more until it starts again
       this.flush({ beacon: true });
+    });
+    // Back from the back/forward cache with a video still loaded: its play is a new one.
+    addEventListener('pageshow', (e) => {
+      if (!e.persisted || !this.yt?.ended) return;
+      this.yt.ended = false;
+      this.#beginYouTubeSession('appload', this.yt.ctrl.currentMs());
     });
     this.#mediaSessionHandlers();
   }
@@ -696,7 +703,8 @@ export class Player extends EventTarget {
         if (state === YT_STATE.PAUSED) y.playing = false;
         else if (state === YT_STATE.ENDED) {
           y.playing = false;
-          if (this.peekNext()) { this.next('trackdone'); return; }
+          // Repeat-one loops the video itself (next() handles it), even with nothing queued.
+          if (this.repeat === 'track' || this.peekNext()) { this.next('trackdone'); return; }
         }
         this.reportState(true);
         this.#changed();
@@ -864,10 +872,13 @@ export class Player extends EventTarget {
   }
 
   onRelease() {
+    // What was playing here, video included, until the new device reports.
+    const snapshot = this.snapshot();
+    const track = this.yt?.track ?? this.track;
     this.stopYouTube({ silent: true, reason: 'remote' });
     this.#endSession('remote');
     this.pause();
-    this.remote = { ...this.snapshot(), device_id: 'pending', track: this.track, receivedAt: Date.now() };
+    this.remote = { ...snapshot, device_id: 'pending', track, receivedAt: Date.now() };
     this.track = null;
     this.session = null;
     this.isPlaying = false;
