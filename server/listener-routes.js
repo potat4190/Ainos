@@ -75,7 +75,7 @@ export async function songLyrics(store, catalog, songId, user, lang = null) {
 }
 
 /**
- * @param {object} ctx { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log }
+ * @param {object} ctx { r, store, auth, catalog, scripture, youtube, youtubeDailySearchCap, adminIds, clientIp, isSecure, trustProxy, log }
  *   r: Router (r.get/post/put/patch/delete(pattern, handler)); auth(handler) adds ctx.user or 401s.
  */
 export function register({ r, store, auth, catalog, adminIds }) {

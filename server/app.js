@@ -19,6 +19,7 @@ import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_PLACEHOLDERS, DEMO_SESS
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
+import { createYouTube } from './youtube.js';
 import { parseAdminIds, assertAdmin, isAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
@@ -59,6 +60,8 @@ export async function createApp({
   adminUserIds = process.env.ADMIN_USER_IDS,
   scripture = createScripture({ log }),
   scriptureDailyBudget = Number(process.env.SCRIPTURE_DAILY_BUDGET) || 20_000, // YouVersion requests a day, all listeners
+  youtube = createYouTube({ log }),
+  youtubeDailySearchCap = Number(process.env.YOUTUBE_DAILY_SEARCH_CAP) || 80, // live YouTube searches a day, all listeners (YouTube allows about 100)
 } = {}) {
   const adminIds = parseAdminIds(adminUserIds);
   let store;
@@ -309,7 +312,7 @@ export async function createApp({
   }));
 
   // Feature route modules (Phases 3-6), registered before the catalog routes.
-  const routeCtx = { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log };
+  const routeCtx = { r, store, auth, catalog, scripture, youtube, youtubeDailySearchCap, adminIds, clientIp, isSecure, trustProxy, log };
   registerListenerRoutes(routeCtx);
   registerChurchRoutes(routeCtx);
 

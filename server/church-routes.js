@@ -60,7 +60,7 @@ const firstLine = (s) => splitLines(s)[0].slice(0, 80);
 const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
 
 /**
- * @param {object} ctx { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log }
+ * @param {object} ctx { r, store, auth, catalog, scripture, youtube, youtubeDailySearchCap, adminIds, clientIp, isSecure, trustProxy, log }
  *   r: Router (r.get/post/put/patch/delete(pattern, handler)); auth(handler) adds ctx.user or 401s.
  */
 export function register({ r, store, auth, scripture, clientIp, isSecure, trustProxy }) {
