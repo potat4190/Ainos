@@ -99,6 +99,22 @@ test('at most three videos are added, verified channels first, then YouTube’s 
   assert.equal(r.songs.items.length, 3, 'three channels, three songs (the artist is the channel)');
 });
 
+test('one song from three channels becomes one song with three versions, whatever order YouTube gives them in', async () => {
+  const a = await signup(srv.base, 'live-merge');
+  yt.calls.length = 0;
+  yt.answer = () => [
+    video(vid(71), 'Leeland - Merge Song (Lyrics)', 'The Higher Power'),
+    video(vid(72), 'Merge Song (Lyric Video) - Leeland [ Official ]', 'Integrity Music'),
+    video(vid(73), 'Leeland - Merge Song (Official Live Video)', 'Leeland'),
+  ];
+  const r = await search(a, 'merge song');
+  assert.equal(r.live, 'searched');
+  assert.equal(r.songs.items.length, 1);
+  assert.deepEqual([r.songs.items[0].name, r.songs.items[0].artist.name], ['Merge Song', 'Leeland']);
+  assert.deepEqual(r.songs.items[0].sources.map((x) => x.youtube.videoId).sort(), [vid(71), vid(72), vid(73)]);
+  assert.deepEqual(JSON.parse((await cacheRow('merge song')).results), [vid(71), vid(72), vid(73)], 'remembered in YouTube’s order');
+});
+
 test('enough songs in the catalog, a demo account, a short query or no key: YouTube is not asked', async () => {
   const a = await signup(srv.base, 'live-off');
   yt.calls.length = 0;

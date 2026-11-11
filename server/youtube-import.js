@@ -66,6 +66,29 @@ async function findSong(t, title, artist) {
   return rows.find((r) => fold(r.artist) === wantArtist && (fold(r.title) === want || aliased.has(r.id))) || null;
 }
 
+/**
+ * A video's title often names the artist too, when a label or a lyrics
+ * channel uploaded it: "Way Maker - Leeland", "Leeland - Way Maker". Such a
+ * title can't say which half is which, so it is only used to find a song
+ * that already exists, either way round; it never names a new one.
+ */
+export function splitTitles(title) {
+  const parts = String(title ?? '').split(' - ').map((p) => p.trim()).filter(Boolean);
+  if (parts.length !== 2) return [];
+  return [{ title: parts[0], artist: parts[1] }, { title: parts[1], artist: parts[0] }];
+}
+
+/** The existing song a video is a recording of: by its cleaned title and channel, else by a "title - artist" title. */
+async function matchSong(t, made) {
+  const direct = await findSong(t, made.title, made.artist);
+  if (direct) return direct;
+  for (const guess of splitTitles(made.title)) {
+    const song = await findSong(t, guess.title, guess.artist);
+    if (song) return song;
+  }
+  return null;
+}
+
 async function saveCache(t, v, now) {
   await t.run(`INSERT INTO youtube_video_cache (video_id, channel_id, title, channel_title, thumbnail_url, duration_ms, embeddable, default_language, fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -116,7 +139,7 @@ export async function importVideo(store, video, { language = 'en', userId = null
     }
 
     const made = songFromVideo(video);
-    let song = target || await findSong(t, made.title, made.artist);
+    let song = target || await matchSong(t, made);
     const createdSong = !song;
     if (!song) {
       song = { id: randomId(), title: made.title, artist: made.artist || video.channelTitle || 'YouTube' };

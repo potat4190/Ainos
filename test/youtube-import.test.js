@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { startTestServer, client, login, signup } from './helpers.js';
-import { importVideo, hideVideo, parseVideoUrl, songLanguage, isImportable } from '../server/youtube-import.js';
+import { importVideo, hideVideo, parseVideoUrl, songLanguage, isImportable, splitTitles } from '../server/youtube-import.js';
 import { MUSIC_CATEGORY, thumbnailUrl } from '../server/youtube.js';
 import { YOUTUBE_IDS } from '../scripts/generate.js';
 import { YOUTUBE_VIDEOS } from '../scripts/youtube-videos.js';
@@ -144,6 +144,25 @@ test('titles match by alias too, and LIKE wildcards in a title match nothing by 
   assert.equal(percent.createdSong, true, '"%" is a title, not "any song"');
   const underscore = await importVideo(store, video(vid(14), 'Cu_n Grande Es _l', 'Coro Uno'));
   assert.equal(underscore.createdSong, true);
+});
+
+test('a title that names the artist joins that artist’s song, whichever way round; it never names a new song', async () => {
+  assert.deepEqual(splitTitles('Way Maker - Leeland'), [{ title: 'Way Maker', artist: 'Leeland' }, { title: 'Leeland', artist: 'Way Maker' }]);
+  assert.deepEqual(splitTitles('Way Maker'), []);
+  assert.deepEqual(splitTitles('A - B - C'), [], 'three parts could be anything');
+
+  const own = await importVideo(store, video(vid(70), 'Lee Band - Split Song (Official Live Video)', 'Lee Band'));
+  assert.equal(own.createdSong, true);
+  assert.deepEqual({ ...(await store.get('SELECT title, artist FROM songs WHERE id = ?', [own.songId])) }, { title: 'Split Song', artist: 'Lee Band' });
+  // A label's upload ("title - artist") and a lyrics channel's ("artist - title"): the same song.
+  const label = await importVideo(store, video(vid(71), 'Split Song (Lyric Video) - Lee Band [ Official ]', 'Some Label'));
+  const lyrics = await importVideo(store, video(vid(72), 'LEE BAND - split song (Lyrics)', 'Lyrics Channel'));
+  for (const r of [label, lyrics]) assert.deepEqual([r.status, r.createdSong, r.songId], ['added', false, own.songId]);
+  assert.equal(await count('SELECT COUNT(*) AS n FROM song_sources WHERE song_id = ?', [own.songId]), 3);
+
+  // No such song yet: the title is kept whole (it can't say which half is the artist).
+  const unknown = await importVideo(store, video(vid(73), 'Nobody Yet - Unheard Song', 'Lyrics Channel'));
+  assert.deepEqual({ ...(await store.get('SELECT title, artist FROM songs WHERE id = ?', [unknown.songId])) }, { title: 'Nobody Yet - Unheard Song', artist: 'Lyrics Channel' });
 });
 
 test('two imports of one new video at once leave one song and one source', async () => {

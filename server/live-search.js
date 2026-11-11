@@ -19,7 +19,9 @@ import { HttpError } from './http.js';
 import { rateLimit } from './auth.js';
 import { isDemo } from './demo.js';
 import { fold } from './util.js';
-import { importVideo } from './youtube-import.js';
+import { inList } from './store.js';
+import { songFromVideo } from './youtube.js';
+import { importVideo, splitTitles } from './youtube-import.js';
 
 export const MIN_LOCAL_SONGS = 3; // fewer songs than this in the catalog: worth asking YouTube
 export const MAX_ADDED = 3; // videos one live search may add (owner, Q29)
@@ -100,9 +102,16 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
 
     // Verified official channels first, then YouTube's own order; at most MAX_ADDED.
     const ranked = [...found.videos.filter((v) => verified.has(fold(v.channelTitle || ''))), ...found.videos.filter((v) => !verified.has(fold(v.channelTitle || '')))];
+    // Videos an admin hid, or that belong to a church's song, don't take one of the places.
+    const ids = ranked.map((v) => v.videoId);
+    const barred = new Set(ids.length ? (await store.all(`SELECT ss.youtube_video_id AS id FROM song_sources ss JOIN songs s ON s.id = ss.song_id
+      WHERE ss.youtube_video_id IN (${inList(ids)}) AND (ss.available <> 1 OR s.org_id IS NOT NULL)`, ids)).map((r) => r.id) : []);
+    const chosen = ranked.filter((v) => !barred.has(v.videoId)).slice(0, MAX_ADDED);
+    // Plainly titled videos first ("Way Maker" on the artist's channel), so one that
+    // names the artist in its title ("Way Maker - Leeland") finds that song already there.
+    const order = [...chosen.filter((v) => !splitTitles(songFromVideo(v).title).length), ...chosen.filter((v) => splitTitles(songFromVideo(v).title).length)];
     const kept = [];
-    for (const video of ranked) {
-      if (kept.length >= MAX_ADDED) break;
+    for (const video of order) {
       try {
         const r = await importVideo(store, video, { language, userId: user.id, via: 'search', now: at });
         if (r.status === 'added' || r.status === 'exists') kept.push(video.videoId);
@@ -110,6 +119,7 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
         log('[live-search] import', video.videoId, err?.message);
       }
     }
+    kept.sort((a, b) => chosen.findIndex((v) => v.videoId === a) - chosen.findIndex((v) => v.videoId === b));
     await store.run('UPDATE search_cache SET results = ? WHERE query_folded = ? AND language = ? AND fetched_at = ?', [JSON.stringify(kept), key, language, at]);
     return 'searched';
   }
