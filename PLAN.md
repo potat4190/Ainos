@@ -158,7 +158,8 @@ read on the server only. External calls are never made in tests (injected `fetch
     (`live=1`, sent once typing has stopped), the user is signed in and not a demo, the folded
     query is not in `search_cache` from the last 7 days, the daily cap is not reached, and the
     user (10/hour, 30/day) and address (30/hour) limits allow it.
-  - Then: one live search, import the accepted videos (L2), write `search_cache` (also when
+  - Then: one live search (YouTube's Music category, embeddable only), import at most the top 3
+    videos, verified channels first (owner, 2026-11-10) (L2), write `search_cache` (also when
     empty), run the local search again and answer with it. The response says what happened
     (`live: 'searched' | 'cached' | 'capped' | 'off'`) so the UI can explain.
   - Tests: a missing song triggers exactly one live call and is found locally afterwards; demo,

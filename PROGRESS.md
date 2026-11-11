@@ -159,14 +159,14 @@ One line each: question → choice (why). Reversible; review at merge.
 - 2026-10-29 Setup · repo mapped, plan written to `PLAN.md` · commit 03a55de
 
 ## Next
-- Live YouTube search: wait for the owner's go-ahead and answers to Q29-Q31, then L1 (YouTube client `server/youtube.js` with an injected fetch; no key needed for its tests).
+- Live YouTube search: Q29 answered (top 3 music videos); wait for the owner's go-ahead (and Q30, Q31), then L1 (YouTube client `server/youtube.js` with an injected fetch; no key needed for its tests).
 - Push `polish-after-speedrun`, open a PR to main, let the preview build apply the schema to the preview database, and check the preview (smoke needs VERCEL_AUTOMATION_BYPASS_SECRET in the environment).
 - Owner: look at the UI listed under "NOT browser-checked" above (or fix the Claude in Chrome account so Claude can), then merge; apply `server/schema.pg.sql` to production first.
 - Still open from the 2026-11-03 list: 3 (YouTube in playlists / Liked Songs Q15, channel indexing Q16, verified email / 2FA Q19), 5 (Bible versions per language, blocked on YOUVERSION_APP_KEY in Preview), 6 (native review of the translations, now ~860 rows in docs/i18n-review.md).
 - Owner (still open): make `test` a required status check in the main ruleset; confirm Q26-Q28 (taken as recommended); production `ainos_app` password rotation if not done.
 
 ## Open questions and answers
-- NEW (2026-11-10) Q29 Which YouTube results may a live search add on its own? Proposed: embeddable videos in YouTube's Music category only, at most the top 3 per search, verified channels (scripts/worship-channels.js) ranked first, and a catalog admin can hide a wrong one. Stricter alternative: only videos from verified channels (safer, but most songs would find nothing until more channels are verified). → waiting
+- NEW (2026-11-10) Q29 Which YouTube results may a live search add on its own? Proposed: embeddable videos in YouTube's Music category only, at most the top 3 per search, verified channels (scripts/worship-channels.js) ranked first, and a catalog admin can hide a wrong one. Stricter alternative: only videos from verified channels (safer, but most songs would find nothing until more channels are verified). → **answered 2026-11-10: "Top 3 music videos"** (the proposed option: Music category, embeddable, at most 3 per search, verified channels first, an admin can hide a wrong one).
 - NEW (2026-11-10) Q30 `YOUTUBE_API_KEY`: the owner creates it in Google Cloud (restricted to the YouTube Data API v3) and sets it in Vercel (Production and Preview) and locally; needed from L3 to try the feature for real (L1-L2 are tested with a fake fetch). → waiting
 - NEW (2026-11-10) Q31 The 30-day rule needs a nightly Vercel cron (`CRON_SECRET`, L5) that re-checks stored videos; OK to add it? Without it, live-added videos would have to be deleted after 30 days. → waiting
 - NEW (2026-10-29) Q26 YouVersion caching: the Platform docs state no caching terms per version, so passage text is not cached at all (each passage is fetched when shown, rate-limited per listener). May Ainos cache passage text briefly (spec: ~1 h, ≤500 entries, in memory), or keep fetching every time? → waiting
