@@ -5,8 +5,10 @@ import { inList } from './store.js';
 import { memberOrgIds, requireRole } from './orgs.js';
 import { assertAdmin } from './admin.js';
 import { audit } from './audit.js';
-import { int, oneOf, str } from './validate.js';
+import { int, oneOf, str, youtubeId } from './validate.js';
 import { randomId } from './util.js';
+import { rateLimit } from './auth.js';
+import { importVideo, hideVideo, parseVideoUrl, isImportable, ImportError } from './youtube-import.js';
 
 export const LANGS = ['en', 'hi', 'ne', 'zh', 'ja', 'es']; // LANGUAGES in app.js (not imported: app.js imports this file)
 
@@ -78,7 +80,7 @@ export async function songLyrics(store, catalog, songId, user, lang = null) {
  * @param {object} ctx { r, store, auth, catalog, scripture, youtube, youtubeDailySearchCap, adminIds, clientIp, isSecure, trustProxy, log }
  *   r: Router (r.get/post/put/patch/delete(pattern, handler)); auth(handler) adds ctx.user or 401s.
  */
-export function register({ r, store, auth, catalog, adminIds }) {
+export function register({ r, store, auth, catalog, adminIds, youtube }) {
   // One playable source with its song, so a queued or transferred YouTube item
   // ("yt:<source id>") can be shown and played on any device (spec 3.4 Connect).
   r.get('/api/sources/:id', auth(async ({ res, user, params }) => {
@@ -100,6 +102,54 @@ export function register({ r, store, auth, catalog, adminIds }) {
     if (!source || (source.org_id !== null && !orgIds.includes(source.org_id))) throw new HttpError(404, 'Source not found');
     const timings = await timingsBySource(store, [source.id], orgIds, langParam(query));
     sendJson(res, 200, { source_id: source.id, timings: timings.get(source.id) });
+  }));
+
+  // ---------------- YouTube videos in the catalog (spec 3.2 admin import; PLAN.md L2) ----------------
+  /** A song with one of its sources, as GET /api/sources/:id gives it (source null when it is hidden or unavailable). */
+  async function songWithSource(songId, sourceId) {
+    const song = await store.get('SELECT id, title, artist, language FROM songs WHERE id = ?', [songId]);
+    const source = (await catalog.sourcesBySong([songId])).get(songId).find((x) => x.id === sourceId) || null;
+    return { song: { id: song.id, name: song.title, artist: { name: song.artist }, language: song.language }, source };
+  }
+
+  // A catalog admin pastes a YouTube link (or a video id): the video becomes a
+  // source of the song its title names, or of `song_id` when given, which also
+  // moves a video the live search matched to the wrong song. Costs one
+  // videos.list unit; nothing is fetched from the pasted address itself.
+  r.post('/api/admin/youtube/import', auth(async ({ req, res, user }) => {
+    assertAdmin(user, adminIds);
+    await rateLimit(store, `user:${user.id}:yt-import`, { limit: 60, windowSec: 3600, message: 'Too many imports, try again in an hour' });
+    const body = await readJson(req);
+    const videoId = parseVideoUrl(body.url);
+    if (!videoId) throw bad('url must be a YouTube video link or an 11-character video id');
+    const songId = body.song_id == null || body.song_id === '' ? null : str(body.song_id, { name: 'song_id', min: 1, max: 64 });
+    const language = body.language == null || body.language === '' ? user.language : oneOf(body.language, LANGS, { name: 'language' });
+    const found = await youtube.videoDetails([videoId]);
+    if (!found.ok) {
+      throw new HttpError(503, found.reason === 'no_key' ? 'YouTube isn’t set up on this server (YOUTUBE_API_KEY)' : 'YouTube can’t be reached right now, try again later', 'youtube_unavailable');
+    }
+    const video = found.videos[0];
+    if (!video) throw new HttpError(404, 'YouTube has no public video with that id', 'not_found');
+    if (!isImportable(video)) throw bad(video.live ? 'Live streams can’t be added' : 'That video can’t be embedded, so it can’t be played in Ainos');
+    let result;
+    try {
+      result = await importVideo(store, video, { language, userId: user.id, via: 'admin', songId });
+    } catch (err) {
+      if (err instanceof ImportError) throw new HttpError(404, err.message, err.code);
+      throw err;
+    }
+    if (result.status === 'private') throw new HttpError(409, 'That video already belongs to a church’s song', 'conflict');
+    sendJson(res, result.status === 'added' ? 201 : 200, { status: result.status, created_song: result.createdSong, ...(await songWithSource(result.songId, result.sourceId)) });
+  }));
+
+  // Take a video out of the catalog (a wrong match, or not a worship song). It
+  // stays out: a later live search never adds it back; only an admin import does.
+  r.delete('/api/admin/youtube/:videoId', auth(async ({ res, user, params }) => {
+    assertAdmin(user, adminIds);
+    let videoId;
+    try { videoId = youtubeId(params.videoId); } catch { throw new HttpError(404, 'Video not found', 'not_found'); }
+    if (!(await hideVideo(store, videoId, { userId: user.id }))) throw new HttpError(404, 'Video not found', 'not_found');
+    sendJson(res, 200, { ok: true });
   }));
 
   // Tap-to-sync (spec 4.4, 4.6): save the line times for one recording. A

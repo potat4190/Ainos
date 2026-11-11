@@ -16,6 +16,8 @@ import { seedPostgres, schemaColumns } from '../scripts/seed-postgres.js';
 import { ARTISTS, ALBUMS, TRACKS } from '../scripts/catalog-names.js';
 import { toPg } from '../server/store.js';
 import { resetChurchDemo, DEMO_ORG_ID, DEMO_PLACEHOLDERS } from '../server/demo.js';
+import { importVideo, hideVideo } from '../server/youtube-import.js';
+import { thumbnailUrl } from '../server/youtube.js';
 
 const PGlite = await import('@electric-sql/pglite').then((m) => m.PGlite, () => null);
 const SKIP = !PGlite && 'needs npm install (@electric-sql/pglite, a dev dependency)';
@@ -384,6 +386,34 @@ test('live search on an existing database: search_cache arrives, the app role ke
   // The generated catalog has no such table rows: a deploy's catalog sync never touches them.
   await seed(pg, full);
   assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM search_cache'), 2);
+});
+
+test('the YouTube importer on Postgres, as the app role: add, match, repeat, hide; a deploy keeps what it added', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const video = (videoId, title, over = {}) => ({ videoId, title, channelId: 'UCx', channelTitle: 'Sinach', thumbnail: thumbnailUrl(videoId), durationMs: 240_000,
+    embeddable: true, public: true, live: false, categoryId: '10', defaultLanguage: 'en', ...over });
+  const first = await importVideo(store, video('pgvid000001', '100% Way_Maker (Official Lyric Video)'), { now: 5000 });
+  assert.equal(first.status, 'added');
+  assert.equal(first.createdSong, true);
+  const live = await importVideo(store, video('pgvid000002', '100% WAY_MAKER [Live] | Sinach'));
+  assert.deepEqual([live.status, live.createdSong, live.songId], ['added', false, first.songId], 'matched through search_index with LIKE wildcards escaped');
+  assert.equal((await importVideo(store, video('pgvid000003', '100% WayXMaker'))).createdSong, true, '"_" is not "any character"');
+  const again = await importVideo(store, video('pgvid000001', 'Renamed on YouTube'), { now: 9000 });
+  assert.equal(again.status, 'exists');
+  assert.deepEqual((await rows(pg, "SELECT title, fetched_at FROM youtube_video_cache WHERE video_id = 'pgvid000001'")).map((r) => [r.title, Number(r.fetched_at)]), [['Renamed on YouTube', 9000]]);
+  assert.equal(await hideVideo(store, 'pgvid000002'), true);
+  assert.equal((await importVideo(store, video('pgvid000002', 'x'))).status, 'hidden');
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'youtube.%'"), 4);
+
+  // The next deploy's catalog sync leaves live-added songs, sources, cache rows and search entries alone.
+  await seed(pg, full);
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM songs WHERE id = $1', [first.songId]), 1);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM song_sources WHERE youtube_video_id LIKE 'pgvid%'"), 3);
+  assert.deepEqual((await rows(pg, "SELECT title, fetched_at FROM youtube_video_cache WHERE video_id = 'pgvid000001'")).map((r) => [r.title, Number(r.fetched_at)]), [['Renamed on YouTube', 9000]]);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM search_index WHERE kind = 'song' AND ref_id = $1", [first.songId]), 1);
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {
