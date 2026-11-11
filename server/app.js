@@ -20,6 +20,8 @@ import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
 import { createYouTube } from './youtube.js';
+import { createLiveSearch } from './live-search.js';
+import { WORSHIP_CHANNELS } from '../scripts/worship-channels.js';
 import { parseAdminIds, assertAdmin, isAdmin } from './admin.js';
 import { audit } from './audit.js';
 import { int, usfmRef } from './validate.js';
@@ -62,6 +64,7 @@ export async function createApp({
   scriptureDailyBudget = Number(process.env.SCRIPTURE_DAILY_BUDGET) || 20_000, // YouVersion requests a day, all listeners
   youtube = createYouTube({ log }),
   youtubeDailySearchCap = Number(process.env.YOUTUBE_DAILY_SEARCH_CAP) || 80, // live YouTube searches a day, all listeners (YouTube allows about 100)
+  verifiedChannels = WORSHIP_CHANNELS.filter((c) => c.verified).map((c) => c.name), // their videos are taken first by a live search
 } = {}) {
   const adminIds = parseAdminIds(adminUserIds);
   let store;
@@ -94,6 +97,7 @@ export async function createApp({
   housekeepingTimer.unref?.();
 
   const clientIp = (req) => clientAddress(req, { trustProxy });
+  const liveSearch = createLiveSearch({ store, youtube, dailyCap: youtubeDailySearchCap, verifiedChannels, clientIp, log });
 
   const r = new Router();
   const auth = (handler) => async (ctx) => {
@@ -408,9 +412,15 @@ export async function createApp({
     });
   }));
 
-  r.get('/api/search', auth(async ({ res, query }) => {
+  // The catalog first, always. With live=1 (the client sends it once typing has
+  // stopped) and too few songs found, YouTube may be searched once and its best
+  // music videos added (server/live-search.js); `live` says what happened.
+  r.get('/api/search', auth(async ({ req, res, user, query }) => {
     const q = (query.get('q') || '').slice(0, 100);
-    sendJson(res, 200, await catalog.search(q));
+    let result = await catalog.search(q);
+    const live = await liveSearch.run({ req, user, q, wanted: query.get('live') === '1', localSongs: result.songs.items.length });
+    if (live === 'searched') result = await catalog.search(q);
+    sendJson(res, 200, { ...result, live });
   }));
 
   r.get('/api/browse/genres', auth(async ({ res }) => {
