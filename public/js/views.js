@@ -249,6 +249,12 @@ export async function loadCtx(kind, id) {
   throw new Error('unknown context');
 }
 
+// Live YouTube search (server/live-search.js): asked for when fewer songs than this were
+// found, after this long without typing; the notes say why YouTube could not be asked.
+const LIVE_BELOW = 3;
+const LIVE_WAIT_MS = 900;
+const LIVE_NOTES = { capped: 'liveCapped', limited: 'liveLimited', unavailable: 'liveUnavailable' };
+
 export async function search(el, params, app) {
   const q = params.q || '';
   app.showSearch(q);
@@ -261,7 +267,14 @@ export async function search(el, params, app) {
     results.append(section(t('ainosPicks'), grid(playlists.map(translateEditorial).map((p) => card(app, { art: mosaic(p.covers), title: p.name, sub: p.description, href: `#/playlist/${p.id}` })))));
     return;
   }
-  const r = await api.get(`/api/search?q=${encodeURIComponent(q)}`);
+  const url = `/api/search?q=${encodeURIComponent(q)}`;
+  const first = await api.get(url);
+  // What a live YouTube search is doing (below); empty and hidden otherwise.
+  const status = h('p', { class: 'live-status muted', role: 'status', hidden: true });
+  const say = (key) => { status.textContent = key ? t(key) : ''; status.hidden = !key; };
+  el.insertBefore(status, results);
+  const show = (r) => {
+  clear(results);
   const songItems = r.songs?.items || [];
   if (!songItems.length && !r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) {
     results.append(empty(t('noResultsTitle', { q }), t('noResultsSub')));
@@ -291,6 +304,37 @@ export async function search(el, params, app) {
   if (r.artists.length) results.append(section(t('artists'), grid(r.artists.map((a) => card(app, { art: img(a.image), title: a.name, sub: t('artist'), href: `#/artist/${a.id}`, round: true })))));
   if (r.albums.length) results.append(section(t('albums'), grid(r.albums.map((a) => card(app, { art: img(a.cover), title: a.title, sub: `${a.year} · ${a.artist.name}`, href: `#/album/${a.id}`, onPlay: async () => app.player.playContext(await loadCtx('album', a.id), 0) })))));
   if (r.playlists.length) results.append(section(t('filterPlaylists'), grid(r.playlists.map(translateEditorial).map((p) => card(app, { art: mosaic(p.covers), title: p.name, sub: t('byOwner', { name: p.owner.name }), href: `#/playlist/${p.id}` })))));
+  };
+  show(first);
+
+  // Few songs found: once typing has stopped (or on Enter), ask the server to look on
+  // YouTube too. It adds what it finds to the catalog, so this happens once per song.
+  // Every keystroke renders this view again, which cancels the wait (the cleanup below).
+  const songsFound = (first.songs?.items || []).length;
+  if (!app.me?.live_search || songsFound >= LIVE_BELOW || [...q.replace(/\s/g, '')].length < 3) return undefined;
+  let done = false;
+  let cancelled = false;
+  const live = async () => {
+    if (done || cancelled) return;
+    done = true;
+    say('liveSearching');
+    let r;
+    try {
+      r = await api.get(`${url}&live=1`);
+    } catch {
+      if (!cancelled) say(null); // the results already shown stand
+      return;
+    }
+    if (cancelled) return;
+    const added = r.live === 'searched' && (r.songs?.items || []).length > songsFound;
+    if (r.live === 'searched') show(r);
+    say(added ? 'liveAdded' : LIVE_NOTES[r.live] || null);
+  };
+  const timer = setTimeout(live, LIVE_WAIT_MS);
+  const input = document.getElementById('search-input');
+  const onKey = (e) => { if (e.key === 'Enter') { clearTimeout(timer); live(); } };
+  input?.addEventListener('keydown', onKey);
+  return () => { cancelled = true; clearTimeout(timer); input?.removeEventListener('keydown', onKey); };
 }
 
 export async function library(el, params, app) {

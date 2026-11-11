@@ -161,7 +161,7 @@ export async function createApp({
   r.get('/api/me', auth(async ({ res, user }) => {
     sendJson(res, 200, {
       id: user.id, username: user.username, display_name: user.display_name, language: user.language,
-      is_demo: isDemo(user), is_admin: isAdmin(user, adminIds), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
+      is_demo: isDemo(user), is_admin: isAdmin(user, adminIds), live_search: !!youtube?.hasKey && !isDemo(user), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
     });
   }));
 

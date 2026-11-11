@@ -99,6 +99,18 @@ test('at most three videos are added, verified channels first, then YouTube’s 
   assert.equal(r.songs.items.length, 3, 'three channels, three songs (the artist is the channel)');
 });
 
+test('/api/me tells the app whether a live search can happen for this user', async () => {
+  const a = await signup(srv.base, 'live-me');
+  assert.equal((await a.get('/api/me')).json.live_search, true);
+  assert.equal((await (await login(srv.base)).get('/api/me')).json.live_search, false, 'never for the demo');
+  youtube.hasKey = false;
+  try {
+    assert.equal((await a.get('/api/me')).json.live_search, false, 'no key: the app does not even ask');
+  } finally {
+    youtube.hasKey = true;
+  }
+});
+
 test('one song from three channels becomes one song with three versions, whatever order YouTube gives them in', async () => {
   const a = await signup(srv.base, 'live-merge');
   yt.calls.length = 0;

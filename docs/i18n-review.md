@@ -246,6 +246,11 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | बोल सिंक करने के लिए पहले यह गीत चलाएँ। | 4 |
 | [ ] | `syncLeft` | {n} lines to go | {n} पंक्तियाँ बाकी | 4 |
 | [ ] | `syncAllTapped` | Every line is timed: check them, then save. | हर पंक्ति का समय तय है: जाँचें, फिर सेव करें। | 4 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube पर खोज रहे हैं… | live search |
+| [ ] | `liveAdded` | Added from YouTube | YouTube से जोड़ा गया | live search |
+| [ ] | `liveCapped` | YouTube search has reached today’s limit. Try again tomorrow. | YouTube खोज आज की सीमा तक पहुँच गई है। कल फिर प्रयास करें। | live search |
+| [ ] | `liveLimited` | You’ve searched YouTube a lot. Try again in a while. | आपने YouTube पर बहुत खोज की है। थोड़ी देर बाद फिर प्रयास करें। | live search |
+| [ ] | `liveUnavailable` | YouTube couldn’t be searched just now. | अभी YouTube पर खोज नहीं हो सकी। | live search |
 
 ## Nepali (ne)
 
@@ -486,6 +491,11 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | शब्द मिलाउन पहिले यो गीत बजाउनुहोस्। | 4 |
 | [ ] | `syncLeft` | {n} lines to go | {n} हरफ बाँकी | 4 |
 | [ ] | `syncAllTapped` | Every line is timed: check them, then save. | हरेक हरफको समय राखियो: जाँच्नुहोस्, अनि सेभ गर्नुहोस्। | 4 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube मा खोज्दै… | live search |
+| [ ] | `liveAdded` | Added from YouTube | YouTube बाट थपियो | live search |
+| [ ] | `liveCapped` | YouTube search has reached today’s limit. Try again tomorrow. | YouTube खोज आजको सीमामा पुगेको छ। भोलि फेरि प्रयास गर्नुहोस्। | live search |
+| [ ] | `liveLimited` | You’ve searched YouTube a lot. Try again in a while. | तपाईंले YouTube मा धेरै खोज्नुभयो। केही बेरपछि फेरि प्रयास गर्नुहोस्। | live search |
+| [ ] | `liveUnavailable` | YouTube couldn’t be searched just now. | अहिले YouTube मा खोज्न सकिएन। | live search |
 
 ## Chinese (zh)
 
@@ -724,6 +734,11 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | 请先播放这首歌，再同步歌词。 | 4 |
 | [ ] | `syncLeft` | {n} lines to go | 还剩 {n} 行 | 4 |
 | [ ] | `syncAllTapped` | Every line is timed: check them, then save. | 每一行都已计时：检查后保存。 | 4 |
+| [ ] | `liveSearching` | Searching YouTube… | 正在搜索 YouTube… | live search |
+| [ ] | `liveAdded` | Added from YouTube | 已从 YouTube 添加 | live search |
+| [ ] | `liveCapped` | YouTube search has reached today’s limit. Try again tomorrow. | YouTube 搜索已达到今日上限，请明天再试。 | live search |
+| [ ] | `liveLimited` | You’ve searched YouTube a lot. Try again in a while. | 您搜索 YouTube 的次数较多，请稍后再试。 | live search |
+| [ ] | `liveUnavailable` | YouTube couldn’t be searched just now. | 暂时无法搜索 YouTube。 | live search |
 
 ## Japanese (ja)
 
@@ -957,6 +972,11 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | 歌詞を同期するには、まずこの曲を再生してください。 | 4 |
 | [ ] | `syncLeft` | {n} lines to go | 残り {n} 行 | 4 |
 | [ ] | `syncAllTapped` | Every line is timed: check them, then save. | すべての行にタイミングが付きました。確認して保存してください。 | 4 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube を検索中… | live search |
+| [ ] | `liveAdded` | Added from YouTube | YouTube から追加しました | live search |
+| [ ] | `liveCapped` | YouTube search has reached today’s limit. Try again tomorrow. | YouTube 検索は本日の上限に達しました。明日もう一度お試しください。 | live search |
+| [ ] | `liveLimited` | You’ve searched YouTube a lot. Try again in a while. | YouTube の検索回数が多くなっています。しばらくしてからお試しください。 | live search |
+| [ ] | `liveUnavailable` | YouTube couldn’t be searched just now. | 現在 YouTube を検索できません。 | live search |
 
 ## Spanish (es)
 
@@ -1197,6 +1217,11 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncNotPlaying` | Play this song first to sync its lyrics. | Reproduce primero esta canción para sincronizar su letra. | 4 |
 | [ ] | `syncLeft` | {n} lines to go | Faltan {n} líneas | 4 |
 | [ ] | `syncAllTapped` | Every line is timed: check them, then save. | Todas las líneas tienen tiempo: revísalas y guarda. | 4 |
+| [ ] | `liveSearching` | Searching YouTube… | Buscando en YouTube… | live search |
+| [ ] | `liveAdded` | Added from YouTube | Añadido desde YouTube | live search |
+| [ ] | `liveCapped` | YouTube search has reached today’s limit. Try again tomorrow. | La búsqueda en YouTube alcanzó el límite de hoy. Inténtalo mañana. | live search |
+| [ ] | `liveLimited` | You’ve searched YouTube a lot. Try again in a while. | Has buscado mucho en YouTube. Inténtalo dentro de un rato. | live search |
+| [ ] | `liveUnavailable` | YouTube couldn’t be searched just now. | No se pudo buscar en YouTube en este momento. | live search |
 
 ## Catalog display names (Phase 1)
 

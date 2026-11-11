@@ -521,3 +521,6 @@ dialog h2 { margin-bottom: 16px; }
 .sync-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sync-options { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
 .sync-offset { width: 110px; }
+
+/* What a live YouTube search is doing, under the search results' top edge. */
+.live-status { margin: 0 0 16px; font-size: 13px; }
