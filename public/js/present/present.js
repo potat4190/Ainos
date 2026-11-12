@@ -1,15 +1,15 @@
 // Projection (Phase 6): the Present dialog, the this-screen slideshow and the presenter
 // view. In presenter view the slides show in a second window (/present.html) kept in sync
 // over BroadcastChannel('ainos-present-' + sessionId); nothing goes through the server.
-// Automatic mode plays each native track item in its own <audio> element and advances the
-// slides when playback crosses each slide's startMs (Phase 4 timings).
-//
-// DECISION: YouTube items are always manual in automatic mode (their slides still show, and
-// the YouTube player is never used or hidden here); the dialog lists them.
+// Automatic mode plays each native track item in its own <audio> element, and each
+// tap-synced YouTube item in YouTube's own player, and advances the slides when playback
+// crosses each slide's startMs (Phase 4 timings). The YouTube player stays visible (spec
+// 6.5): in a corner of the slideshow on this screen, in the presenter's window otherwise.
 import { h, icon, toast, clear, fmtTime } from '../ui.js';
-import { t } from '../i18n.js';
+import { t, sectionName } from '../i18n.js';
 import { api } from '../api.js';
 import { renderSlide } from './stage.js';
+import { mountYouTube, STATE as YT_STATE } from '../youtube.js';
 
 const NEXT_KEYS = new Set(['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Spacebar']);
 const PREV_KEYS = new Set(['ArrowLeft', 'ArrowUp', 'PageUp']);
@@ -23,18 +23,12 @@ const str = (v) => (v == null ? '' : String(v));
 const strLines = (lines) => (Array.isArray(lines) ? lines : typeof lines === 'string' ? lines.split('\n') : []).map(str);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
 
-/** A section label ('V2', 'C', 'B', …) as shown on the slide, in the UI language. */
-export function sectionName(label) {
-  const l = str(label);
-  const v = /^V(\d+)$/.exec(l);
-  if (v) return t('prSecV', { n: v[1] });
-  const key = { C: 'prSecC', C2: 'prSecC2', PC: 'prSecPC', B: 'prSecB', T: 'prSecT', E: 'prSecE', I: 'prSecI' }[l];
-  return key ? t(key) : l;
-}
+const YT_POLL_MS = 250; // the YouTube player's time is read at about 4 Hz (spec 4.5)
 
-/** Whether automatic mode can play this item: a native track with timings. */
+/** Whether automatic mode can play this item: a native track or a YouTube video, with timings. */
 export function isAutoItem(item) {
-  return item?.kind === 'song' && item.source?.type === 'track' && !!item.source.trackId && !!item.hasTimings
+  const playable = (item?.source?.type === 'track' && !!item.source.trackId) || (item?.source?.type === 'youtube' && !!item.source.videoId);
+  return item?.kind === 'song' && playable && !!item.hasTimings
     && Array.isArray(item.slides) && item.slides.some((s) => num(s?.startMs) !== undefined);
 }
 
@@ -72,8 +66,7 @@ export function openPresentDialog(deck) {
   if (!slides.length) { toast(t('prEmpty')); return; }
   const items = deck.items;
   const songs = items.filter((i) => i?.kind === 'song');
-  const youtube = songs.filter((i) => i.source?.type === 'youtube');
-  const untimed = songs.filter((i) => i.source?.type !== 'youtube' && !isAutoItem(i));
+  const untimed = songs.filter((i) => !isAutoItem(i));
   const canAuto = songs.some(isAutoItem);
 
   const choice = { where: 'screen', mode: 'manual' };
@@ -93,12 +86,12 @@ export function openPresentDialog(deck) {
       c.el.classList.toggle('selected', sel);
       c.el.setAttribute('aria-pressed', String(sel));
     }
-    autoNote.hidden = choice.mode !== 'auto' || (!untimed.length && !youtube.length);
+    autoNote.hidden = choice.mode !== 'auto' || !untimed.length;
   };
   const songList = (heading, list) => (list.length
     ? h('div', { class: 'pr-note-group' }, h('p', {}, heading), h('ul', { class: 'pr-note-list' }, list.map((i) => h('li', {}, str(i.title)))))
     : null);
-  autoNote.append(songList(t('prAutoFallback'), untimed), songList(t('prAutoYouTube'), youtube));
+  autoNote.append(songList(t('prAutoFallback'), untimed));
   const error = h('p', { class: 'pr-error', role: 'alert', hidden: true });
 
   const titleId = `pr-dlg-title-${Math.random().toString(36).slice(2, 8)}`;
@@ -203,6 +196,11 @@ class Session {
     this.autoSet = new Set(mode === 'auto' ? this.items.map((it, i) => (isAutoItem(it) ? i : -1)).filter((i) => i >= 0) : []);
     this.failed = new Set();
     this.audio = mode === 'auto' ? new Audio() : null;
+    // The visible box a tap-synced video plays in (empty and hidden between videos).
+    this.ytBox = mode === 'auto' && this.items.some((it) => isAutoItem(it) && it.source.type === 'youtube')
+      ? h('div', { class: 'pr-yt', hidden: true, onclick: (e) => e.stopPropagation() }) : null;
+    this.yt = null; // { ctrl, playing } while a video item is loaded
+    this.lastPoll = 0;
     this.loadedItem = -1;
     this.loadToken = 0;
     this.loading = false;
@@ -245,7 +243,7 @@ class Session {
       onclick: () => this.next(),
       oncontextmenu: (e) => { e.preventDefault(); this.prev(); },
       onmousemove: () => this.showHint(),
-    }, this.stage, this.hint, this.ctrls);
+    }, this.stage, this.hint, this.ctrls, this.ytBox);
   }
 
   buildPresenter() {
@@ -288,7 +286,8 @@ class Session {
             btn('chevron-left', t('prPrev'), () => this.prev()),
             this.counter,
             btn('chevron-right', t('prNext'), () => this.next())),
-          this.mode === 'auto' ? h('div', { class: 'pr-auto' }, this.playBtn, this.autoText) : null)),
+          this.mode === 'auto' ? h('div', { class: 'pr-auto' }, this.playBtn, this.autoText) : null,
+          this.ytBox)),
       this.strip);
     // Thumbnails need layout to fit: render them once the overlay is in the document.
     requestAnimationFrame(() => { if (this.alive) this.thumbs.forEach(({ st }, i) => renderSlide(st, this.slides[i])); });
@@ -434,6 +433,14 @@ class Session {
   // ---- automatic mode ----
   isAuto(itemIndex) { return this.autoSet.has(itemIndex) && !this.failed.has(itemIndex); }
 
+  // The loaded item's media: its <audio>, or the video's player.
+  mediaPaused() { return this.yt ? !this.yt.playing : this.audio.paused; }
+  mediaNow() { return this.yt ? this.yt.ctrl.currentMs() : this.audio.currentTime * 1000; }
+  mediaDuration() {
+    if (this.yt) return this.yt.ctrl.durationMs();
+    return Number.isFinite(this.audio.duration) ? this.audio.duration * 1000 : 0;
+  }
+
   syncAudio(user) {
     const s = this.slides[this.index];
     if (!this.isAuto(s.itemIndex)) { this.pauseAudio(); return; }
@@ -441,7 +448,7 @@ class Session {
     if (this.loadedItem !== s.itemIndex) { this.loadItem(s.itemIndex, at ?? 0); return; }
     if (this.loading) return;
     if (user && at !== undefined) this.seekTo(at);
-    if (this.audio.paused && !this.userPaused) this.playAudio();
+    if (this.mediaPaused() && !this.userPaused) this.playAudio();
   }
 
   async loadItem(itemIndex, atMs) {
@@ -453,6 +460,8 @@ class Session {
     this.userPaused = false;
     this.updateAuto();
     const item = this.items[itemIndex];
+    if (item.source.type === 'youtube') { this.loadVideo(itemIndex, item, atMs); return; }
+    this.stopVideo();
     try {
       const m = await api.get(`/api/tracks/${encodeURIComponent(item.source.trackId)}/manifest`);
       if (token !== this.loadToken || !this.alive) return;
@@ -482,6 +491,39 @@ class Session {
     }
   }
 
+  /** A video item: YouTube's player in the visible box, started at atMs; 'loading' until the player is ready. */
+  loadVideo(itemIndex, item, atMs) {
+    this.stopAudioOnly();
+    this.stopVideo();
+    try { window.ainos?.player?.pause?.(); } catch { /* the app's own player */ }
+    const host = h('div');
+    clear(this.ytBox).append(host);
+    this.ytBox.hidden = false;
+    const y = { playing: false, ctrl: null };
+    this.yt = y;
+    y.ctrl = mountYouTube(host, {
+      videoId: item.source.videoId, title: str(item.title),
+      onProblem: () => { if (this.yt === y && this.alive) this.audioFailed(itemIndex); },
+      // Ready (it has taken the seek), even if paused meanwhile: Play and slide changes work from here.
+      onReady: () => { if (this.yt === y && this.alive) { this.loading = false; this.updateAuto(); } },
+      onState: (state) => {
+        if (this.yt !== y || !this.alive) return;
+        if (state === YT_STATE.PLAYING) { y.playing = true; this.loading = false; }
+        else if (state === YT_STATE.PAUSED || state === YT_STATE.ENDED) y.playing = false;
+        if (state === YT_STATE.ENDED) this.onEnded();
+        this.updateAuto();
+      },
+    });
+    if (atMs > 300) y.ctrl.seekTo(atMs);
+    if (this.userPaused) y.ctrl.pause();
+    this.lastNow = atMs;
+  }
+
+  stopVideo() {
+    if (this.yt) { this.yt.ctrl.destroy(); this.yt = null; }
+    if (this.ytBox) { clear(this.ytBox); this.ytBox.hidden = true; }
+  }
+
   audioFailed(itemIndex) {
     if (this.failed.has(itemIndex)) return;
     this.failed.add(itemIndex);
@@ -492,6 +534,11 @@ class Session {
 
   playAudio() {
     const a = this.audio;
+    if (this.yt && this.alive) {
+      try { window.ainos?.player?.pause?.(); } catch { /* the app's own player */ }
+      this.yt.ctrl.play();
+      return;
+    }
     if (!a || !this.alive || !a.getAttribute('src')) return;
     try { window.ainos?.player?.pause?.(); } catch { /* the app's own player */ }
     this.lastNow = a.currentTime * 1000;
@@ -502,9 +549,17 @@ class Session {
     });
   }
 
-  pauseAudio() { if (this.audio && !this.audio.paused) this.audio.pause(); }
+  pauseAudio() {
+    if (this.yt) { this.yt.ctrl.pause(); this.yt.playing = false; return; }
+    if (this.audio && !this.audio.paused) this.audio.pause();
+  }
 
   stopAudio() {
+    this.stopVideo();
+    this.stopAudioOnly();
+  }
+
+  stopAudioOnly() {
     const a = this.audio;
     if (!a) return;
     try {
@@ -515,6 +570,7 @@ class Session {
   }
 
   seekTo(ms) {
+    if (this.yt) { this.yt.ctrl.seekTo(ms); this.lastNow = ms; return; }
     const a = this.audio;
     if (!a.getAttribute('src')) return;
     try { a.currentTime = ms / 1000; } catch { /* not seekable yet */ }
@@ -528,14 +584,18 @@ class Session {
     if (!this.isAuto(s.itemIndex)) return;
     if (this.loadedItem !== s.itemIndex) { this.loadItem(s.itemIndex, num(s.startMs) ?? 0); return; }
     if (this.loading) return;
-    if (a.paused) { this.userPaused = false; this.playAudio(); } else { this.userPaused = true; a.pause(); }
+    if (this.mediaPaused()) { this.userPaused = false; this.playAudio(); } else { this.userPaused = true; this.pauseAudio(); }
   }
 
   /** Advance when playback crosses a slide's startMs (a cue, so manual jumps never bounce back). */
   onFrame() {
     const a = this.audio;
-    if (this.loadedItem < 0 || a.paused || a.seeking || this.loading) return;
-    const now = a.currentTime * 1000;
+    if (this.loadedItem < 0 || this.mediaPaused() || (!this.yt && a.seeking) || this.loading) return;
+    if (this.yt) {
+      if (performance.now() - this.lastPoll < YT_POLL_MS) return;
+      this.lastPoll = performance.now();
+    }
+    const now = this.mediaNow();
     const prev = this.lastNow;
     this.lastNow = now;
     const s = this.slides[this.index];
@@ -564,7 +624,7 @@ class Session {
     this.lastUiUpdate = performance.now();
     const s = this.slides[this.index];
     const auto = this.isAuto(s.itemIndex);
-    const playing = auto && this.loadedItem === s.itemIndex && !this.audio.paused;
+    const playing = auto && this.loadedItem === s.itemIndex && !this.mediaPaused();
     if (this.playBtn) {
       clear(this.playBtn).append(icon(playing ? 'pause' : 'play'));
       this.playBtn.hidden = !auto;
@@ -574,8 +634,8 @@ class Session {
     if (s.kind === 'end') text = t('prEndOfPresentation');
     else if (auto && this.loading) text = `${s.title} · ${t('prLoading')}`;
     else if (auto) {
-      const cur = this.loadedItem === s.itemIndex ? this.audio.currentTime * 1000 : 0;
-      const dur = this.loadedItem === s.itemIndex && Number.isFinite(this.audio.duration) ? this.audio.duration * 1000 : 0;
+      const cur = this.loadedItem === s.itemIndex ? this.mediaNow() : 0;
+      const dur = this.loadedItem === s.itemIndex ? this.mediaDuration() : 0;
       text = `${s.title} · ${fmtTime(cur)} / ${fmtTime(dur)}${!playing && this.loadedItem === s.itemIndex ? ` · ${t('prPaused')}` : ''}`;
     } else if (s.kind === 'song' || s.kind === 'title') text = t('prAutoNoAudio');
     else text = t('prAutoWaiting');

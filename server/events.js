@@ -37,12 +37,21 @@ export class EventPipeline {
     // One lookup for every track id in the batch, instead of one per event.
     const ids = [...new Set(events.map((e) => clean(e?.track_id, 40)).filter(Boolean))];
     const known = new Set(ids.length ? (await this.store.all(`SELECT id FROM tracks WHERE id IN (${inList(ids)})`, ids)).map((r) => r.id) : []);
+    // YouTube plays (spec 3.4, Q18) carry the song source instead of a track: kept as events for
+    // recommendations later, never counted as streams (they have no track and no audio features).
+    const sourceIds = [...new Set(events.map((e) => clean(e?.source_id, 64)).filter(Boolean))];
+    const videos = new Set(sourceIds.length
+      ? (await this.store.all(`SELECT id FROM song_sources WHERE id IN (${inList(sourceIds)}) AND source = 'youtube'`, sourceIds)).map((r) => r.id) : []);
     for (const e of events) {
       if (!e || typeof e !== 'object' || !TYPES.has(e.type)) continue;
       const trackId = clean(e.track_id, 40);
       if (trackId && !known.has(trackId)) continue;
+      const sourceId = clean(e.source_id, 64);
+      if (sourceId && (trackId || !videos.has(sourceId))) continue;
       const reason = REASONS.has(e.reason) ? e.reason : e.reason == null ? null : 'unknown';
-      const extra = e.data && typeof e.data === 'object' ? JSON.stringify(e.data).slice(0, 2000) : null;
+      const data = e.data && typeof e.data === 'object' ? e.data : null;
+      const extra = sourceId ? JSON.stringify({ ...(Array.isArray(data) ? {} : data), source: 'youtube', source_id: sourceId }).slice(0, 2000)
+        : data ? JSON.stringify(data).slice(0, 2000) : null;
       accepted.push({
         user_id: user.id, device_id: clean(e.device_id, 64) || 'unknown', type: e.type, track_id: trackId,
         ms_played: int(e.ms_played), position_ms: int(e.position_ms), reason, context_uri: clean(e.context_uri, 120),

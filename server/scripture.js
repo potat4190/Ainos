@@ -71,7 +71,24 @@ export function fallbackText(usfm) {
 
 const FALLBACK_VERSION = { id: null, abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright };
 
-/** Day of the year, 1-366, in UTC. */
+/**
+ * Today's date where the listener is (`timeZone` is an IANA zone such as
+ * "Asia/Kathmandu"), as midnight UTC of that calendar day; `at` itself when
+ * the zone is missing or unknown. Lets the Verse of the Day turn over at the
+ * listener's midnight rather than UTC's.
+ */
+export function dateIn(timeZone, at = new Date()) {
+  if (typeof timeZone !== 'string' || !timeZone || timeZone.length > 64) return at;
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' })
+      .formatToParts(at).map((p) => [p.type, p.value]));
+    return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  } catch {
+    return at; // RangeError: not a time zone Intl knows
+  }
+}
+
+/** Day of the year, 1-366, of `date`'s UTC calendar day. */
 export function dayOfYear(date = new Date()) {
   return Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - Date.UTC(date.getUTCFullYear(), 0, 1)) / DAY_MS) + 1;
 }
@@ -185,6 +202,18 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
     return version;
   }
 
+  /** A version's details for showing it, whatever its language; null when they can't be had. */
+  async function describeVersion(id) {
+    if (!appKey) return null;
+    try {
+      return await getVersion(id);
+    } catch (err) {
+      if (!(err instanceof UpstreamError)) throw err;
+      log('[scripture] version', id, err.message);
+      return null;
+    }
+  }
+
   function fallback(usfm, language, reason) {
     const text = language === FALLBACK_SOURCE.language ? fallbackText(usfm) : null;
     return { usfm, reference: referenceName(usfm), text, version: text ? FALLBACK_VERSION : null, source: text ? 'fallback' : 'none', reason };
@@ -211,7 +240,7 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
   }
 
   /** Today's Verse of the Day: YouVersion's reference when it can be had, else the bundled list's. */
-  async function getVerseOfTheDay({ versionId = null, language = 'en', date = new Date(now()), upstream = true } = {}) {
+  async function getVerseOfTheDay({ versionId = null, language = 'en', timeZone = null, date = dateIn(timeZone, new Date(now())), upstream = true } = {}) {
     const day = dayOfYear(date);
     let usfm = null;
     if (appKey && upstream) {
@@ -234,5 +263,5 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
     return { day, ...(await getPassage({ usfm, versionId, language, upstream })) };
   }
 
-  return { getPassage, getVerseOfTheDay, listVersions, versionStatus, hasKey: !!appKey };
+  return { getPassage, getVerseOfTheDay, listVersions, versionStatus, describeVersion, hasKey: !!appKey };
 }
