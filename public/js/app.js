@@ -6,6 +6,7 @@ import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from 
 import * as views from './views.js';
 import * as church from './church.js';
 import { watchUrl } from './youtube.js';
+import { lyricsButton, lyricsChurches } from './song-lyrics.js';
 
 const $ = (id) => document.getElementById(id);
 const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist', 'join'];
@@ -207,6 +208,7 @@ class App {
     this.player.connect = this.connect;
     this.connect.start();
     church.onStart(this);
+    lyricsChurches().then((c) => { this.canAddLyrics = c.length > 0; this.renderPlayerBar(); }, () => {});
 
     this.player.addEventListener('change', () => this.onPlayerChange());
     this.player.addEventListener('debug', () => this.scheduleRight(400));
@@ -621,7 +623,14 @@ class App {
         this.songDetail(tr.song_id).then((detail) => {
           if (key !== this.lyricsKey()) return;
           clear(holder);
-          if (!views.hasLyrics(detail)) { holder.append(h('p', { class: 'muted' }, t('lyricsNone'))); return; }
+          if (!views.hasLyrics(detail)) {
+            // A church leader can add the words their church sings right here.
+            const add = h('div', { class: 'lyrics-sync' });
+            holder.append(h('p', { class: 'muted' }, t('lyricsNone')), add);
+            lyricsButton({ song: { id: detail.id, title: detail.title, language: detail.language }, detail,
+              onSaved: () => { this.songDetails.delete(tr.song_id); this.lyrics = null; this.renderRight(); this.renderPlayerBar(); } }, add);
+            return;
+          }
           const view = views.lyricsView(this, { track: tr, detail, scroller: panel });
           this.lyrics = { key, view };
           holder.append(view.el);
@@ -791,7 +800,8 @@ class App {
     let has = false;
     if (songId) {
       const hit = this.songDetails.get(songId);
-      if (hit?.value) has = views.hasLyrics(hit.value);
+      // Church leaders can open the panel to add lyrics a song doesn't have yet.
+      if (hit?.value) has = views.hasLyrics(hit.value) || this.canAddLyrics;
       else if (!hit) this.songDetail(songId).then(() => this.renderPlayerBar(), () => {}); // once: the entry exists from now on
     }
     btn.setAttribute('aria-disabled', String(!has));

@@ -59,6 +59,22 @@ const splitLines = (s) => String(s ?? '').split('\n');
 const firstLine = (s) => splitLines(s)[0].slice(0, 80);
 const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
 
+/** Pasted lyrics, parsed here and never trusted from the client (spec 4.2), within the limits: { sections, arrangement }. */
+function checkedLyrics(value) {
+  const text = str(value, { name: 'text', min: 1, max: LIMITS.pasteChars, multiline: true });
+  const { sections, arrangement } = parseLyrics(text);
+  if (!sections.length) throw bad('No lyrics found in text');
+  if (sections.length > LIMITS.sectionsPerSong) throw bad(`A song can have at most ${LIMITS.sectionsPerSong} sections`);
+  for (const s of sections) {
+    if (!SECTION_LABEL.test(s.label)) throw bad(`Section ${s.label}: at most 9 verses, and labels like V1, C, B`);
+    if (s.lines.length > LIMITS.linesPerSection) throw bad(`Section ${s.label} has more than ${LIMITS.linesPerSection} lines: split it with a blank line`);
+    const long = s.lines.find((l) => [...l].length > LIMITS.charsPerLine);
+    if (long) throw bad(`Section ${s.label}: lines can be at most ${LIMITS.charsPerLine} characters`);
+  }
+  if (arrangement.length > LIMITS.arrangementLength) throw bad('The song repeats too many sections');
+  return { sections, arrangement };
+}
+
 /**
  * @param {object} ctx { r, store, auth, catalog, scripture, youtube, youtubeDailySearchCap, adminIds, clientIp, isSecure, trustProxy, log }
  *   r: Router (r.get/post/put/patch/delete(pattern, handler)); auth(handler) adds ctx.user or 401s.
@@ -438,18 +454,7 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     const body = await readJson(req);
     const title = str(body.title, { name: 'title', min: 1, max: 120 });
     const artist = body.artist == null ? '' : str(body.artist, { name: 'artist', max: 120 });
-    const text = str(body.text, { name: 'text', min: 1, max: LIMITS.pasteChars, multiline: true });
-    // Parsed here, never trusted from the client (spec 4.2).
-    const { sections, arrangement } = parseLyrics(text);
-    if (!sections.length) throw bad('No lyrics found in text');
-    if (sections.length > LIMITS.sectionsPerSong) throw bad(`A song can have at most ${LIMITS.sectionsPerSong} sections`);
-    for (const s of sections) {
-      if (!SECTION_LABEL.test(s.label)) throw bad(`Section ${s.label}: at most 9 verses, and labels like V1, C, B`);
-      if (s.lines.length > LIMITS.linesPerSection) throw bad(`Section ${s.label} has more than ${LIMITS.linesPerSection} lines: split it with a blank line`);
-      const long = s.lines.find((l) => [...l].length > LIMITS.charsPerLine);
-      if (long) throw bad(`Section ${s.label}: lines can be at most ${LIMITS.charsPerLine} characters`);
-    }
-    if (arrangement.length > LIMITS.arrangementLength) throw bad('The song repeats too many sections');
+    const { sections, arrangement } = checkedLyrics(body.text);
     await rateLimit(store, `user:${user.id}:org-song`, { limit: 60, windowSec: 3600, message: 'Too many songs added, try again later' });
     const songId = randomId();
     const arrangementId = randomId();
@@ -471,6 +476,48 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
         details: { title, sections: sections.map((s) => s.label), arrangement } });
     });
     sendJson(res, 201, { id: songId, title, artist, language, org_song: true, arrangement_id: arrangementId, sections, arrangement });
+  }));
+
+  // A church's own lyrics for a song already in the catalog (a YouTube song,
+  // or its own words for a hymn): private to the church, they replace the
+  // church's earlier lyrics for that language and are what tap-to-sync then
+  // times (spec 4.1: the song can be global while its lyrics are a church's).
+  // The church's timings for that language stay only where every line they
+  // time still exists.
+  r.put('/api/orgs/:orgId/songs/:songId/lyrics', auth(async ({ req, res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'song.edit');
+    const song = await store.get('SELECT id, title, language, org_id FROM songs WHERE id = ? AND (org_id IS NULL OR org_id = ?)', [idParam(params.songId, 'Song not found'), m.org_id]);
+    if (!song) throw notFound('Song not found');
+    const body = await readJson(req);
+    const language = body.language == null || body.language === '' ? song.language : body.language;
+    if (!LANGUAGES.includes(language)) throw bad(`language must be one of ${LANGUAGES.join(', ')}`);
+    const { sections, arrangement } = checkedLyrics(body.text);
+    await rateLimit(store, `user:${user.id}:org-lyrics`, { limit: 60, windowSec: 3600, message: 'Too many lyrics saved, try again later' });
+    let timingsRemoved = 0;
+    await store.tx(async (t) => {
+      const before = await t.all('SELECT label FROM song_sections WHERE song_id = ? AND language = ? AND org_id = ?', [song.id, language, m.org_id]);
+      await t.run('DELETE FROM song_sections WHERE song_id = ? AND language = ? AND org_id = ?', [song.id, language, m.org_id]);
+      for (const s of sections) {
+        await t.run('INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [randomId(), song.id, language, s.label, s.lines.join('\n'), searchText(s.lines.join(' '), ''), m.org_id]);
+      }
+      // The church's sung order: its "Default" arrangement, replaced.
+      await t.run("DELETE FROM song_arrangements WHERE song_id = ? AND org_id = ? AND name = 'Default'", [song.id, m.org_id]);
+      await t.run('INSERT INTO song_arrangements (id, song_id, org_id, name, section_order) VALUES (?, ?, ?, ?, ?)',
+        [randomId(), song.id, m.org_id, 'Default', JSON.stringify(arrangement)]);
+      // Timings that point at a line the new lyrics no longer have would show the wrong words: drop them.
+      const lineCount = new Map(sections.map((s) => [s.label, s.lines.length]));
+      const timed = await t.all(`SELECT lt.id, lt.timings FROM lyric_timings lt JOIN song_sources ss ON ss.id = lt.source_id
+        WHERE ss.song_id = ? AND lt.language = ? AND lt.org_id = ?`, [song.id, language, m.org_id]);
+      for (const row of timed) {
+        const list = parseJson(row.timings, null);
+        const fits = Array.isArray(list) && list.every((x) => x && lineCount.has(x.label) && Number(x.line) < lineCount.get(x.label));
+        if (!fits) { await t.run('DELETE FROM lyric_timings WHERE id = ?', [row.id]); timingsRemoved++; }
+      }
+      await audit(t, { orgId: m.org_id, userId: user.id, action: 'song.lyrics.replace', targetType: 'song', targetId: song.id,
+        details: { language, before: before.map((x) => x.label), sections: sections.map((s) => s.label), arrangement, timings_removed: timingsRemoved } });
+    });
+    sendJson(res, 200, { song_id: song.id, language, sections, arrangement, timings_removed: timingsRemoved });
   }));
 
   // ---------------- slides (for the Present dialog) ----------------

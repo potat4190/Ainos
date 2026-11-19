@@ -103,3 +103,25 @@ export function parseLyrics(text) {
     arrangement: order.map((s) => s.label),
   };
 }
+
+// Label words lyricsText writes, which parseLyrics reads back as the same label.
+const TEXT_LABEL = { PC: 'Pre-chorus', C: 'Chorus', C2: 'Chorus 2', B: 'Bridge', T: 'Tag', E: 'Ending', I: 'Intro' };
+
+/**
+ * The paste text for saved sections, in sung order: each section once with its
+ * label, and a repeat as its label on its own line. parseLyrics(lyricsText(...))
+ * gives the same sections and arrangement back, so a church can edit what it saved.
+ * sections: [{ label, lines }]; arrangement: ['V1', 'C', ...] (sections it leaves out follow, in the given order).
+ */
+export function lyricsText(sections, arrangement = []) {
+  const byLabel = new Map(sections.map((s) => [s.label, s]));
+  const order = arrangement.filter((l) => byLabel.has(l));
+  for (const s of sections) if (!order.includes(s.label)) order.push(s.label);
+  const written = new Set();
+  return order.map((label) => {
+    const name = /^V\d$/.test(label) ? `Verse ${label.slice(1)}` : TEXT_LABEL[label] || label;
+    if (written.has(label)) return name;
+    written.add(label);
+    return [name, ...byLabel.get(label).lines].join('\n');
+  }).join('\n\n');
+}

@@ -510,6 +510,8 @@ dialog h2 { margin-bottom: 16px; }
 /* Tap-to-sync (spec 4.4) */
 .lyrics-sync:empty { display: none; }
 .lyrics-sync { margin-top: 6px; }
+.song-lyrics-edit:empty { display: none; }
+.song-lyrics-edit { margin: 0 0 24px; }
 .sync-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 6px; }
 .sync-tap { min-width: 160px; }
 .sync-clock { font-variant-numeric: tabular-nums; color: var(--text-2); }

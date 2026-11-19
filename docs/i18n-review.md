@@ -239,6 +239,14 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncOffset` | Shift every line (ms) | सभी पंक्तियाँ खिसकाएँ (ms) | 4 |
 | [ ] | `syncSave` | Save timings | समय सेव करें | 4 |
 | [ ] | `syncSaved` | Timings saved | समय सेव हो गया | 4 |
+| [ ] | `lyricsAdd` | Add lyrics | बोल जोड़ें | 4 |
+| [ ] | `lyricsEditChurch` | Edit your church's lyrics | अपनी कलीसिया के बोल बदलें | 4 |
+| [ ] | `lyricsEditTitle` | Lyrics for {title} | {title} के बोल | 4 |
+| [ ] | `lyricsEditHelp` | Paste the words your church sings, with section names like Verse 1 and Chorus. Only your church sees them, and you can sync them to the song afterwards. | आपकी कलीसिया जो शब्द गाती है, उन्हें पद 1 और कोरस जैसे भागों के नाम के साथ चिपकाएँ। इन्हें सिर्फ़ आपकी कलीसिया देखती है, और बाद में आप इन्हें गीत के साथ सिंक कर सकते हैं। | 4 |
+| [ ] | `lyricsFor` | Church | कलीसिया | 4 |
+| [ ] | `lyricsEditEmpty` | Sections appear here as you type. | लिखते ही भाग यहाँ दिखेंगे। | 4 |
+| [ ] | `lyricsSaved` | Lyrics saved | बोल सेव हो गए | 4 |
+| [ ] | `lyricsSavedResync` | Lyrics saved. Some lines changed, so sync the song again. | बोल सेव हो गए। कुछ पंक्तियाँ बदलीं, इसलिए गीत फिर से सिंक करें। | 4 |
 | [ ] | `syncIncomplete` | Tap every line first ({n} left). | पहले हर पंक्ति पर टैप करें ({n} बाकी)। | 4 |
 | [ ] | `syncOrder` | Each line must start after the one before it. | हर पंक्ति पिछली पंक्ति के बाद शुरू होनी चाहिए। | 4 |
 | [ ] | `syncNudgeEarlier` | Earlier | पहले | 4 |
@@ -484,6 +492,14 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncOffset` | Shift every line (ms) | सबै हरफ सार्नुहोस् (ms) | 4 |
 | [ ] | `syncSave` | Save timings | समय सेभ गर्नुहोस् | 4 |
 | [ ] | `syncSaved` | Timings saved | समय सेभ भयो | 4 |
+| [ ] | `lyricsAdd` | Add lyrics | गीतका शब्द थप्नुहोस् | 4 |
+| [ ] | `lyricsEditChurch` | Edit your church's lyrics | आफ्नो मण्डलीका शब्द सम्पादन गर्नुहोस् | 4 |
+| [ ] | `lyricsEditTitle` | Lyrics for {title} | {title} का शब्द | 4 |
+| [ ] | `lyricsEditHelp` | Paste the words your church sings, with section names like Verse 1 and Chorus. Only your church sees them, and you can sync them to the song afterwards. | तपाईंको मण्डलीले गाउने शब्दहरू पद १ र कोरस जस्ता भागका नामसहित टाँस्नुहोस्। यी तपाईंको मण्डलीले मात्र देख्छ, र पछि तपाईं यिनलाई गीतसँग सिंक गर्न सक्नुहुन्छ। | 4 |
+| [ ] | `lyricsFor` | Church | मण्डली | 4 |
+| [ ] | `lyricsEditEmpty` | Sections appear here as you type. | लेख्दै जाँदा भागहरू यहाँ देखिन्छन्। | 4 |
+| [ ] | `lyricsSaved` | Lyrics saved | शब्द सेभ भयो | 4 |
+| [ ] | `lyricsSavedResync` | Lyrics saved. Some lines changed, so sync the song again. | शब्द सेभ भयो। केही पङ्क्ति बदलिए, त्यसैले गीत फेरि सिंक गर्नुहोस्। | 4 |
 | [ ] | `syncIncomplete` | Tap every line first ({n} left). | पहिले हरेक हरफमा ट्याप गर्नुहोस् ({n} बाँकी)। | 4 |
 | [ ] | `syncOrder` | Each line must start after the one before it. | हरेक हरफ अघिल्लो हरफपछि सुरु हुनुपर्छ। | 4 |
 | [ ] | `syncNudgeEarlier` | Earlier | अघि | 4 |
@@ -727,6 +743,14 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncOffset` | Shift every line (ms) | 整体偏移（毫秒） | 4 |
 | [ ] | `syncSave` | Save timings | 保存时间 | 4 |
 | [ ] | `syncSaved` | Timings saved | 时间已保存 | 4 |
+| [ ] | `lyricsAdd` | Add lyrics | 添加歌词 | 4 |
+| [ ] | `lyricsEditChurch` | Edit your church's lyrics | 编辑你教会的歌词 | 4 |
+| [ ] | `lyricsEditTitle` | Lyrics for {title} | 《{title}》的歌词 | 4 |
+| [ ] | `lyricsEditHelp` | Paste the words your church sings, with section names like Verse 1 and Chorus. Only your church sees them, and you can sync them to the song afterwards. | 粘贴你的教会所唱的歌词，并标上“主歌 1”“副歌”等段落名。只有你的教会能看到，之后可以将其与歌曲同步。 | 4 |
+| [ ] | `lyricsFor` | Church | 教会 | 4 |
+| [ ] | `lyricsEditEmpty` | Sections appear here as you type. | 输入后段落会显示在这里。 | 4 |
+| [ ] | `lyricsSaved` | Lyrics saved | 歌词已保存 | 4 |
+| [ ] | `lyricsSavedResync` | Lyrics saved. Some lines changed, so sync the song again. | 歌词已保存。部分歌词行有改动，请重新同步这首歌。 | 4 |
 | [ ] | `syncIncomplete` | Tap every line first ({n} left). | 请先为每一行轻点（还剩 {n} 行）。 | 4 |
 | [ ] | `syncOrder` | Each line must start after the one before it. | 每一行都必须在上一行之后开始。 | 4 |
 | [ ] | `syncNudgeEarlier` | Earlier | 提前 | 4 |
@@ -965,6 +989,14 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncOffset` | Shift every line (ms) | 全行をずらす（ミリ秒） | 4 |
 | [ ] | `syncSave` | Save timings | タイミングを保存 | 4 |
 | [ ] | `syncSaved` | Timings saved | タイミングを保存しました | 4 |
+| [ ] | `lyricsAdd` | Add lyrics | 歌詞を追加 | 4 |
+| [ ] | `lyricsEditChurch` | Edit your church's lyrics | 教会の歌詞を編集 | 4 |
+| [ ] | `lyricsEditTitle` | Lyrics for {title} | 「{title}」の歌詞 | 4 |
+| [ ] | `lyricsEditHelp` | Paste the words your church sings, with section names like Verse 1 and Chorus. Only your church sees them, and you can sync them to the song afterwards. | 教会で歌う歌詞を、「Aメロ1」「サビ」などのセクション名と一緒に貼り付けてください。歌詞はあなたの教会だけに表示され、あとで曲と同期できます。 | 4 |
+| [ ] | `lyricsFor` | Church | 教会 | 4 |
+| [ ] | `lyricsEditEmpty` | Sections appear here as you type. | 入力するとセクションがここに表示されます。 | 4 |
+| [ ] | `lyricsSaved` | Lyrics saved | 歌詞を保存しました | 4 |
+| [ ] | `lyricsSavedResync` | Lyrics saved. Some lines changed, so sync the song again. | 歌詞を保存しました。一部の行が変わったので、もう一度同期してください。 | 4 |
 | [ ] | `syncIncomplete` | Tap every line first ({n} left). | 先にすべての行をタップしてください（残り {n} 行）。 | 4 |
 | [ ] | `syncOrder` | Each line must start after the one before it. | 各行は前の行より後に始まる必要があります。 | 4 |
 | [ ] | `syncNudgeEarlier` | Earlier | 早める | 4 |
@@ -1210,6 +1242,14 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `syncOffset` | Shift every line (ms) | Desplazar todas las líneas (ms) | 4 |
 | [ ] | `syncSave` | Save timings | Guardar tiempos | 4 |
 | [ ] | `syncSaved` | Timings saved | Tiempos guardados | 4 |
+| [ ] | `lyricsAdd` | Add lyrics | Añadir letra | 4 |
+| [ ] | `lyricsEditChurch` | Edit your church's lyrics | Editar la letra de tu iglesia | 4 |
+| [ ] | `lyricsEditTitle` | Lyrics for {title} | Letra de {title} | 4 |
+| [ ] | `lyricsEditHelp` | Paste the words your church sings, with section names like Verse 1 and Chorus. Only your church sees them, and you can sync them to the song afterwards. | Pega la letra que canta tu iglesia, con nombres de sección como Verso 1 y Coro. Solo tu iglesia la ve, y luego puedes sincronizarla con la canción. | 4 |
+| [ ] | `lyricsFor` | Church | Iglesia | 4 |
+| [ ] | `lyricsEditEmpty` | Sections appear here as you type. | Las secciones aparecen aquí mientras escribes. | 4 |
+| [ ] | `lyricsSaved` | Lyrics saved | Letra guardada | 4 |
+| [ ] | `lyricsSavedResync` | Lyrics saved. Some lines changed, so sync the song again. | Letra guardada. Algunas líneas cambiaron, así que vuelve a sincronizar la canción. | 4 |
 | [ ] | `syncIncomplete` | Tap every line first ({n} left). | Primero toca cada línea (faltan {n}). | 4 |
 | [ ] | `syncOrder` | Each line must start after the one before it. | Cada línea debe empezar después de la anterior. | 4 |
 | [ ] | `syncNudgeEarlier` | Earlier | Antes | 4 |

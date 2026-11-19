@@ -1,5 +1,6 @@
 import { api, rememberTracks, youtubeTrack } from './api.js';
 import { syncButton } from './tapsync.js';
+import { lyricsButton } from './song-lyrics.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber, fmtBytes, timeAgo, toast, showMenu, promptDialog, safely } from './ui.js';
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
@@ -433,6 +434,10 @@ export async function song(el, { id }, app) {
     const sg = { id: s.id, name: s.title, artist: { name: s.artist }, language: s.language, sources: videos };
     el.append(section(t('ytVideoLabel'), h('div', { class: 'song-results', role: 'list' }, songResult(app, sg))));
   }
+  // A church leader can add the words their church sings, for lyrics and tap-to-sync.
+  const lyricsHost = h('div', { class: 'song-lyrics-edit' });
+  lyricsButton({ song: s, detail: s, onSaved: () => { app.songDetails?.delete(s.id); app.lyrics = null; app.route(); } }, lyricsHost);
+  el.append(lyricsHost);
   el.append(scriptureCard(s.id));
 }
 
@@ -570,8 +575,13 @@ export function lyricsView(app, { track, detail, scroller }) {
     }
   }
 
+  // A church leader can also change the words their church sings (song-lyrics.js).
+  const editHost = h('div', { class: 'lyrics-sync' });
+  lyricsButton({ song: { id: detail.id, title: detail.title, language: detail.language }, detail,
+    onSaved: () => { app.songDetails.delete(track.song_id); app.lyrics = null; app.renderRight(); } }, editHost);
+
   const el = h('div', { class: `lyrics${timing ? ' synced' : ''}` },
-    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost),
+    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost, editHost),
     h('div', { class: 'lyrics-lines' }, blocks.map((b) => sectionEl(b.label, b.items))),
     more);
 
