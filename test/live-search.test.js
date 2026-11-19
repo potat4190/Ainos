@@ -161,9 +161,9 @@ test('a miss is remembered for a week, per language', async () => {
   assert.equal(yt.calls.length, 1);
 
   // Another language is another question to YouTube (relevanceLanguage differs).
-  await store.run("UPDATE users SET language = 'es' WHERE username = 'live-miss'");
+  await store.run("UPDATE users SET language = 'ne' WHERE username = 'live-miss'");
   assert.equal((await search(a, 'zzz no such hymn')).live, 'searched');
-  assert.deepEqual(yt.calls.at(-1), { q: 'zzz no such hymn', language: 'es' });
+  assert.deepEqual(yt.calls.at(-1), { q: 'zzz no such hymn', language: 'ne' });
   await store.run("UPDATE users SET language = 'en' WHERE username = 'live-miss'");
 
   // A week later the query may be asked again, and now there is a video.

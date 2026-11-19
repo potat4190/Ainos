@@ -68,9 +68,10 @@ test('parseVideoUrl: ids and YouTube links only', () => {
 });
 
 test('songLanguage and isImportable', () => {
-  assert.equal(songLanguage({ defaultLanguage: 'es-419' }, 'en'), 'es');
-  assert.equal(songLanguage({ defaultLanguage: 'JA' }), 'ja');
-  assert.equal(songLanguage({ defaultLanguage: 'tl' }, 'hi'), 'hi', 'a language the app doesn’t have: the searcher’s');
+  assert.equal(songLanguage({ defaultLanguage: 'ne-NP' }, 'en'), 'ne');
+  assert.equal(songLanguage({ defaultLanguage: 'NE' }), 'ne');
+  assert.equal(songLanguage({ defaultLanguage: 'es-419' }, 'en'), 'en', 'songs are English or Nepali only: the searcher’s');
+  assert.equal(songLanguage({ defaultLanguage: 'tl' }, 'ne'), 'ne', 'a language the app doesn’t have: the searcher’s');
   assert.equal(songLanguage({}, 'xx'), 'en');
   assert.equal(isImportable(video(vid(0), 'T', 'C')), true);
   assert.equal(isImportable(video(vid(0), 'T', 'C', { categoryId: '22' })), true, 'an admin may add a video outside Music');
@@ -83,7 +84,7 @@ test('a new video becomes a song, a source, a cache row and a search entry; sear
   assert.deepEqual(await songsFor(listener, 'way maker'), [], 'not in the catalog yet');
 
   const v = video(vid(1), 'Way Maker (Official Lyric Video)', 'Sinach', { defaultLanguage: 'en-GB' });
-  const r = await importVideo(store, v, { language: 'es', userId: adminId, via: 'search', now: 5000 });
+  const r = await importVideo(store, v, { language: 'ne', userId: adminId, via: 'search', now: 5000 });
   assert.equal(r.status, 'added');
   assert.equal(r.createdSong, true);
 
@@ -233,11 +234,11 @@ test('POST /api/admin/youtube/import: admins only', async () => {
 
 test('POST /api/admin/youtube/import: a pasted link becomes a playable song; song_id attaches or moves it', async () => {
   yt.calls.length = 0;
-  const made = await admin.post('/api/admin/youtube/import', { url: `https://www.youtube.com/watch?v=${vid(50)}&t=10s`, language: 'es' });
+  const made = await admin.post('/api/admin/youtube/import', { url: `https://www.youtube.com/watch?v=${vid(50)}&t=10s`, language: 'ne' });
   assert.equal(made.status, 201, made.text);
   assert.equal(made.json.status, 'added');
   assert.equal(made.json.created_song, true);
-  assert.deepEqual(made.json.song, { id: made.json.song.id, name: 'Admin Song', artist: { name: 'Admin Band' }, language: 'es' });
+  assert.deepEqual(made.json.song, { id: made.json.song.id, name: 'Admin Song', artist: { name: 'Admin Band' }, language: 'ne' });
   assert.equal(made.json.source.youtube.videoId, vid(50));
   assert.equal(made.json.source.youtube.title, 'Admin Song');
   assert.deepEqual(yt.calls, [[vid(50)]], 'one videos.list call, for the id in the link');

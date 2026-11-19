@@ -4,7 +4,7 @@ import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtDuration, fmtNumber,
 import { renderMarkdown } from './markdown.js';
 import { LOUDNESS_TARGETS } from './player.js';
 import { CROSSFADE_CHOICES } from './crossfade.js';
-import { LANGUAGES, getLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText, sectionName } from './i18n.js';
+import { SONG_LANGUAGES, UI_LOCALE, getSongLang, t, langDisplayName, translateEditorial, translateMix, translateGenre, errorText, sectionName } from './i18n.js';
 
 const coarse = matchMedia('(pointer: coarse)').matches;
 // The device's IANA time zone ('' if the browser won't say; the server then uses UTC).
@@ -153,7 +153,7 @@ function empty(title, text, action) {
 // ------------------------------------------------------------------ views
 
 export async function home(el, _p, app) {
-  const lang = getLang();
+  const lang = getSongLang();
   const data = await api.get(`/api/home?lang=${encodeURIComponent(lang)}`);
   const hr = new Date().getHours();
   const greet = hr < 5 ? t('goodNight') : hr < 12 ? t('goodMorning') : hr < 18 ? t('goodAfternoon') : t('goodEvening');
@@ -237,7 +237,7 @@ export async function home(el, _p, app) {
 
 /** Fetch something playable and turn it into a player context. */
 export async function loadCtx(kind, id) {
-  const lang = getLang();
+  const lang = getSongLang();
   switch (kind) {
     case 'album': { const a = await api.get(`/api/albums/${id}`); return { uri: a.uri, title: a.title, tracks: a.tracks }; }
     case 'playlist': { const p = translateEditorial(await api.get(`/api/playlists/${id}`)); return { uri: p.uri, title: p.name, tracks: p.tracks }; }
@@ -370,7 +370,7 @@ export async function album(el, { id }, app) {
     { label: t('startRadio'), icon: 'radio', onClick: () => (location.hash = `#/radio/${a.tracks[0].id}`) },
   ]))));
   el.append(trackList(app, a.tracks, ctx, { showAlbum: false, showCover: false }));
-  const dateStr = new Date(a.released_at || Date.UTC(a.year, 0, 1)).toLocaleDateString(getLang(), { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const dateStr = new Date(a.released_at || Date.UTC(a.year, 0, 1)).toLocaleDateString(UI_LOCALE, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   el.append(h('p', { class: 'dim small', style: { 'margin-top': '24px' } }, t('releasedDate', { date: dateStr }), h('br'), t('synthesizedNote', { year: a.year, artist: a.artist.name })));
 }
 
@@ -492,6 +492,9 @@ function watchUserScroll(scroller) {
 }
 
 /** Does this song detail have lyrics to show? */
+/** Song id → the lyrics language picked with the English / Nepali switch (this visit only). */
+const lyricsLangChoice = new Map();
+
 export const hasLyrics = (detail) => !!detail?.sections?.some((x) => x.lines.some((l) => l.trim()));
 
 /**
@@ -507,8 +510,12 @@ export function lyricsView(app, { track, detail, scroller }) {
     ? detail.sources.find((x) => x.id === track.youtube.sourceId)
     : detail.sources.find((x) => x.source === 'ainos' && x.track?.id === track.id);
   const langs = [...new Set(detail.sections.map((x) => x.language))];
-  const timing = source?.timings?.find((x) => x.language === getLang() && langs.includes(x.language)) || source?.timings?.find((x) => langs.includes(x.language)) || null;
-  const lang = timing?.language || [getLang(), detail.language].find((l) => langs.includes(l)) || langs[0];
+  // The listener's pick from the English / Nepali switch, for this song.
+  const chosen = langs.includes(lyricsLangChoice.get(detail.id)) ? lyricsLangChoice.get(detail.id) : null;
+  const timing = chosen
+    ? source?.timings?.find((x) => x.language === chosen) || null
+    : source?.timings?.find((x) => x.language === getSongLang() && langs.includes(x.language)) || source?.timings?.find((x) => langs.includes(x.language)) || null;
+  const lang = chosen || timing?.language || [getSongLang(), detail.language].find((l) => langs.includes(l)) || langs[0];
   // A church's own text for a section wins over the global one.
   const byLabel = new Map();
   for (const x of detail.sections.filter((y) => y.language === lang)) if (!byLabel.has(x.label) || x.org_id) byLabel.set(x.label, x);
@@ -570,8 +577,19 @@ export function lyricsView(app, { track, detail, scroller }) {
     }
   }
 
-  const el = h('div', { class: `lyrics${timing ? ' synced' : ''}` },
-    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost),
+  // Songs with both English and Nepali lyrics get a switch between them.
+  const both = SONG_LANGUAGES.filter((l) => langs.includes(l.code));
+  const langSwitch = both.length < 2 ? null : h('div', { class: 'chips lyrics-lang', role: 'group', 'aria-label': t('lyricsLanguage') },
+    both.map((l) => h('button', { type: 'button', class: `chip${l.code === lang ? ' active' : ''}`, 'aria-pressed': String(l.code === lang), lang: l.code,
+      onclick: () => {
+        if (l.code === lang) return;
+        lyricsLangChoice.set(detail.id, l.code);
+        app.lyrics = null;
+        app.renderRight();
+      } }, l.native)));
+
+  const el = h('div', { class: `lyrics${timing ? ' synced' : ''}`, lang },
+    h('div', { class: 'lyrics-head' }, h('div', { class: 'rp-title' }, detail.title), langSwitch, h('p', { class: 'dim small' }, timing ? t('lyricsSyncedHint') : t('lyricsNotSynced')), syncHost),
     h('div', { class: 'lyrics-lines' }, blocks.map((b) => sectionEl(b.label, b.items))),
     more);
 
@@ -666,7 +684,7 @@ export async function playlist(el, { id }, app) {
     el.append(recSection);
     const seed = p.tracks[0]?.id || app.player.track?.id;
     // Suggestions are extra: if they fail to load, the playlist still shows.
-    const radio = seed ? await api.get(`/api/radio/${seed}?lang=${encodeURIComponent(getLang())}`).catch(() => null) : null;
+    const radio = seed ? await api.get(`/api/radio/${seed}?lang=${encodeURIComponent(getSongLang())}`).catch(() => null) : null;
     if (radio) {
       const have = new Set(p.tracks.map((tr) => tr.id));
       const recs = radio.tracks.filter((tr) => !have.has(tr.id)).slice(0, 5);
@@ -684,7 +702,7 @@ export async function playlist(el, { id }, app) {
 }
 
 export async function mix(el, { id }, app) {
-  const lang = getLang();
+  const lang = getSongLang();
   const raw = await api.get(`/api/made-for-you/${id}?lang=${encodeURIComponent(lang)}`);
   const m = translateMix(raw, lang);
   const ctx = { uri: m.uri, title: m.title, tracks: m.tracks };
@@ -699,7 +717,7 @@ export async function mix(el, { id }, app) {
 }
 
 export async function radio(el, { id }, app) {
-  const r = await api.get(`/api/radio/${id}?lang=${encodeURIComponent(getLang())}`);
+  const r = await api.get(`/api/radio/${id}?lang=${encodeURIComponent(getSongLang())}`);
   const seedTrack = r.tracks[0];
   const title = seedTrack ? t('radioTitle', { title: seedTrack.title }) : r.title;
   const desc = seedTrack ? t('radioDesc', { title: seedTrack.title, artist: seedTrack.artist.name }) : r.description;
@@ -915,10 +933,10 @@ export async function settings(el, _p, app) {
   el.append(h('h2', { class: 'section', style: { 'font-size': '18px', 'margin-bottom': '10px' } }, t('accountSection')));
   el.append(row(`${me.display_name} (@${me.username})`, t('planDescription'), h('span', { class: 'chip active' }, t('planBadge'))));
 
-  const langOptions = LANGUAGES.map((l) => [l.code, `${l.native} (${l.label})`]);
-  el.append(row(t('languageSettingTitle'), t('languageSettingDesc'), select(getLang(), langOptions, (v) => app.changeLanguage(v))));
+  const langOptions = SONG_LANGUAGES.map((l) => [l.code, l.code === 'en' ? l.label : `${l.native} (${l.label})`]);
+  el.append(row(t('languageSettingTitle'), t('languageSettingDesc'), select(getSongLang(), langOptions, (v) => app.changeLanguage(v))));
   if (!me.is_demo) try {
-    const bible = await api.get(`/api/scripture/versions?lang=${encodeURIComponent(getLang())}`);
+    const bible = await api.get('/api/scripture/versions');
     const auto = bible.fallback ? `${t('bibleVersionAuto')} (${bible.fallback.abbreviation})` : t('bibleVersionAuto');
     const options = [['', auto], ...bible.versions.map((v) => [String(v.id), `${v.abbreviation} · ${v.title}`])];
     // Saved while using another language: label it by name (the server sends it), the bare id only if it couldn't.

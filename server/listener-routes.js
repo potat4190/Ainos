@@ -9,8 +9,9 @@ import { int, oneOf, str, youtubeId } from './validate.js';
 import { randomId } from './util.js';
 import { rateLimit } from './auth.js';
 import { importVideo, hideVideo, parseVideoUrl, isImportable, ImportError } from './youtube-import.js';
+import { SONG_LANGUAGES as LANGS, songLanguage } from './languages.js';
 
-export const LANGS = ['en', 'hi', 'ne', 'zh', 'ja', 'es']; // LANGUAGES in app.js (not imported: app.js imports this file)
+export { SONG_LANGUAGES as LANGS } from './languages.js';
 
 // Display order of section labels (songs.js SECTION_LABEL).
 const LABEL_ORDER = ['I', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'PC', 'C', 'C2', 'B', 'T', 'E'];
@@ -20,7 +21,7 @@ const MAX_RECORDING_MS = 2 * 3600 * 1000; // when the recording's length isn't k
 const bad = (message) => new HttpError(400, message, 'invalid_input');
 const labelRank = (l) => { const i = LABEL_ORDER.indexOf(l); return i < 0 ? LABEL_ORDER.length : i; };
 
-/** `?lang=` when it is a supported language, else null (all languages). */
+/** `?lang=` when it is a song language (en, ne), else null (all languages). */
 export function langParam(query) {
   const lang = query?.get?.('lang');
   return LANGS.includes(lang) ? lang : null;
@@ -123,7 +124,7 @@ export function register({ r, store, auth, catalog, adminIds, youtube }) {
     const videoId = parseVideoUrl(body.url);
     if (!videoId) throw bad('url must be a YouTube video link or an 11-character video id');
     const songId = body.song_id == null || body.song_id === '' ? null : str(body.song_id, { name: 'song_id', min: 1, max: 64 });
-    const language = body.language == null || body.language === '' ? user.language : oneOf(body.language, LANGS, { name: 'language' });
+    const language = body.language == null || body.language === '' ? songLanguage(user.language) : oneOf(body.language, LANGS, { name: 'language' });
     const found = await youtube.videoDetails([videoId]);
     if (!found.ok) {
       throw new HttpError(503, found.reason === 'no_key' ? 'YouTube isn’t set up on this server (YOUTUBE_API_KEY)' : 'YouTube can’t be reached right now, try again later', 'youtube_unavailable');

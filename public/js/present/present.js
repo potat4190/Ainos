@@ -45,7 +45,9 @@ export function flattenDeck(deck) {
     const list = (Array.isArray(item?.slides) ? item.slides : []).filter((s) => s && typeof s === 'object');
     const base = (s, n) => ({ id: `${itemId}:${str(s?.id) || n}`, itemIndex, title });
     if (item?.kind === 'song') {
-      out.push({ id: `${itemId}:title`, itemIndex, kind: 'title', title, label: title, lines: [title], startMs: 0 });
+      // A song from the church's numbered hymnal says so under its title (spec 5.8).
+      const hymn = Number(item.hymnNumber) > 0 ? { sub: t('prHymnNumber', { n: Math.floor(Number(item.hymnNumber)) }) } : {};
+      out.push({ id: `${itemId}:title`, itemIndex, kind: 'title', title, label: title, lines: [title], startMs: 0, ...hymn });
       list.forEach((s, n) => out.push({ ...base(s, n), kind: 'song', label: sectionName(s.label), lines: strLines(s.lines), startMs: num(s.startMs) }));
     } else if (item?.kind === 'scripture') {
       list.forEach((s, n) => out.push({ ...base(s, n), kind: 'scripture', label: str(s.label) || title, lines: strLines(s.lines), attribution: str(s.attribution) }));

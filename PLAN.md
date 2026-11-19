@@ -10,7 +10,7 @@ Shorthand used below:
   `GRANT` block, the RLS `ARRAY[...]`, and a parser-safe table body: one column per line, closing
   `);` alone on its line, no table-level constraint lines unless the deploy parser skips them.
 - **SYNC-HDR** — `SECURITY_HEADERS` in `server/app.js` and `headers` in `vercel.json`.
-- **I18N** — `public/js/i18n.js`, all six languages.
+- **I18N** — `public/js/i18n.js`, English only since 2026-11-19 (songs: English or Nepali).
 - **SW** — `public/sw.js` `SHELL_FILES` plus a `SHELL` version bump.
 - **WIPE** — the `resetDemo` wipe list in `server/demo.js`.
 - Every new route gets a success, an auth-failure and a validation-failure test.

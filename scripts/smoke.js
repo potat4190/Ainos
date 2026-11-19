@@ -55,7 +55,7 @@ check(recentAtStart?.tracks?.length > 0, 'the demo account has listening history
 
 const home = (await call('GET', '/api/home')).json;
 check(home?.recommended?.length > 0 && home?.popular?.length > 0 && home?.made_for_you?.length > 0, 'home has recommendations, popular and mixes');
-for (const lang of ['hi', 'ne', 'zh', 'ja', 'es']) {
+for (const lang of ['en', 'ne']) {
   const h = (await call('GET', `/api/home?lang=${lang}`)).json;
   check(h?.recommended?.every((t) => t.language === lang), `home ?lang=${lang} recommends only ${lang} songs`);
 }

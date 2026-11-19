@@ -25,8 +25,9 @@ At the start of every session, before any work:
 - `server/schema.pg.sql` runs on every deploy: every statement must be safe to re-run; wrap changes
   to existing tables in `DO $$ ... $$` checks.
 - Schema changes go in both `server/db.js` and `server/schema.pg.sql`. Header/CSP changes go in both
-  `SECURITY_HEADERS` (`server/app.js`) and `vercel.json`. UI strings go in all six languages in
-  `public/js/i18n.js`, used via `t('key')`.
+  `SECURITY_HEADERS` (`server/app.js`) and `vercel.json`. UI strings are English only, in
+  `public/js/i18n.js` or `public/js/strings/*.js`, used via `t('key')`. Songs are English or Nepali
+  (`server/languages.js`); the interface is never translated.
 - One SQL dialect: `?` placeholders, `inList()` for `IN (...)`, async store calls.
 - DOM only via `h()` from `public/js/ui.js`. No `innerHTML`, inline scripts, inline styles or
   inline event handlers (strict CSP).

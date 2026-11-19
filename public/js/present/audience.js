@@ -33,7 +33,7 @@ const send = (msg) => { try { channel?.postMessage(msg); } catch { /* closed */ 
 const clean = (s) => {
   const lines = Array.isArray(s?.lines) ? s.lines.slice(0, 50).map((l) => String(l ?? '')) : [];
   const str = (v) => (v == null ? '' : String(v));
-  return { kind: KINDS.has(s?.kind) ? s.kind : 'blank', title: str(s?.title), label: str(s?.label), attribution: str(s?.attribution), lines };
+  return { kind: KINDS.has(s?.kind) ? s.kind : 'blank', title: str(s?.title), label: str(s?.label), attribution: str(s?.attribution), sub: str(s?.sub), lines };
 };
 const clampIndex = (i) => Math.max(0, Math.min(slides.length - 1, Math.floor(Number(i)) || 0));
 

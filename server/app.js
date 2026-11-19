@@ -28,10 +28,12 @@ import { int, usfmRef } from './validate.js';
 import { SECTION_LABEL } from './songs.js';
 import { register as registerListenerRoutes, songLyrics, langParam } from './listener-routes.js';
 import { register as registerChurchRoutes } from './church-routes.js';
+import { SONG_LANGUAGES, songLanguage, UI_LANGUAGE } from './languages.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QUALITIES = ['low', 'high'];
-export const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
+// Song languages (English and Nepali); the interface itself is English only.
+export { SONG_LANGUAGES as LANGUAGES } from './languages.js';
 const TARGET_LUFS = -14;
 
 // YouTube (Phase 3): the IFrame Player API script and its embed (www.youtube.com),
@@ -118,7 +120,7 @@ export async function createApp({
     if (DEMO_USERNAMES.includes(username.toLowerCase()) || DEMO_PLACEHOLDERS.some((p) => p.username === username.toLowerCase())) throw taken();
     if (await store.get('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)', [username])) throw taken();
     const name = (typeof display_name === 'string' && display_name.trim().slice(0, 40)) || username;
-    const lang = LANGUAGES.includes(language) ? language : 'en';
+    const lang = songLanguage(language);
     let row;
     try {
       row = await store.get('INSERT INTO users (username, display_name, password_hash, language, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
@@ -145,7 +147,7 @@ export async function createApp({
   r.post('/api/auth/demo', async ({ req, res }) => {
     if (!(await demoLimiter(clientIp(req))) || !(await demoLimiterAll('all'))) throw new HttpError(429, 'Too many demo sign-ins, wait a minute', 'rate_limited');
     const { language } = await readJson(req);
-    const userId = await resetDemo(store, { language: LANGUAGES.includes(language) ? language : 'en' });
+    const userId = await resetDemo(store, { language: songLanguage(language) });
     // One day, not 30: every click makes a session for the shared account, and
     // expired ones are purged by housekeeping.
     const token = await createSession(store, userId, { ttlMs: DEMO_SESSION_TTL_MS });
@@ -160,14 +162,14 @@ export async function createApp({
 
   r.get('/api/me', auth(async ({ res, user }) => {
     sendJson(res, 200, {
-      id: user.id, username: user.username, display_name: user.display_name, language: user.language,
+      id: user.id, username: user.username, display_name: user.display_name, language: songLanguage(user.language),
       is_demo: isDemo(user), is_admin: isAdmin(user, adminIds), live_search: !!youtube?.hasKey && !isDemo(user), stream_threshold_ms: STREAM_THRESHOLD_MS, bible_version: await bibleVersionOf(user.id),
     });
   }));
 
   r.post('/api/me/language', auth(async ({ req, res, user }) => {
     const { language } = await readJson(req);
-    if (!LANGUAGES.includes(language)) throw new HttpError(400, `language must be one of: ${LANGUAGES.join(', ')}`);
+    if (!SONG_LANGUAGES.includes(language)) throw new HttpError(400, `language must be one of: ${SONG_LANGUAGES.join(', ')}`);
     await store.run('UPDATE users SET language = ? WHERE id = ?', [language, user.id]);
     sendJson(res, 200, { ok: true, language });
   }));
@@ -197,7 +199,7 @@ export async function createApp({
     }
     const saved = await bibleVersionOf(user.id);
     if (saved && (await scripture.versionStatus(saved)) === 'allowed') return saved;
-    return DEFAULT_VERSIONS[user.language] ?? null;
+    return DEFAULT_VERSIONS[songLanguage(user.language)] ?? null;
   }
 
   // 60 a minute and 600 a day per listener; demo visitors share one account,
@@ -218,16 +220,21 @@ export async function createApp({
   }
 
   r.get('/api/scripture/versions', auth(async ({ req, res, user, query }) => {
-    const language = query.get('lang') || user.language;
-    if (!LANGUAGES.includes(language)) throw new HttpError(400, `lang must be one of: ${LANGUAGES.join(', ')}`);
+    // ?lang= lists one song language's versions; without it, English and Nepali together.
+    const asked = query.get('lang');
+    if (asked && !SONG_LANGUAGES.includes(asked)) throw new HttpError(400, `lang must be one of: ${SONG_LANGUAGES.join(', ')}`);
+    const languages = asked ? [asked] : SONG_LANGUAGES;
     await scriptureLimit(req, user);
-    const fallback = language === FALLBACK_SOURCE.language
+    const fallback = languages.includes(FALLBACK_SOURCE.language)
       ? { abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright } : null;
-    const [versions, selected] = await Promise.all([scripture.listVersions(language), bibleVersionOf(user.id)]);
-    // A version saved while using another language isn't in this list; send its name so the picker can show it.
+    const [lists, selected] = await Promise.all([Promise.all(languages.map((l) => scripture.listVersions(l))), bibleVersionOf(user.id)]);
+    const seen = new Set();
+    const versions = lists.flat().filter((v) => !seen.has(v.id) && seen.add(v.id));
+    // A version saved before (or not offered in these languages) isn't in this list; send its name so the picker can show it.
     const selectedVersion = selected && !versions.some((v) => v.id === selected) ? await scripture.describeVersion(selected) : null;
+    const language = asked || songLanguage(user.language);
     sendJson(res, 200, {
-      language, versions, default: DEFAULT_VERSIONS[language] ?? null,
+      language, languages, versions, default: DEFAULT_VERSIONS[language] ?? null,
       selected, selected_version: selectedVersion, fallback,
     });
   }));
@@ -235,13 +242,13 @@ export async function createApp({
     const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
     // ?tz= is the listener's IANA time zone, so the verse changes at their midnight (unknown zones count as UTC).
-    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: user.language, timeZone: query.get('tz'), upstream }));
+    sendJson(res, 200, await scripture.getVerseOfTheDay({ versionId, language: UI_LANGUAGE, timeZone: query.get('tz'), upstream }));
   }));
   r.get('/api/scripture/:ref', auth(async ({ req, res, user, params, query }) => {
     const usfm = usfmRef(params.ref);
     const upstream = await scriptureLimit(req, user);
     const versionId = await readingVersion(user, query);
-    sendJson(res, 200, await scripture.getPassage({ usfm, versionId, language: user.language, upstream }));
+    sendJson(res, 200, await scripture.getPassage({ usfm, versionId, language: UI_LANGUAGE, upstream }));
   }));
 
   r.put('/api/me/bible-version', auth(noDemo(async ({ req, res, user }) => {
@@ -359,9 +366,9 @@ export async function createApp({
     });
   }));
 
-  /** The ?lang= the client asked for, else the user's saved language. */
+  /** The ?lang= song language the client asked for, else the user's saved one. */
   function requestLang(query, user) {
-    return LANGUAGES.includes(query.get('lang')) ? query.get('lang') : user.language;
+    return songLanguage(query.get('lang'), songLanguage(user.language));
   }
 
   const onRepeatMix = (ids) => ({ kind: 'on-repeat', title: 'On Repeat', description: 'The songs you can’t stop playing right now.', ids });

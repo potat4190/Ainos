@@ -4,8 +4,9 @@
 // buttons shown here are only a convenience.
 import { h, icon, clear, toast, promptDialog, safely } from './ui.js';
 import { api } from './api.js';
-import { t, getLang, errorText, sectionName } from './i18n.js';
+import { t, getSongLang, UI_LOCALE, errorText, sectionName } from './i18n.js';
 import { parseLyrics } from './lyrics-parse.js';
+import { parseHymnNumber } from './hymn-number.js';
 import { openPresentDialog } from './present/present.js';
 import { forgetSyncTargets } from './tapsync.js';
 
@@ -34,7 +35,7 @@ Echoes of mercy, whispers of love.
 
 Chorus`;
 
-const num = (n) => new Intl.NumberFormat(getLang()).format(n);
+const num = (n) => new Intl.NumberFormat(UI_LOCALE).format(n);
 const plural = (base, n) => t(n === 1 ? `${base}1` : `${base}N`, { n: num(n) });
 const enc = encodeURIComponent;
 const orgUrl = (orgId, rest = '') => `/api/orgs/${enc(orgId)}${rest}`;
@@ -47,7 +48,7 @@ function nextSundayUtc() {
 function fmtDate(iso) {
   if (!iso) return '';
   try {
-    return new Intl.DateTimeFormat(getLang(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+    return new Intl.DateTimeFormat(UI_LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
   } catch { return iso; }
 }
 
@@ -108,21 +109,35 @@ function slideThumb(slide, n, { kind = 'song', caption = '' } = {}) {
 /** Pick a song (global hymns + this church's songs). */
 async function pickSong(orgId, onPick) {
   const songs = await api.get(orgUrl(orgId, '/songs'));
-  const filter = h('input', { class: 'ch-input', type: 'search', placeholder: t('chSearchSongs'), 'aria-label': t('chSearchSongs') });
+  // With a numbered hymnal picked, typing 123 or १२३ finds hymn 123 (spec 5.8).
+  const numbered = songs.some((s) => s.hymn_number);
+  const ph = t(numbered ? 'chSearchSongsOrHymn' : 'chSearchSongs');
+  const filter = h('input', { class: 'ch-input', type: 'search', placeholder: ph, 'aria-label': ph });
   const list = h('ul', { class: 'ch-picklist' });
   let dlg;
+  const pick = (s) => { dlg.close(); onPick(s); };
   const render = () => {
     const q = filter.value.trim().toLowerCase();
-    const shown = songs.filter((s) => !q || `${s.title} ${s.artist}`.toLowerCase().includes(q));
+    const n = numbered ? parseHymnNumber(q) : null;
+    const hymn = n ? songs.filter((s) => s.hymn_number === n) : [];
+    const shown = [...hymn, ...songs.filter((s) => !hymn.includes(s) && (!q || `${s.title} ${s.artist}`.toLowerCase().includes(q)))];
     clear(list);
     if (!shown.length) list.append(h('li', { class: 'dim small' }, t('chNoSongs')));
     for (const s of shown) {
-      list.append(h('li', {}, h('button', { type: 'button', class: 'ch-pick', onclick: () => { dlg.close(); onPick(s); } },
+      const sub = [s.hymn_number ? t('chHymnNumber', { n: num(s.hymn_number) }) : '', s.artist || ''].filter(Boolean).join(' · ');
+      list.append(h('li', {}, h('button', { type: 'button', class: 'ch-pick', onclick: () => pick(s) },
         h('div', { class: `ch-art ch-art-${s.org_song ? 'pasted' : 'song'}` }, icon('play')),
-        h('span', { class: 'ch-pick-main' }, h('span', { class: 'ch-row-title' }, s.title), h('span', { class: 'ch-row-sub' }, s.artist || '')),
+        h('span', { class: 'ch-pick-main' }, h('span', { class: 'ch-row-title' }, s.title), h('span', { class: 'ch-row-sub' }, sub)),
         h('span', { class: 'ch-pick-add' }, icon('plus'), t('chAdd')))));
     }
   };
+  // Add by number: Enter adds the hymn when the number matches exactly one song.
+  filter.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const n = numbered ? parseHymnNumber(filter.value) : null;
+    const hymn = n ? songs.filter((s) => s.hymn_number === n) : [];
+    if (hymn.length === 1) { e.preventDefault(); pick(hymn[0]); }
+  });
   filter.addEventListener('input', render);
   render();
   dlg = openDialog({ title: t('chAddSong'), body: [h('p', { class: 'muted small ch-modal-intro' }, t('chPickSongSub')), filter, list] });
@@ -381,7 +396,7 @@ async function renderEditor(el, { org, orgs, setlistId, setlists, app, onChurchC
     h('div', { class: 'ch-card-head' }, h('div', {}, h('h2', {}, t('chSlidesTitle'), ' ', stripCount), h('p', { class: 'muted small' }, t('chSlidesSub')))),
     strip) : null;
 
-  el.append(h('div', { class: 'church' }, rolePreview(org, app), header, setlistCard, slidesCard, setlistsCard({ org, setlists, current: setlist.id, app }), membersCard(org, app)));
+  el.append(h('div', { class: 'church' }, rolePreview(org, app), header, setlistCard, slidesCard, setlistsCard({ org, setlists, current: setlist.id, app }), hymnalCard(org, app), membersCard(org, app)));
   await refresh();
 }
 
@@ -424,7 +439,7 @@ function noChurch(el, app) {
       e.preventDefault();
       safely(async () => {
         if (!name.value.trim()) return;
-        const org = await api.post('/api/orgs', { name: name.value.trim(), language: getLang() });
+        const org = await api.post('/api/orgs', { name: name.value.trim(), language: getSongLang() });
         rememberChurch(org.id);
         const nav = document.getElementById('nav-church');
         if (nav) nav.hidden = false;
@@ -458,7 +473,7 @@ function upcoming(setlists) {
 const ROLES = ['admin', 'leader', 'operator', 'member'];
 const roleSelect = (value, label) => h('select', { class: 'ch-switch', 'aria-label': label },
   ROLES.map((r) => h('option', { value: r, selected: r === value }, t(`chRole_${r}`))));
-const fmtDay = (ms) => { try { return new Intl.DateTimeFormat(getLang(), { day: 'numeric', month: 'long' }).format(new Date(ms)); } catch { return ''; } };
+const fmtDay = (ms) => { try { return new Intl.DateTimeFormat(UI_LOCALE, { day: 'numeric', month: 'long' }).format(new Date(ms)); } catch { return ''; } };
 
 /** The church demo's "Viewing as" picker (spec 5.7). The server enforces the role picked here. */
 function rolePreview(org, app) {
@@ -485,6 +500,35 @@ function madeInvite(path) {
     toast(t('chCopied'));
   }));
   return h('div', { class: 'ch-invite-made', role: 'status' }, h('p', { class: 'small' }, t('chInviteShowOnce')), h('div', { class: 'ch-invite-copy' }, input, copy));
+}
+
+/**
+ * The numbered hymnal this church projects from (spec 5.8). Shown only once a
+ * hymnal with recorded permission exists; admins pick it, others see it.
+ */
+function hymnalCard(org, app) {
+  const card = h('section', { class: 'ch-card', hidden: true });
+  (async () => {
+    const hymnals = await api.get(orgUrl(org.id, '/hymnals'));
+    if (!hymnals.length) return;
+    const body = [h('div', { class: 'ch-card-head' }, h('div', {}, h('h2', {}, t('chHymnal')), h('p', { class: 'muted small' }, t('chHymnalSub'))))];
+    if (org.permissions.includes('org.edit')) {
+      const sel = h('select', { class: 'ch-input', 'aria-label': t('chHymnal') },
+        h('option', { value: '' }, t('chHymnalNone')),
+        hymnals.map((x) => h('option', { value: x.id, selected: org.hymnal?.id === x.id }, x.name)));
+      sel.addEventListener('change', safely(async () => {
+        await api.patch(orgUrl(org.id, ''), { hymnal_id: sel.value || null });
+        toast(t('chHymnalSaved'));
+        await app.refresh();
+      }));
+      body.push(sel);
+    } else {
+      body.push(h('p', { class: 'small' }, org.hymnal?.name || t('chHymnalNone')));
+    }
+    card.append(...body);
+    card.hidden = false;
+  })().catch((err) => toast(errorText(err), { error: true }));
+  return card;
 }
 
 /** Members (everyone sees names and roles), role changes and invites for admins, and "Leave". */
@@ -605,7 +649,7 @@ export async function church(el, params, app) {
     el.append(h('div', { class: 'church' }, rolePreview(org, app),
       h('header', { class: 'ch-head' }, h('div', { class: 'ch-badge' }, icon('library')),
         h('div', { class: 'ch-head-text' }, h('div', { class: 'ch-eyebrow' }, t(`chRole_${org.role}`)), h('h1', { class: 'ch-name' }, org.name))),
-      setlistsCard({ org, setlists, current: null }), membersCard(org, app)));
+      setlistsCard({ org, setlists, current: null }), hymnalCard(org, app), membersCard(org, app)));
     return;
   }
   await renderEditor(el, { org, orgs, setlistId: s.id, setlists, app, onChurchChange });

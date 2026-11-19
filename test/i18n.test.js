@@ -1,28 +1,24 @@
-// Every UI string exists in all six languages (spec rule: never leave a key
-// missing), with the same {placeholders}, so t() never falls back to English
-// or shows a raw "{name}".
+// The interface is English only; songs come in English or Nepali. Every UI
+// string exists in English, non-empty, and the two song languages match the
+// server's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STRINGS, LANGUAGE_CODES, errorText } from '../public/js/i18n.js';
+import { STRINGS, SONG_LANGUAGE_CODES, SONG_LANGUAGES as UI_SONG_LANGUAGES, errorText } from '../public/js/i18n.js';
 import { LANGUAGES } from '../server/app.js';
 
-const placeholders = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
-
-test('the server and the UI support the same languages', () => {
-  assert.deepEqual([...LANGUAGE_CODES].sort(), [...LANGUAGES].sort());
-  assert.deepEqual(Object.keys(STRINGS).sort(), [...LANGUAGES].sort());
+test('the server and the UI offer the same song languages: English and Nepali', () => {
+  assert.deepEqual([...SONG_LANGUAGE_CODES], ['en', 'ne']);
+  assert.deepEqual([...LANGUAGES], ['en', 'ne']);
+  assert.equal(UI_SONG_LANGUAGES.find((l) => l.code === 'ne').native, 'नेपाली');
 });
 
-test('every language has every key, none empty, with the same placeholders', () => {
-  const keys = Object.keys(STRINGS.en);
-  for (const lang of LANGUAGE_CODES) {
-    const dict = STRINGS[lang];
-    assert.deepEqual(keys.filter((k) => !(k in dict)), [], `${lang} is missing keys`);
-    assert.deepEqual(Object.keys(dict).filter((k) => !(k in STRINGS.en)), [], `${lang} has keys English lacks`);
-    for (const k of keys) {
-      assert.ok(typeof dict[k] === 'string' && dict[k].trim(), `${lang}.${k} is empty`);
-      assert.deepEqual(placeholders(dict[k]), placeholders(STRINGS.en[k]), `${lang}.${k} placeholders`);
-    }
+test('the interface has English strings only, none empty', async () => {
+  assert.deepEqual(Object.keys(STRINGS), ['en']);
+  for (const [k, v] of Object.entries(STRINGS.en)) assert.ok(typeof v === 'string' && v.trim(), `en.${k} is empty`);
+  const fs = await import('node:fs');
+  for (const f of ['i18n.js', 'strings/listener.js', 'strings/church.js', 'strings/present.js']) {
+    const src = fs.readFileSync(new URL(`../public/js/${f}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /^\s{2}(hi|ne|zh|ja|es): \{/m, `${f} has no blocks for other interface languages`);
   }
 });
 
@@ -33,11 +29,9 @@ test('API error codes map to translated messages', () => {
 });
 
 // Spec 1.3: the faith is in the content, not in adjectives on every heading.
-test('UI copy carries no "Christian" adjectives, in any language', async () => {
-  const adjective = /christian|cristian|ईसाई|ख्रीष्टियन|基督教|クリスチャン|キリスト教/i;
-  for (const lang of LANGUAGE_CODES) {
-    for (const [key, value] of Object.entries(STRINGS[lang])) assert.doesNotMatch(value, adjective, `${lang}.${key}`);
-  }
+test('UI copy carries no "Christian" adjectives', async () => {
+  const adjective = /christian|cristian|ईसाई|ख्रीष्टियन/i;
+  for (const [key, value] of Object.entries(STRINGS.en)) assert.doesNotMatch(value, adjective, `en.${key}`);
   const fs = await import('node:fs');
   const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /christian/i, 'index.html title, meta and fallbacks');

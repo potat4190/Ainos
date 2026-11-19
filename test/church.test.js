@@ -54,7 +54,7 @@ test('a member of church A gets 404 for everything of church B', async () => {
     ['get', `/api/orgs/${orgB}/setlists`], ['post', `/api/orgs/${orgB}/setlists`, { name: 'x' }],
     ['get', `/api/orgs/${orgB}/setlists/${setlistB}`], ['patch', `/api/orgs/${orgB}/setlists/${setlistB}`, { name: 'x' }],
     ['del', `/api/orgs/${orgB}/setlists/${setlistB}`], ['putJson', `/api/orgs/${orgB}/setlists/${setlistB}/items`, { items: [] }],
-    ['get', `/api/orgs/${orgB}/setlists/${setlistB}/slides`], ['get', `/api/orgs/${orgB}/songs`],
+    ['get', `/api/orgs/${orgB}/setlists/${setlistB}/slides`], ['get', `/api/orgs/${orgB}/songs`], ['get', `/api/orgs/${orgB}/hymnals`],
     ['post', `/api/orgs/${orgB}/songs`, { title: 'x', text: 'a line' }],
     // B's setlist through A's own org: the setlist must belong to the org in the URL.
     ['get', `/api/orgs/${orgA}/setlists/${setlistB}`], ['patch', `/api/orgs/${orgA}/setlists/${setlistB}`, { name: 'x' }],

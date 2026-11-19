@@ -2,7 +2,7 @@ import { api, onUnauthorized, youtubeTrack } from './api.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider, safely } from './ui.js';
 import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
-import { getLang, setLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
+import { getSongLang, setSongLang, t, langDisplayName, translateGenre, errorText } from './i18n.js';
 import * as views from './views.js';
 import * as church from './church.js';
 import { watchUrl } from './youtube.js';
@@ -49,27 +49,27 @@ class App {
   }
 
   async loadMe() {
-    const prevLang = getLang();
+    const prevLang = getSongLang();
     this.me = await api.get('/api/me');
     if (this.pendingLang) {
       // A local language change hasn't reached the server yet: keep it (and retry) instead of reverting to the stale server value.
       if (this.me.language === this.pendingLang) this.pendingLang = null;
       else this.saveLanguage(this.pendingLang).catch(() => {});
-      this.me.language = getLang();
+      this.me.language = getSongLang();
     } else if (this.me.language && this.me.language !== prevLang) {
-      setLang(this.me.language);
+      setSongLang(this.me.language);
     }
     if (this.player) {
       this.player.me = this.me;
     }
     const sel = $('lang-select');
-    if (sel) sel.value = getLang();
+    if (sel) sel.value = getSongLang();
     $('user-menu-btn').textContent = (this.me.display_name || '?')[0].toUpperCase();
     $('user-menu-btn').title = this.me.display_name;
     this.applyI18n();
     if (this.started) this.renderDemoBanner();
-    // The 2-minute refresh can pick up a language changed on another device: re-render, don't leave a mixed-language UI.
-    if (this.started && this.player && getLang() !== prevLang) {
+    // The 2-minute refresh can pick up a song language changed on another device: re-render with its songs.
+    if (this.started && this.player && getSongLang() !== prevLang) {
       this.renderLibrary();
       this.renderPlayerBar();
       this.renderRight();
@@ -78,7 +78,7 @@ class App {
   }
 
   async changeLanguage(lang) {
-    setLang(lang);
+    setSongLang(lang);
     const sel = $('lang-select');
     if (sel) sel.value = lang;
     if (this.me) {
@@ -173,7 +173,7 @@ class App {
       try {
         const url = { login: '/api/auth/login', signup: '/api/auth/signup', demo: '/api/auth/demo', churchDemo: '/api/auth/church-demo' }[m];
         if (m === 'churchDemo') location.hash = '#/church';
-        await api.post(url, { ...body, language: getLang() });
+        await api.post(url, { ...body, language: getSongLang() });
         if (this.started) return location.reload();
         await this.loadMe();
         this.start();
@@ -771,7 +771,7 @@ class App {
 
   lyricsKey() {
     const v = this.player.view();
-    return `${v.track?.id || ''}|${getLang()}`;
+    return `${v.track?.id || ''}|${getSongLang()}`;
   }
 
   /** GET /api/songs/:id, cached for a few minutes (lyrics, arrangements, sources and timings). */

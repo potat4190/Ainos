@@ -10,8 +10,8 @@
 import { fold, randomId, searchText } from './util.js';
 import { audit } from './audit.js';
 import { songFromVideo } from './youtube.js';
+import { SONG_LANGUAGES } from './languages.js';
 
-const LANGS = ['en', 'hi', 'ne', 'zh', 'ja', 'es']; // LANGUAGES in app.js (not imported: app.js imports the routes that use this file)
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtube-nocookie.com']);
 
@@ -40,12 +40,17 @@ export function parseVideoUrl(value) {
   return typeof id === 'string' && VIDEO_ID.test(id) ? id : null;
 }
 
-/** A video's language as one of the app's six, else `fallback` ("es-419" → es). */
+const primaryLanguage = (video) => String(video?.defaultLanguage || '').toLowerCase().split('-')[0];
+
+/** A video's language when it is a song language (English or Nepali), else `fallback` ("en-GB" → en). */
 export function songLanguage(video, fallback = 'en') {
-  const primary = String(video?.defaultLanguage || '').toLowerCase().split('-')[0];
-  if (LANGS.includes(primary)) return primary;
-  return LANGS.includes(fallback) ? fallback : 'en';
+  const primary = primaryLanguage(video);
+  if (SONG_LANGUAGES.includes(primary)) return primary;
+  return SONG_LANGUAGES.includes(fallback) ? fallback : 'en';
 }
+
+/** Whether YouTube tags a video with a language Ainos doesn't carry songs in (untagged videos are not). */
+export const inOtherLanguage = (video) => { const p = primaryLanguage(video); return !!p && !SONG_LANGUAGES.includes(p); };
 
 /** Whether a video can be a source at all: public, embeddable, not a live stream (the live search also wants the Music category). */
 export const isImportable = (v) => !!v && VIDEO_ID.test(String(v.videoId)) && typeof v.title === 'string' && !!v.title.trim() && v.embeddable === true && v.public === true && !v.live;

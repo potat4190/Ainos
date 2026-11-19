@@ -365,6 +365,7 @@ CREATE TABLE IF NOT EXISTS orgs (
   name             TEXT NOT NULL,
   default_language TEXT NOT NULL,
   bible_version_id INTEGER,
+  hymnal_id        TEXT,
   created_by       BIGINT NOT NULL,
   created_at       BIGINT NOT NULL
 );
@@ -376,6 +377,45 @@ CREATE TABLE IF NOT EXISTS org_members (
   PRIMARY KEY (org_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS org_members_user ON org_members(user_id);
+
+-- Numbered hymnals, e.g. a Nepali church hymnal (spec 5.8). A hymnal is shown
+-- only once permission_note records the publisher's permission. org_id NULL
+-- means every church may use it; otherwise only that church.
+CREATE TABLE IF NOT EXISTS hymnals (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  language        TEXT NOT NULL,
+  permission_note TEXT,
+  permission_at   BIGINT,
+  org_id          TEXT REFERENCES orgs(id) ON DELETE CASCADE,
+  created_by      BIGINT,
+  created_at      BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hymnal_entries (
+  hymnal_id TEXT NOT NULL REFERENCES hymnals(id) ON DELETE CASCADE,
+  number    INTEGER NOT NULL CHECK (number > 0),
+  song_id   TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  PRIMARY KEY (hymnal_id, number)
+);
+CREATE INDEX IF NOT EXISTS hymnal_entries_song ON hymnal_entries(song_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'orgs' AND column_name = 'hymnal_id') THEN
+    ALTER TABLE orgs ADD COLUMN hymnal_id TEXT;  -- the numbered hymnal this church projects from
+  END IF;
+END $$;
+
+-- Songs come in English or Nepali only. Listeners and churches set to another
+-- language move to English; catalog artists and tracks in another language
+-- become English; global songs in another language stop playing (sources
+-- marked unavailable, which an admin can undo). A church's own songs are left
+-- alone. Each UPDATE matches no rows once it has run, so re-running is cheap.
+UPDATE users SET language = 'en' WHERE language NOT IN ('en', 'ne');
+UPDATE orgs SET default_language = 'en' WHERE default_language NOT IN ('en', 'ne');
+UPDATE artists SET language = 'en' WHERE language NOT IN ('en', 'ne');
+UPDATE tracks SET language = 'en' WHERE language NOT IN ('en', 'ne');
+UPDATE song_sources SET available = 0
+  WHERE available = 1 AND song_id IN (SELECT id FROM songs WHERE org_id IS NULL AND language NOT IN ('en', 'ne'));
 
 -- [5] Invite links (spec 5.3). Only the token's SHA-256 is stored; the link is
 -- shown once, to the admin who made it.
@@ -424,7 +464,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ainos_app') THEN
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limits, audit_log, songs, song_aliases, song_themes, song_sources, song_sections,
       song_arrangements, song_scripture, user_settings, youtube_video_cache, search_cache, lyric_timings, orgs, org_members,
-      org_invites, setlists, setlist_items TO ainos_app;
+      org_invites, setlists, setlist_items, hymnals, hymnal_entries TO ainos_app;
   END IF;
 END $$;
 
@@ -435,7 +475,7 @@ BEGIN
                            'liked_tracks', 'followed_artists', 'events', 'streams', 'generated_playlists', 'search_index', 'rate_limits',
                            'audit_log', 'songs', 'song_aliases', 'song_themes', 'song_sources', 'song_sections', 'song_arrangements',
                            'song_scripture', 'user_settings', 'youtube_video_cache', 'search_cache', 'lyric_timings', 'orgs',
-                           'org_members', 'org_invites', 'setlists', 'setlist_items'] LOOP
+                           'org_members', 'org_invites', 'setlists', 'setlist_items', 'hymnals', 'hymnal_entries'] LOOP
     IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = t::regclass) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     END IF;

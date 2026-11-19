@@ -23,17 +23,17 @@ Read this whole section before writing code. These rules exist because Ainos is 
 5. Follow existing conventions exactly: ES modules, no framework, no build step; routes as `r.get/post/put/patch/delete('/api/...', auth(async ({ req, res, user, params, query }) => ...))`; throw `HttpError` for client errors; errors as `{ error: { status, message } }`; 22-character base62 ids from `randomId()` / `seededId()`; URIs as `ainos:<type>:<id>`; responses in the Spotify Web API shape; comments explain *why*, briefly.
 6. All SQL uses `?` placeholders in the subset SQLite and Postgres share; `store.js` rewrites them for Postgres. Use `inList(values)` for `IN (...)`. All store calls are async (`all`, `get`, `run`, `tx`).
 7. Frontend: vanilla JS modules in `public/js/`, DOM built only with `h()` from `ui.js`. Never use `innerHTML`, `insertAdjacentHTML`, `document.write`, inline `<script>`, inline `style=` attributes or inline event handlers. The CSP forbids them and they create XSS holes.
-8. Every user-visible string goes through `t('key')`, with the key added for all six languages (en, hi, ne, zh, ja, es) in `public/js/i18n.js`. If you cannot translate a string well, add the English text for that language and list the key under Open questions; never leave a key missing.
+8. Every user-visible string goes through `t('key')`, with the key added in English in `public/js/i18n.js` (or `public/js/strings/*.js`). The interface is English only; songs come in English or Nepali (the listener's **song language**, `server/languages.js`), and only song content (titles, lyrics, recommendations) follows that choice.
 
 ### Keep-in-sync table (from context.md, extended for this spec)
 
 | If you change… | Also change… |
 | --- | --- |
 | A table or column | `server/db.js` (SQLite + its `migrate()`) **and** `server/schema.pg.sql` (Postgres) |
-| Supported languages | `LANGUAGES` in `server/app.js` **and** `public/js/i18n.js` (strings for every language) |
+| Song languages | `SONG_LANGUAGES` in `server/languages.js` **and** `public/js/i18n.js` (English and Nepali) |
 | Security headers / CSP | `SECURITY_HEADERS` in `server/app.js` **and** `headers` in `vercel.json` |
 | Media URL signing | `signMediaPath`/`verifyMediaSignature` in `server/auth.js` **and** `middleware.js` |
-| UI text | Every language in `public/js/i18n.js`, used via `t('key')` |
+| UI text | English, in `public/js/i18n.js` and `public/js/strings/*.js`, used via `t('key')` |
 | A new environment variable | The env table in `context.md` and `README.md`, plus Vercel project settings (owner does this) |
 | A new cron job | `vercel.json` `crons` **and** the protected route in `server/app.js` |
 | A new route | Route tests in `test/api.test.js` (or a new suite) **and** `scripts/smoke.js` if it is user-facing |
@@ -255,7 +255,7 @@ The app is currently Christian in its labels, not its content: tracks like "Suns
 ### 1.3 Copy cleanup
 
 - Remove most repeated "Christian" adjectives in UI strings (for example "Christian songs and more", "Most streamed Christian songs", "Christian releases", "Christian artists you might like"). Keep the faith in the content, not the adjectives: e.g. "Worship artists you might like", "New releases", "Popular this week".
-- All edits go through `public/js/i18n.js` for every language.
+- All edits go through `public/js/i18n.js` (English; the interface is not translated).
 
 ### Done when
 
@@ -292,7 +292,7 @@ The route must not act as an open proxy: it only ever calls the passages, versio
 - Song page and now-playing panel: a "Scripture" card listing references (e.g. Romans 12:1); tapping one expands the passage with attribution.
 - Settings: Bible version picker filtered to the user's language, stored on the user (reuse an existing settings column or a small `user_settings` key-value table; check what exists first).
 - Home: Verse of the Day card.
-- Check language coverage before shipping: list which Bible versions the app key can actually use in en, hi, ne, zh, ja, es. Any language without a licensed version shows the reference and the public-domain fallback only. Record the result under Open questions.
+- Check language coverage before shipping: list which Bible versions the app key can actually use in English and Nepali (both are offered together in one picker). Any language without a licensed version shows the reference and the public-domain fallback only. Record the result under Open questions.
 
 ### 2.4 Seed data
 
@@ -313,7 +313,7 @@ A user types "carry my cross" and gets one ranked list mixing native songs and o
 
 ### 3.1 Curated channel list (manual, once)
 
-- `scripts/worship-channels.js` exports an array of `{ handle, language }`, e.g. `@victoryworship` (en/tl), Hillsong, Elevation Worship, Bethel, CityAlight, plus Nepali, Hindi, Chinese, Japanese and Spanish worship ministries. The owner maintains this list; Claude Code adds only channels the owner names, and verifies each is the official channel.
+- `scripts/worship-channels.js` exports an array of `{ handle, language }`, e.g. `@victoryworship` (en/tl), Hillsong, Elevation Worship, Bethel, CityAlight, plus Nepali worship ministries. Songs are English or Nepali only, so live search drops videos YouTube tags with another language. The owner maintains this list; Claude Code adds only channels the owner names, and verifies each is the official channel.
 - On first sync, each handle is resolved to a channel id and uploads playlist id with `channels.list?forHandle=` (1 unit) and stored in `youtube_channels`.
 
 ### 3.2 Sync job `scripts/sync-youtube.js` + cron route
@@ -522,6 +522,16 @@ Implement as one table in code, `ROLE_CAN = { 'setlist.edit': ['admin','leader']
 | `GET /api/orgs/:orgId/audit` | admin |
 
 Frontend: a church switcher in the sidebar, Members, Setlists and Songs pages, all using `h()` and `t()`.
+
+### 5.8 Numbered hymnals
+
+A church can sing from a numbered hymnal, e.g. a Nepali church hymnal, once its publisher gives permission. The app ships with no hymnal content.
+
+- Tables `hymnals` (id, name, language, permission_note, permission_at, org_id) and `hymnal_entries` (hymnal_id, number, song_id). A hymnal with no `permission_note` is never shown. `org_id` NULL makes it available to every church; otherwise only to that church.
+- `orgs.hymnal_id` is the hymnal the church projects from. Admins pick it on the church page (the card appears only when a permitted hymnal exists).
+- The song search accepts a hymn number: `123`, `#123`, `hymn 123`, `१२३` or `भजन १२३` (`public/js/hymn-number.js`). That song comes first, and Enter adds it ("Add by number").
+- A numbered song's title slide shows "Hymn 123" under its title.
+- Adding a hymnal's rows is an owner task after permission: insert the `hymnals` row with `permission_note` (who granted it, when, any terms), the songs and lyrics as church or global songs, then `hymnal_entries`.
 
 ### 5.7 Church demo account
 

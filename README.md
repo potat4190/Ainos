@@ -5,7 +5,7 @@ A Christian faith-based music streaming app dedicated to Christian worship, prai
 ## Key Features
 
 - **Christian Worship & Devotional Focus**: Every artist, album, and track in the catalog is curated around Christian worship, sanctuary devotion, and praise.
-- **Multi-Language Selector & Recommendations**: Switch seamlessly between **English (`en`)**, **Hindi (`hi`)**, **Nepali (`ne`)**, **Chinese (`zh`)**, **Japanese (`ja`)**, and **Spanish (`es`)** from the top bar or Settings. Switching languages immediately translates the UI text and updates Home recommendations, Discover Weekly, Daily Worship Mixes, Popular Worship Songs, and Praise Radio to recommend Christian songs in that language.
+- **English and Nepali songs**: Pick your song language (**English** or **नेपाली Nepali**) from the top bar or Settings. It changes Home recommendations, Discover Weekly, Daily Worship Mixes, Popular Worship Songs, Praise Radio and which lyrics show first; songs with both get a lyrics switch. The interface itself stays in English.
 - **Unified All-Access Worship Plan**: No Free vs. Premium tier restrictions — every worshipper gets the single All-Access plan with **High (353 kbps lossless-grade PCM)** streaming quality, **unlimited skips**, **offline sanctuary downloads**, and **multi-device Connect** unlocked out of the box.
 
 **How the streaming architecture works, with evidence:** [`docs/HOW-SPOTIFY-WORKS.md`](docs/HOW-SPOTIFY-WORKS.md). You can also read it inside the app under *Under the hood → Read the full evidence report*.
@@ -78,7 +78,7 @@ Running `npm start` with `DATABASE_URL` set uses that database instead of SQLite
 
 ## What to try
 
-1. **Switch languages** using the language selector in the top bar (**English**, **हिन्दी (Hindi)**, **नेपाली (Nepali)**, **中文 (Chinese)**, **日本語 (Japanese)**, **Español (Spanish)**). Watch the interface localize and the Home screen recommend Christian worship songs in the selected language.
+1. **Switch song language** with the selector in the top bar (**English** or **नेपाली (Nepali)**). The Home screen recommends worship songs in that language.
 2. **Play anything** and open the *Now playing* panel (right). It shows the quality (up to High 353 kbps), the track's measured loudness and the gain applied, the start latency, and a countdown to when the play counts as a stream.
 3. **Let a track run into its last 30 seconds.** The next track preloads on a second audio deck. Under the hood shows the prefetched start latency (a few ms) next to the cold start (tens of ms).
    With **Settings → Crossfade** on (2–12 s), the next song starts early on that second deck and the two fade across on an equal-power curve; pausing, seeking or skipping cuts the fade.
@@ -114,7 +114,7 @@ api/index.js     Vercel Function for /api/*
 middleware.js    Vercel middleware: signature check for /media/
 public/
   index.html, css/app.css
-  js/i18n.js     translations & localization helpers (en, hi, ne, zh, ja, es)
+  js/i18n.js     UI strings (English) and the song language (en, ne)
   js/player.js   playback engine: two decks, prefetch, normalization, queue, events
   js/connect.js  device identity + push channel
   js/views.js    pages; js/app.js shell, router, panels; js/ui.js DOM helpers
@@ -123,6 +123,6 @@ docs/HOW-SPOTIFY-WORKS.md   the evidence report
 test/            node:test suites
 ```
 
-**About the music.** The catalog has 33 original worship & devotional tracks across 8 artists, plus 8 public-domain hymns (Amazing Grace, Be Thou My Vision, It Is Well with My Soul and others) whose original tunes are synthesized from note data in `scripts/hymns.js`, each with its sources and lyrics. The original tracks span English, Hindi, Nepali, Chinese, Japanese, and Spanish, synthesized from code at setup time. That keeps the app free of copyrighted audio and external dependencies. Masters are mixed at deliberately different loudness levels (−9 to −19 LUFS), so normalization has something to fix. To use your own audio, add rows to `tracks`/`track_files` pointing at 16-bit PCM WAV files at `data/media/high/<track id>.wav` and `data/media/low/<track id>.wav`.
+**About the music.** The catalog has 33 original worship & devotional tracks across 8 artists, plus 8 public-domain hymns (Amazing Grace, Be Thou My Vision, It Is Well with My Soul and others) whose original tunes are synthesized from note data in `scripts/hymns.js`, each with its sources and lyrics. The original tracks are in English and Nepali, synthesized from code at setup time. That keeps the app free of copyrighted audio and external dependencies. Masters are mixed at deliberately different loudness levels (−9 to −19 LUFS), so normalization has something to fix. To use your own audio, add rows to `tracks`/`track_files` pointing at 16-bit PCM WAV files at `data/media/high/<track id>.wav` and `data/media/low/<track id>.wav`.
 
 **Scale caveats.** In-process recommendations and SSE fan-out are right for one machine. At global scale each piece becomes a service: a CDN for media, Pub/Sub plus Dataflow for events, Voyager/Annoy indexes for nearest-neighbour search, and a stateful connect-state service. The evidence report covers where Ainos deliberately differs.

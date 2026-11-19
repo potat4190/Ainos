@@ -21,7 +21,8 @@ import { isDemo } from './demo.js';
 import { fold } from './util.js';
 import { inList } from './store.js';
 import { songFromVideo } from './youtube.js';
-import { importVideo, splitTitles } from './youtube-import.js';
+import { importVideo, splitTitles, inOtherLanguage } from './youtube-import.js';
+import { songLanguage } from './languages.js';
 
 export const MIN_LOCAL_SONGS = 3; // fewer songs than this in the catalog: worth asking YouTube
 export const MAX_ADDED = 3; // videos one live search may add (owner, Q29)
@@ -71,7 +72,7 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
     const key = foldQuery(q);
     if (!key) return 'off';
     if (localSongs >= MIN_LOCAL_SONGS) return 'enough';
-    const language = user.language || 'en';
+    const language = songLanguage(user.language);
     const at = now();
     const fresh = await store.get('SELECT 1 AS x FROM search_cache WHERE query_folded = ? AND language = ? AND fetched_at > ?', [key, language, at - CACHE_MS]);
     if (fresh) return 'cached';
@@ -106,7 +107,8 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
     const ids = ranked.map((v) => v.videoId);
     const barred = new Set(ids.length ? (await store.all(`SELECT ss.youtube_video_id AS id FROM song_sources ss JOIN songs s ON s.id = ss.song_id
       WHERE ss.youtube_video_id IN (${inList(ids)}) AND (ss.available <> 1 OR s.org_id IS NOT NULL)`, ids)).map((r) => r.id) : []);
-    const chosen = ranked.filter((v) => !barred.has(v.videoId)).slice(0, MAX_ADDED);
+    // Songs are English or Nepali only: a video YouTube tags with another language is left out.
+    const chosen = ranked.filter((v) => !barred.has(v.videoId) && !inOtherLanguage(v)).slice(0, MAX_ADDED);
     // Plainly titled videos first ("Way Maker" on the artist's channel), so one that
     // names the artist in its title ("Way Maker - Leeland") finds that song already there.
     const order = [...chosen.filter((v) => !splitTitles(songFromVideo(v).title).length), ...chosen.filter((v) => splitTitles(songFromVideo(v).title).length)];

@@ -17,9 +17,9 @@ import { SECTION_LABEL } from './songs.js';
 import { requireRole, permissionsOf, effectiveRole, ROLES } from './orgs.js';
 import { assertNotDemo, resetChurchDemo, isChurchDemo, CHURCH_DEMO_USERNAME, CHURCH_DEMO_PASSWORD, DEMO_ORG_ID, DEMO_SESSION_TTL_MS } from './demo.js';
 import { parseLyrics } from '../public/js/lyrics-parse.js';
+import { songLanguage, UI_LANGUAGE } from './languages.js';
+import { visibleHymnals, orgHymnal, hymnNumbers } from './hymnals.js';
 
-// Same list as LANGUAGES in server/app.js (not imported: app.js imports this module).
-const LANGUAGES = ['en', 'hi', 'ne', 'zh', 'ja', 'es'];
 export const LIMITS = Object.freeze({
   setlistsPerOrg: 500, itemsPerSetlist: 40, openInvitesPerOrg: 50, textChars: 500, songsPerOrg: 2000,
   sectionsPerSong: 30, linesPerSection: 12, charsPerLine: 120, arrangementLength: 100, pasteChars: 20_000, orgsPerUser: 20,
@@ -73,7 +73,7 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     const { language } = await readJson(req);
     const exists = await store.get('SELECT 1 AS x FROM users WHERE lower(username) = ? AND is_simulated = 0', [CHURCH_DEMO_USERNAME]);
     const passwordHash = exists ? null : await hashPassword(CHURCH_DEMO_PASSWORD);
-    const userId = await resetChurchDemo(store, { language: LANGUAGES.includes(language) ? language : 'en', passwordHash });
+    const userId = await resetChurchDemo(store, { language: songLanguage(language), passwordHash });
     const token = await createSession(store, userId, { ttlMs: DEMO_SESSION_TTL_MS });
     sendJson(res, 200, { ok: true, org_id: DEMO_ORG_ID },
       { 'Set-Cookie': sessionCookie(token, { secure: isSecure(req, { trustProxy }), maxAgeMs: DEMO_SESSION_TTL_MS }) });
@@ -84,7 +84,7 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     assertNotDemo(user);
     const body = await readJson(req);
     const name = str(body.name, { name: 'name', min: 1, max: 80 });
-    const language = LANGUAGES.includes(body.language) ? body.language : (LANGUAGES.includes(user.language) ? user.language : 'en');
+    const language = songLanguage(body.language, songLanguage(user.language));
     await rateLimit(store, `user:${user.id}:org-create`, { limit: 5, windowSec: 86_400, message: 'Too many churches created today' });
     const id = randomId();
     await store.tx(async (t) => {
@@ -108,7 +108,7 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
   async function orgDto(user, orgId) {
     const m = await requireRole(store, user, orgId, 'org.view');
     const demo = m.org.id === DEMO_ORG_ID;
-    return { ...m.org, role: m.role, permissions: permissionsOf(m.role, user), is_demo: demo, ...(demo && isChurchDemo(user) ? { can_preview_roles: true } : {}) };
+    return { ...m.org, hymnal: await orgHymnal(store, m.org), role: m.role, permissions: permissionsOf(m.role, user), is_demo: demo, ...(demo && isChurchDemo(user) ? { can_preview_roles: true } : {}) };
   }
 
   r.get('/api/orgs/:orgId', auth(async ({ res, user, params }) => {
@@ -118,12 +118,33 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
   r.patch('/api/orgs/:orgId', auth(async ({ req, res, user, params }) => {
     const m = await requireRole(store, user, params.orgId, 'org.edit');
     const body = await readJson(req);
-    const name = str(body.name, { name: 'name', min: 1, max: 80 });
+    const has = (k) => Object.prototype.hasOwnProperty.call(body ?? {}, k);
+    if (!has('name') && !has('hymnal_id')) throw bad('Nothing to change');
+    const name = has('name') ? str(body.name, { name: 'name', min: 1, max: 80 }) : null;
+    // A hymnal can be picked only once its permission is recorded (spec 5.8).
+    let hymnalId;
+    if (has('hymnal_id')) {
+      hymnalId = body.hymnal_id === null || body.hymnal_id === '' ? null : str(body.hymnal_id, { name: 'hymnal', min: 1, max: 64 });
+      if (hymnalId && !(await visibleHymnals(store, m.org_id)).some((h) => h.id === hymnalId)) throw bad('That hymnal isn’t available');
+    }
     await store.tx(async (t) => {
-      await t.run('UPDATE orgs SET name = ? WHERE id = ?', [name, m.org_id]);
-      await audit(t, { orgId: m.org_id, userId: user.id, action: 'org.rename', targetType: 'org', targetId: m.org_id, details: { before: m.org.name, after: name } });
+      if (name !== null) {
+        await t.run('UPDATE orgs SET name = ? WHERE id = ?', [name, m.org_id]);
+        await audit(t, { orgId: m.org_id, userId: user.id, action: 'org.rename', targetType: 'org', targetId: m.org_id, details: { before: m.org.name, after: name } });
+      }
+      if (hymnalId !== undefined) {
+        await t.run('UPDATE orgs SET hymnal_id = ? WHERE id = ?', [hymnalId, m.org_id]);
+        await audit(t, { orgId: m.org_id, userId: user.id, action: 'org.hymnal', targetType: 'org', targetId: m.org_id, details: { before: m.org.hymnal_id, after: hymnalId } });
+      }
     });
     sendJson(res, 200, await orgDto(user, m.org_id));
+  }));
+
+  // Numbered hymnals this church may project from (spec 5.8); empty until a
+  // hymnal's permission is recorded.
+  r.get('/api/orgs/:orgId/hymnals', auth(async ({ res, user, params }) => {
+    const m = await requireRole(store, user, params.orgId, 'org.view');
+    sendJson(res, 200, await visibleHymnals(store, m.org_id));
   }));
 
   // Members see names and roles only, within their own church (spec 5.5). Admins
@@ -429,7 +450,9 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
     const rows = await store.all(`SELECT s.id, s.title, s.artist, s.language, s.org_id FROM songs s
       WHERE s.org_id = ? OR (s.org_id IS NULL AND EXISTS (SELECT 1 FROM song_sections x WHERE x.song_id = s.id AND (x.org_id IS NULL OR x.org_id = ?)))
       LIMIT 3000`, [m.org_id, m.org_id]);
-    sendJson(res, 200, rows.map((x) => ({ id: x.id, title: x.title, artist: x.artist, language: x.language, org_song: x.org_id !== null }))
+    // Each song's number in the church's hymnal, so the song search finds "123" (spec 5.8).
+    const numbers = await hymnNumbers(store, (await orgHymnal(store, m.org))?.id);
+    sendJson(res, 200, rows.map((x) => ({ id: x.id, title: x.title, artist: x.artist, language: x.language, org_song: x.org_id !== null, hymn_number: numbers.get(x.id) ?? null }))
       .sort((a, b) => Number(b.org_song) - Number(a.org_song) || a.title.localeCompare(b.title)));
   }));
 
@@ -475,7 +498,7 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
 
   // ---------------- slides (for the Present dialog) ----------------
   /** Slides for one song item, from global + this org's lyrics only. */
-  async function songSlides(orgId, item) {
+  async function songSlides(orgId, item, numbers = new Map()) {
     const song = await store.get('SELECT id, title, language, org_id FROM songs WHERE id = ? AND (org_id IS NULL OR org_id = ?)', [item.song_id, orgId]);
     if (!song) return { title: '', slides: [], source: null, hasTimings: false };
     // Sections: this church's row wins over the global one for the same label.
@@ -511,19 +534,21 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
       const list = pick ? parseJson(pick.timings, null) : null;
       if (Array.isArray(list) && list.length) timings = list.map((x) => ({ ...x, ms: Number(x.ms) + Number(pick.offset_ms || 0) }));
     }
-    return { title: song.title, slides: toSlides(sections, order, { maxLines: 4, timings }), source, hasTimings: !!timings };
+    const hymnNumber = numbers.get(song.id) ?? null;
+    return { title: song.title, hymnNumber, slides: toSlides(sections, order, { maxLines: 4, timings }), source, hasTimings: !!timings };
   }
 
   r.get('/api/orgs/:orgId/setlists/:id/slides', auth(async ({ res, user, params }) => {
     const m = await requireRole(store, user, params.orgId, 'projection.run');
     const s = await setlistDto(m.org_id, params.id);
+    const numbers = await hymnNumbers(store, (await orgHymnal(store, m.org))?.id);
     const items = [];
     for (const [i, it] of s.items.entries()) {
       const base = { id: it.id, kind: it.kind, title: it.title, slides: [], source: null, hasTimings: false };
       if (it.kind === 'song') {
-        items.push({ ...base, ...(await songSlides(m.org_id, it)), id: it.id, kind: it.kind });
+        items.push({ ...base, ...(await songSlides(m.org_id, it, numbers)), id: it.id, kind: it.kind });
       } else if (it.kind === 'scripture') {
-        const p = await scripture.getPassage({ usfm: it.usfm_ref, language: user.language });
+        const p = await scripture.getPassage({ usfm: it.usfm_ref, language: UI_LANGUAGE });
         const reference = p.reference || referenceName(it.usfm_ref);
         const attribution = p.version ? [p.version.abbreviation || p.version.title, p.version.copyright].filter(Boolean).join(' · ') : null;
         items.push({ ...base, title: reference, slides: [{ id: `scripture-${i}`, label: reference, lines: [p.text || reference], attribution }] });

@@ -86,7 +86,7 @@ test('all users can stream high quality and switch languages for recommendations
   assert.equal(hi.file.quality, 'high');
   assert.equal(hi.available_qualities.find((q) => q.quality === 'high').allowed, true);
 
-  for (const lang of ['en', 'hi', 'ne', 'zh', 'ja', 'es']) {
+  for (const lang of ['en', 'ne']) {
     const res = await c.post('/api/me/language', { language: lang });
     assert.equal(res.status, 200);
     assert.equal(res.json.language, lang);
@@ -97,6 +97,8 @@ test('all users can stream high quality and switch languages for recommendations
     assert.ok(home.popular.every((tr) => tr.language === lang), `popular songs match ${lang}`);
   }
   assert.equal((await c.post('/api/me/language', { language: 'xx' })).status, 400);
+  // Songs are English or Nepali only; the old song languages are refused.
+  for (const old of ['hi', 'zh', 'ja', 'es']) assert.equal((await c.post('/api/me/language', { language: old })).status, 400, old);
 });
 
 test('single plan: no tiers or skip limits, every account gets high quality', async () => {
@@ -116,31 +118,36 @@ test('single plan: no tiers or skip limits, every account gets high quality', as
 
 test('the saved language drives recommendations without a ?lang override', async () => {
   const c = client(srv.base);
-  assert.equal((await c.post('/api/auth/signup', { username: 'polyglot', password: 'correct horse battery', language: 'ja' })).status, 201);
-  assert.equal((await c.get('/api/me')).json.language, 'ja', 'signup stores the chosen language');
+  assert.equal((await c.post('/api/auth/signup', { username: 'polyglot', password: 'correct horse battery', language: 'ne' })).status, 201);
+  assert.equal((await c.get('/api/me')).json.language, 'ne', 'signup stores the chosen language');
   let home = (await c.get('/api/home')).json;
-  assert.equal(home.language, 'ja');
-  const ja = home.recommended.map((t) => t.id);
-  assert.ok(ja.length > 0 && home.recommended.every((t) => t.language === 'ja'));
+  assert.equal(home.language, 'ne');
+  const ne = home.recommended.map((t) => t.id);
+  assert.ok(ne.length > 0 && home.recommended.every((t) => t.language === 'ne'));
 
-  await c.post('/api/me/language', { language: 'es' });
-  assert.equal((await c.get('/api/me')).json.language, 'es', 'language change persists across requests');
+  await c.post('/api/me/language', { language: 'en' });
+  assert.equal((await c.get('/api/me')).json.language, 'en', 'language change persists across requests');
   home = (await c.get('/api/home')).json;
-  assert.equal(home.language, 'es');
-  assert.ok(home.recommended.length > 0 && home.recommended.every((t) => t.language === 'es'));
-  assert.ok(!home.recommended.some((t) => ja.includes(t.id)), 'switching language replaces the recommendations');
-  assert.ok(home.popular.length > 0 && home.popular.every((t) => t.language === 'es'));
+  assert.equal(home.language, 'en');
+  assert.ok(home.recommended.length > 0 && home.recommended.every((t) => t.language === 'en'));
+  assert.ok(!home.recommended.some((t) => ne.includes(t.id)), 'switching language replaces the recommendations');
+  assert.ok(home.popular.length > 0 && home.popular.every((t) => t.language === 'en'));
+
+  // An old song language at signup falls back to English.
+  const old = client(srv.base);
+  assert.equal((await old.post('/api/auth/signup', { username: 'olduser-es', password: 'correct horse battery', language: 'es' })).status, 201);
+  assert.equal((await old.get('/api/me')).json.language, 'en');
 });
 
 test('Discover Weekly puts songs in the requested language first', async () => {
-  for (const lang of ['zh', 'ja', 'es']) {
+  for (const lang of ['ne']) {
     const dw = (await demo.get(`/api/made-for-you/discover-weekly?lang=${lang}`)).json;
     assert.ok(dw.tracks.length >= 2);
     assert.equal(dw.tracks[0].language, lang, `first Discover Weekly pick is in ${lang}`);
   }
   const en = (await demo.get('/api/made-for-you/discover-weekly?lang=en')).json;
-  const zh = (await demo.get('/api/made-for-you/discover-weekly?lang=zh')).json;
-  assert.notDeepEqual(en.tracks.map((t) => t.id), zh.tracks.map((t) => t.id), 'each language has its own weekly snapshot');
+  const ne = (await demo.get('/api/made-for-you/discover-weekly?lang=ne')).json;
+  assert.notDeepEqual(en.tracks.map((t) => t.id), ne.tracks.map((t) => t.id), 'each language has its own weekly snapshot');
 });
 
 // --------------------------------------------------------------- events
@@ -501,14 +508,14 @@ const demoState = async (c) => {
 
 test('try the demo: one request signs in, with no password on the client', async () => {
   demoSrv = await startTestServer({ demoSignInsPerMinute: DEMO_LIMIT });
-  const { c, r } = await tryDemo({ language: 'es' });
+  const { c, r } = await tryDemo({ language: 'ne' });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('set-cookie'), /HttpOnly/);
   assert.match(r.headers.get('set-cookie'), /Max-Age=86400(;|$)/, 'demo sessions last a day, not 30');
   const me = (await c.get('/api/me')).json;
   assert.equal(me.username, 'demo');
   assert.equal(me.is_demo, true);
-  assert.equal(me.language, 'es', 'the language picked on the sign-in screen');
+  assert.equal(me.language, 'ne', 'the language picked on the sign-in screen');
   const html = await (await fetch(demoSrv.base + '/js/app.js')).text();
   assert.doesNotMatch(html, /ainos-demo/, 'the demo password is not in the client code');
 });
@@ -538,7 +545,7 @@ test('each demo sign-in puts back the same snapshot, whatever the last visitor d
   for (const id of before.artists) await first.del(`/api/me/following/${id}`);
   const track = (await first.get('/api/home')).json.popular.at(-1);
   await first.post('/api/playlists', { name: 'Mine now', track_ids: [track.id] });
-  await first.post('/api/me/language', { language: 'ja' });
+  await first.post('/api/me/language', { language: 'ne' });
   await first.post('/api/events', { events: [{ type: 'play_end', track_id: track.id, device_id: 'x', ms_played: 40_000, reason: 'trackdone' }] });
   const { c: next } = await tryDemo();
   assert.deepEqual(await demoState(next), before);

@@ -55,7 +55,7 @@ const GLOBAL_SONG = 'song_id IN (SELECT id FROM songs WHERE org_id IS NULL)';
 export const CATALOG_SYNC = [
   { table: 'artists', key: ['id'], update: ['name', 'genre', 'language', 'bio', 'image', 'color'] },
   { table: 'albums', key: ['id'], update: ['title', 'year', 'type', 'cover', 'color'] },
-  { table: 'tracks', key: ['id'], update: ['title'] },
+  { table: 'tracks', key: ['id'], update: ['title', 'language'] },
   { table: 'tracks', key: ['id'], where: HYMNS, target: `tracks.${HYMNS}`, regenerated: true,
     update: ['duration_ms', 'loudness_lufs', 'peak_db', 'tempo', 'key', 'mode', 'energy', 'valence', 'danceability', 'acousticness'] },
   { table: 'track_files', key: ['track_id', 'quality'], update: [] },
@@ -300,6 +300,10 @@ export async function seedPostgres({ sqliteFile, databaseUrl, migrationUrl, lost
     client = await open(databaseUrl);
     await checkSchema(client);
     log('✓ Postgres schema up to date');
+    // Songs are English or Nepali only; a church's own songs in another
+    // language are left as they are, and listed here so they can be reviewed.
+    const other = (await client.query("SELECT language, count(*)::int AS n FROM songs WHERE org_id IS NOT NULL AND language NOT IN ('en', 'ne') GROUP BY language ORDER BY language")).rows;
+    if (other.length) log(`! Church songs in a language other than English or Nepali (left as they are): ${other.map((r) => `${r.language} ${r.n}`).join(', ')}`);
 
     // Sort in JS: Postgres orders text by locale collation, SQLite by bytes.
     const generatedIds = src.prepare('SELECT id FROM tracks').all().map((r) => r.id).sort();

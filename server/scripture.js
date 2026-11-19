@@ -27,13 +27,13 @@ const HOUR_MS = 3600 * 1000;
 const RETRY_MS = 5 * 60 * 1000; // a failed version list or Verse of the Day is retried after this
 const PAUSE_MS = 60 * 1000; // after a timeout, network error or 5xx, no calls for this long
 
-// Bible versions proposed per UI language once the owner approves them
+// Bible versions proposed per song language once the owner approves them
 // (Q14: listed from what the key can use; no hard-coded guesses). Until then a
 // listener without a chosen version gets the fallback.
 export const DEFAULT_VERSIONS = {};
 
-// The language range sent to YouVersion for each UI language (BCP 47).
-const LANGUAGE_RANGE = { en: 'en', hi: 'hi', ne: 'ne', zh: 'zh', ja: 'ja', es: 'es' };
+// The language range sent to YouVersion for each song language (BCP 47).
+const LANGUAGE_RANGE = { en: 'en', ne: 'ne' };
 
 // English book names, for references shown without YouVersion (which
 // returns its own, localized, with each passage).
@@ -144,7 +144,7 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
     language: String(b.language_tag || ''),
   });
 
-  /** The versions the app key can use for a UI language ([] without a key or when the API fails; failures aren't cached). */
+  /** The versions the app key can use for a song language ([] without a key or when the API fails; failures aren't cached). */
   async function listVersions(language) {
     const range = LANGUAGE_RANGE[language];
     if (!appKey || !range) return [];
@@ -182,7 +182,7 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
   }
 
   /**
-   * Whether the key can use a version, in any UI language: 'allowed',
+   * Whether the key can use a version, in any song language: 'allowed',
    * 'not_allowed', or 'unknown' when a list could not be had (no key, API down).
    */
   async function versionStatus(id) {

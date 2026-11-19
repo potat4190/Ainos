@@ -50,7 +50,7 @@ export async function requireRole(store, user, orgId, permission) {
   if (!user?.id || typeof orgId !== 'string' || !orgId || orgId.length > 64) throw notFound();
   // The shared demo accounts: the listener demo has no church; the church demo only the demo church.
   if (isDemo(user) && !(isChurchDemo(user) && orgId === DEMO_ORG_ID)) throw notFound();
-  const row = await store.get(`SELECT m.role, o.id, o.name, o.default_language FROM org_members m JOIN orgs o ON o.id = m.org_id
+  const row = await store.get(`SELECT m.role, o.id, o.name, o.default_language, o.hymnal_id FROM org_members m JOIN orgs o ON o.id = m.org_id
     WHERE m.org_id = ? AND m.user_id = ?`, [orgId, user.id]);
   if (!row) throw notFound();
   if (isChurchDemo(user) && CHURCH_DEMO_FORBIDDEN.has(permission)) {
@@ -58,7 +58,7 @@ export async function requireRole(store, user, orgId, permission) {
   }
   const role = effectiveRole(user, row.id, row.role);
   if (!allowed.includes(role)) throw new HttpError(403, 'Your role in this church can’t do this', 'forbidden_role');
-  return { org_id: row.id, role, org: { id: row.id, name: row.name, default_language: row.default_language } };
+  return { org_id: row.id, role, org: { id: row.id, name: row.name, default_language: row.default_language, hymnal_id: row.hymnal_id ?? null } };
 }
 
 /** What a role may do, for the UI (the server checks again on every request). */

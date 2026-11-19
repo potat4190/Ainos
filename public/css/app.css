@@ -17,7 +17,8 @@
   --player-h: 84px;
   --sidebar-w: 300px;
   --right-w: 340px;
-  --font: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* Devanagari faces follow the Latin ones so Nepali lyrics use a proper font on every system (Windows, Apple, Android). */
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, "Nirmala UI", "Kohinoor Devanagari", "Noto Sans Devanagari", "Mangal", sans-serif;
   color-scheme: dark;
 }
 
@@ -489,6 +490,7 @@ dialog h2 { margin-bottom: 16px; }
 .lyrics { padding-bottom: 40vh; }
 .lyrics-head { margin-bottom: 8px; }
 .lyrics-head .rp-title { margin-top: 0; }
+.lyrics-lang { margin: 8px 0; }
 .lyrics-sec { margin: 12px 0 4px; }
 .lyrics-sec-label { display: inline-block; margin: 0 0 6px 8px; padding: 1px 7px; border-radius: 4px; background: rgb(255 255 255 / .05); color: var(--text-3); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .lyric-line { display: block; width: 100%; margin: 1px 0; padding: 5px 8px; border-radius: 6px; color: var(--text-3); font-size: 18px; font-weight: 700; line-height: 1.35; text-align: left; transition: color .3s ease, opacity .3s ease; }

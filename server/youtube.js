@@ -204,7 +204,7 @@ export function createYouTube({ apiKey = process.env.YOUTUBE_API_KEY, fetch = gl
   /**
    * One live search: embeddable music videos for `q`, best match first, with
    * their details. Costs one search.list call and one videos.list call.
-   * `language` (a UI language code) only nudges YouTube's ranking.
+   * `language` (a song language code) only nudges YouTube's ranking.
    */
   async function searchVideos(q, { language = null } = {}) {
     const query = typeof q === 'string' ? q.replace(/\s+/g, ' ').trim().slice(0, 100) : '';

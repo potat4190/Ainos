@@ -363,6 +363,46 @@ test('churches on an existing database: sessions gain demo_role, invites arrive,
   assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM org_invites WHERE org_id = $1', [DEMO_ORG_ID]), 0, 'invites wiped at reset');
 });
 
+test('English and Nepali only, on an existing database: old languages move to English, hymnals arrive, a deploy lists church songs in other languages', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  await pg.connectTo('owner');
+  // A database from before: no hymnals, old song languages in use.
+  await pg.db.exec('DROP TABLE hymnal_entries; DROP TABLE hymnals; ALTER TABLE orgs DROP COLUMN hymnal_id');
+  const user = Number((await rows(pg, "INSERT INTO users (username, display_name, language, created_at) VALUES ('maria', 'Maria', 'es', 0) RETURNING id"))[0].id);
+  await pg.db.query("INSERT INTO orgs (id, name, default_language, created_by, created_at) VALUES ('o-old', 'Iglesia', 'es', $1, 0)", [user]);
+  const artist = (await rows(pg, "SELECT id FROM artists WHERE language = 'en' ORDER BY id LIMIT 1"))[0].id;
+  const nepali = (await rows(pg, "SELECT id FROM artists WHERE language = 'ne'")).map((r) => r.id);
+  assert.equal(nepali.length, 1, 'Ossa is the Nepali artist');
+  await pg.db.query("UPDATE artists SET language = 'hi' WHERE id = $1", [artist]);
+  await pg.db.query("UPDATE tracks SET language = 'hi' WHERE artist_id = $1", [artist]);
+  await pg.db.exec(`INSERT INTO songs (id, title, artist, language, org_id, created_at, updated_at) VALUES
+      ('s-old-ja', 'Old', 'A', 'ja', NULL, 0, 0), ('s-church-es', 'Iglesia song', 'A', 'es', 'o-old', 0, 0);
+    INSERT INTO song_sources (id, song_id, source, youtube_video_id, available) VALUES
+      ('src-old-ja', 's-old-ja', 'youtube', 'jjjjjjjjjjj', 1), ('src-church-es', 's-church-es', 'youtube', 'eeeeeeeeeee', 1);`);
+  await pg.db.exec(SCHEMA);
+  await pg.db.exec(SCHEMA);
+
+  assert.equal((await rows(pg, 'SELECT language FROM users WHERE id = $1', [user]))[0].language, 'en');
+  assert.equal((await rows(pg, "SELECT default_language FROM orgs WHERE id = 'o-old'"))[0].default_language, 'en');
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM artists WHERE language NOT IN ('en', 'ne')"), 0);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM tracks WHERE language NOT IN ('en', 'ne')"), 0);
+  assert.deepEqual((await rows(pg, "SELECT id, available FROM song_sources WHERE id IN ('src-old-ja', 'src-church-es') ORDER BY id")).map((r) => [r.id, Number(r.available)]),
+    [['src-church-es', 1], ['src-old-ja', 0]], 'a global song in another language stops playing; a church song is left alone');
+  assert.equal((await rows(pg, "SELECT language FROM songs WHERE id = 's-church-es'"))[0].language, 'es');
+  for (const t of ['hymnals', 'hymnal_entries']) {
+    assert.equal((await rows(pg, `SELECT has_table_privilege('ainos_app', '${t}', 'SELECT,INSERT,UPDATE,DELETE') AS ok`))[0].ok, true, t);
+    assert.equal((await rows(pg, `SELECT relrowsecurity AS on FROM pg_class WHERE relname = '${t}'`))[0].on, true, t);
+  }
+
+  // A deploy keeps the catalog in English and Nepali and lists the church song left in Spanish.
+  const lines = [];
+  await seed(pg, full, { log: (l) => lines.push(l) });
+  assert.ok(lines.some((l) => /Church songs in a language other than English or Nepali.*es 1/.test(l)), lines.join('\n'));
+  assert.equal((await rows(pg, 'SELECT language FROM artists WHERE id = $1', [artist]))[0].language, 'en');
+  assert.deepEqual((await rows(pg, "SELECT id FROM artists WHERE language = 'ne'")).map((r) => r.id), nepali);
+});
+
 test('live search on an existing database: search_cache arrives, the app role keeps one row per query and language, and a deploy leaves it alone', { skip: SKIP }, async () => {
   const pg = await newDatabase();
   await seed(pg, full);

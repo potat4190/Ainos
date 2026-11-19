@@ -6,7 +6,7 @@ Quick orientation for anyone (human or AI assistant) picking up work on this rep
 
 Ainos (Greek *αἶνος*, "praise") is a Christian worship and praise music streaming app modelled on Spotify's architecture. It is a learning/demo project with an evidence report ([docs/HOW-SPOTIFY-WORKS.md](docs/HOW-SPOTIFY-WORKS.md)) that maps each feature to how Spotify does it.
 
-- **Catalog:** 33 original tracks across 8 artists in 6 languages (en, hi, ne, zh, ja, es), plus 8 public-domain hymns (`scripts/hymns.js`: sourced melodies, every printed stanza as lyrics, a `songs` row each). All audio is synthesized from code at setup time, so there is no copyrighted audio.
+- **Catalog:** 33 original tracks across 8 artists in English and Nepali (Ossa is the Nepali artist), plus 8 public-domain hymns (`scripts/hymns.js`: sourced melodies, every printed stanza as lyrics, a `songs` row each). All audio is synthesized from code at setup time, so there is no copyrighted audio.
 - **One plan:** every user gets "All-Access" (high quality, unlimited skips, offline, Connect). There is no Free/Premium split; the old `plan` column is dropped by a migration.
 - **Language drives everything:** the user's `language` sets the UI translation *and* which songs get recommended.
 - **Demo:** "Try the demo" (`POST /api/auth/demo`) resets the shared `demo` account to a snapshot (`server/demo.js`) and signs in. `demo` / `ainos-demo` still works and does not reset.
@@ -56,10 +56,10 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 | If you change… | Also change… |
 |---|---|
 | A table or column | Both `server/db.js` (SQLite, plus its `migrate()`) **and** `server/schema.pg.sql` (Postgres) |
-| Supported languages | `LANGUAGES` in `server/app.js` **and** `public/js/i18n.js` (plus strings for every language in `STRINGS`) |
+| Song languages | `SONG_LANGUAGES` in `server/languages.js` **and** `public/js/i18n.js` (English and Nepali; the UI is English only) |
 | Security headers / CSP | `SECURITY_HEADERS` in `server/app.js` **and** `headers` in `vercel.json` |
 | Media URL signing | `signMediaPath`/`verifyMediaSignature` in `server/auth.js` **and** `middleware.js` |
-| UI text | Add the key to every language in `public/js/i18n.js`, use it via `t('key')`; list non-English strings in `docs/i18n-review.md` |
+| UI text | Add the key in English to `public/js/i18n.js` or `public/js/strings/*.js`, use it via `t('key')` |
 | A hymn's `scripture` or the Verse of the Day fallback list | Re-run `node scripts/build-scripture-fallback.js <engwebp_vpl.xml>` so the bundled WEB text covers it (`test/scripture.test.js` fails otherwise) |
 
 ## Gotchas
@@ -99,7 +99,7 @@ No key is ever read from `public/` code, embedded in HTML, logged or returned in
 ## Testing
 
 - `test/helpers.js` → `startTestServer()` generates a quick catalog in a temp dir and starts the app on a random port with SQLite; `login()` / `signup()` give a cookie-keeping client.
-- Suites: `api` (routes, auth, playlists, security incl. CSRF and cookies, the demo reset on its own server), `audit`, `catalog-ids` (track ids and audio inputs never change; fixtures in `test/fixtures/`), `connect`, `crossfade` (pure timing and curve logic from `public/js/crossfade.js`), `i18n` (every key in all six languages), `loudness`, `media-signing` (server and middleware agree, secret rotation), `recommend`, `schema` (db.js and schema.pg.sql match; RLS and grants), `search`, `shell` (service worker caches every module), `smoke` (runs `scripts/smoke.js` locally), `store`, `validate`. `startTestServer(options)` passes options to `createApp`.
+- Suites: `api` (routes, auth, playlists, security incl. CSRF and cookies, the demo reset on its own server), `audit`, `catalog-ids` (track ids and audio inputs never change; fixtures in `test/fixtures/`), `connect`, `crossfade` (pure timing and curve logic from `public/js/crossfade.js`), `i18n` (English strings, song languages), `loudness`, `media-signing` (server and middleware agree, secret rotation), `recommend`, `schema` (db.js and schema.pg.sql match; RLS and grants), `search`, `shell` (service worker caches every module), `smoke` (runs `scripts/smoke.js` locally), `store`, `validate`. `startTestServer(options)` passes options to `createApp`.
 - Tests run with `--test-concurrency=1`.
 - Adding catalog tracks on purpose: `AINOS_UPDATE_CATALOG_SNAPSHOT=1 npm test` appends them to the fixtures (it can never change an existing entry).
 

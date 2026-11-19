@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name  TEXT NOT NULL,
   password_hash TEXT,
-  language      TEXT NOT NULL DEFAULT 'en',  -- UI language + which songs get recommended
+  language      TEXT NOT NULL DEFAULT 'en',  -- song language (en or ne): which songs get recommended; the UI is English only
   is_simulated  INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL
 );
@@ -334,9 +334,30 @@ CREATE TABLE IF NOT EXISTS orgs (
   name             TEXT NOT NULL,
   default_language TEXT NOT NULL,
   bible_version_id INTEGER,
+  hymnal_id        TEXT,  -- the numbered hymnal this church projects from (hymnals)
   created_by       INTEGER NOT NULL,
   created_at       INTEGER NOT NULL
 );
+-- Numbered hymnals, e.g. a Nepali church hymnal (spec 5.8). A hymnal is shown
+-- only once permission_note records the publisher's permission. org_id NULL
+-- means every church may use it; otherwise only that church.
+CREATE TABLE IF NOT EXISTS hymnals (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  language        TEXT NOT NULL,
+  permission_note TEXT,
+  permission_at   INTEGER,
+  org_id          TEXT REFERENCES orgs(id) ON DELETE CASCADE,
+  created_by      INTEGER,
+  created_at      INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hymnal_entries (
+  hymnal_id TEXT NOT NULL REFERENCES hymnals(id) ON DELETE CASCADE,
+  number    INTEGER NOT NULL CHECK (number > 0),
+  song_id   TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  PRIMARY KEY (hymnal_id, number)
+);
+CREATE INDEX IF NOT EXISTS hymnal_entries_song ON hymnal_entries(song_id);
 CREATE TABLE IF NOT EXISTS org_members (
   org_id    TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
   user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -389,9 +410,10 @@ CREATE TABLE IF NOT EXISTS setlist_items (
 
 // Language tags for the artists of the original (pre-language) seed catalog,
 // used once to upgrade databases created before songs had a language.
+// Songs are English or Nepali only now, so Ossa is the one Nepali artist.
 const LEGACY_ARTIST_LANGUAGES = {
   'Lumen Drift': 'en', 'Juniper Lane': 'en', 'Neon Harbor': 'en',
-  'Copper Fox': 'hi', 'Ossa': 'ne', 'Velvet Static': 'zh', 'Kite Theory': 'ja', 'Polar Bloom': 'es',
+  'Copper Fox': 'en', 'Ossa': 'ne', 'Velvet Static': 'en', 'Kite Theory': 'en', 'Polar Bloom': 'en',
 };
 
 const columns = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
@@ -424,6 +446,25 @@ function migrate(db) {
 
   // The app fills in folded for these rows when it starts (Catalog.foldMissing).
   if (!columns(db, 'search_index').includes('folded')) db.exec("ALTER TABLE search_index ADD COLUMN folded TEXT NOT NULL DEFAULT ''");
+
+  if (!columns(db, 'orgs').includes('hymnal_id')) db.exec('ALTER TABLE orgs ADD COLUMN hymnal_id TEXT');
+  migrateSongLanguages(db);
+}
+
+/**
+ * Songs come in English or Nepali only (server/languages.js). Listeners and
+ * churches set to another language move to English; catalog artists and
+ * tracks in another language become English; global songs in another
+ * language stop playing (their sources are marked unavailable, which an admin
+ * can undo). A church's own songs are left as they are. Same as schema.pg.sql.
+ */
+function migrateSongLanguages(db) {
+  const keep = "('en', 'ne')";
+  db.exec(`UPDATE users SET language = 'en' WHERE language NOT IN ${keep}`);
+  db.exec(`UPDATE orgs SET default_language = 'en' WHERE default_language NOT IN ${keep}`);
+  db.exec(`UPDATE artists SET language = 'en' WHERE language NOT IN ${keep}`);
+  db.exec(`UPDATE tracks SET language = 'en' WHERE language NOT IN ${keep}`);
+  db.exec(`UPDATE song_sources SET available = 0 WHERE available = 1 AND song_id IN (SELECT id FROM songs WHERE org_id IS NULL AND language NOT IN ${keep})`);
 }
 
 export function openDb(file) {

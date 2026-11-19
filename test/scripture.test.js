@@ -17,14 +17,14 @@ const KEY = 'test-app-key-7f3c9e1d5b';
 const UPSTREAM_TEXT = 'UPSTREAM VERSE TEXT 8d2f';
 
 /**
- * A fake YouVersion. English has version 111 and Spanish 222; `mode` makes
+ * A fake YouVersion. English has version 111 and Nepali 222; `mode` makes
  * every call fail ('error'), hang until aborted ('timeout') or answer.
  */
 function fakeYouVersion() {
   const fake = { mode: 'ok', calls: [] };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const versions = { 111: { id: 111, abbreviation: 'TST', title: 'Test Version', copyright: '© Test Publisher', language_tag: 'en' },
-    222: { id: 222, abbreviation: 'PRB', title: 'Prueba', copyright: '© Editorial', language_tag: 'es' } };
+    222: { id: 222, abbreviation: 'NTB', title: 'Nepali Test Bible', copyright: '© Nepali Publisher', language_tag: 'ne' } };
   fake.fetch = async (url, init = {}) => {
     const u = new URL(url);
     fake.calls.push({ url: u.href, key: init.headers?.['X-YVP-App-Key'], redirect: init.redirect });
@@ -119,16 +119,16 @@ test('the Verse of the Day turns over at the listener’s midnight, not UTC’s'
 
 test('a version is refused only when every language list loaded; a failed list is retried later, not on every request', async () => {
   const fake = fakeYouVersion();
-  let failHindi = true;
+  let failNepali = true;
   let clock = 0;
-  const fetch = (url, init) => (failHindi && new URL(url).searchParams.get('language_ranges[]') === 'hi' ? Promise.reject(new TypeError('fetch failed')) : fake.fetch(url, init));
+  const fetch = (url, init) => (failNepali && new URL(url).searchParams.get('language_ranges[]') === 'ne' ? Promise.reject(new TypeError('fetch failed')) : fake.fetch(url, init));
   const s = createScripture({ appKey: KEY, fetch, now: () => clock });
   assert.equal(await s.versionStatus(111), 'allowed');
-  assert.equal(await s.versionStatus(999), 'unknown', 'the Hindi list failed: 999 might be Hindi');
+  assert.equal(await s.versionStatus(999), 'unknown', 'the Nepali list failed: 999 might be Nepali');
   const calls = fake.calls.length;
   assert.equal(await s.versionStatus(999), 'unknown');
   assert.equal(fake.calls.length, calls, 'lists, failed ones included, are cached');
-  failHindi = false;
+  failNepali = false;
   clock += 6 * 60 * 1000;
   assert.equal(await s.versionStatus(999), 'not_allowed', 'retried after 5 minutes');
   assert.equal(await createScripture({ appKey: '' }).versionStatus(111), 'unknown');
@@ -174,7 +174,7 @@ test('concurrent callers share one version-list load per language', async () => 
   const s = createScripture({ appKey: KEY, fetch: fake.fetch });
   const results = await Promise.all(Array.from({ length: 10 }, () => s.versionStatus(111)));
   assert.ok(results.every((r) => r === 'allowed'));
-  assert.equal(fake.calls.filter((c) => new URL(c.url).pathname === '/v1/bibles').length, 6, 'one list request per UI language');
+  assert.equal(fake.calls.filter((c) => new URL(c.url).pathname === '/v1/bibles').length, 2, 'one list request per song language (English and Nepali)');
 });
 
 test('past the app-wide daily budget, Scripture answers from the fallback without calling YouVersion', async () => {
@@ -216,7 +216,7 @@ test('admins come from ADMIN_USER_IDS only, and a demo account never is one', ()
   assert.equal(parseAdminIds(undefined).size, 0);
 });
 
-test('without a key: English gets the WEB text with its attribution, other languages the reference alone', async () => {
+test('without a key: the WEB text with its attribution, whatever the song language', async () => {
   const c = record(await signup(noKey.base, 'reader'));
   const r = await c.get('/api/scripture/php.4.6-7');
   assert.equal(r.status, 200);
@@ -230,10 +230,11 @@ test('without a key: English gets the WEB text with its attribution, other langu
   assert.equal(chapter.json.text, null, 'a reference the bundle lacks still answers, with no text');
   assert.equal(chapter.json.reference, 'Psalm 23');
 
-  await c.post('/api/me/language', { language: 'hi' });
-  const hi = await c.get('/api/scripture/EPH.2.8');
-  assert.equal(hi.status, 200);
-  assert.deepEqual([hi.json.text, hi.json.version, hi.json.source, hi.json.reference], [null, null, 'none', 'Ephesians 2:8']);
+  // The interface is English, so a Nepali-song listener reads the English fallback too.
+  await c.post('/api/me/language', { language: 'ne' });
+  const ne = await c.get('/api/scripture/EPH.2.8');
+  assert.equal(ne.status, 200);
+  assert.deepEqual([ne.json.text, ne.json.version.abbreviation, ne.json.source, ne.json.reference], [fallbackText('EPH.2.8'), 'WEB', 'fallback', 'Ephesians 2:8']);
   const votd = await c.get('/api/scripture/votd');
   assert.equal(votd.status, 200);
   assert.ok(VOTD_FALLBACK.includes(votd.json.usfm));
@@ -283,7 +284,7 @@ test('with a key: YouVersion text in the chosen version, with its attribution; t
   // A version saved while using another language is named in the picker, not shown as a bare id.
   await c.putJson('/api/me/bible-version', { version: 222 });
   const other = (await c.get('/api/scripture/versions?lang=en')).json;
-  assert.deepEqual([other.selected, other.selected_version?.abbreviation, other.selected_version?.title], [222, 'PRB', 'Prueba']);
+  assert.deepEqual([other.selected, other.selected_version?.abbreviation, other.selected_version?.title], [222, 'NTB', 'Nepali Test Bible']);
   await c.putJson('/api/me/bible-version', { version: 111 });
   assert.equal((await c.get('/api/scripture/versions?lang=en')).json.selected_version, null, 'one in the list needs no extra name');
   assert.equal((await c.putJson('/api/me/bible-version', { version: '1; DROP TABLE users' })).status, 400);
