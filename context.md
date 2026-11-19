@@ -88,6 +88,8 @@ Key server modules: `app.js` (routes, security headers), `store.js` (SQLite/Post
 | `DATABASE_MIGRATION_URL` | build (optional) | Owner connection; when set, the build applies `schema.pg.sql` |
 | `AINOS_SECRET_PREVIOUS` | prod (only while rotating) | The old `AINOS_SECRET`, still accepted for media URLs during a rotation (README: "Rotating secrets") |
 | `YOUVERSION_APP_KEY` | prod + local (optional) | YouVersion Platform App Key, sent as `X-YVP-App-Key`; missing → public-domain Scripture fallback |
+| `YOUTUBE_API_KEY` | prod + local (optional) | YouTube Data API key for live search (`server/youtube-search.js`, `POST /api/search/youtube`); missing → local search only |
+| `YOUTUBE_DAILY_SEARCH_CAP` | optional | App-wide live searches a day (default 80) |
 | `ADMIN_USER_IDS` | prod (optional) | Comma-separated user ids of catalog admins (e.g. may edit a song's Scripture). Checked on the server only; shared demo accounts never count |
 | `YOUTUBE_API_KEY` | prod + local (optional) | Used from Phase 3. YouTube Data API v3 key, restricted to that API in Google Cloud; missing → search shows only the local index |
 | `CRON_SECRET` | prod | Used from Phase 3. Vercel sends `Authorization: Bearer <CRON_SECRET>` to cron routes, which refuse anything else |

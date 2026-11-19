@@ -1,8 +1,12 @@
 // Listener routes: YouTube sources, song lyrics and timings.
 // Owner: Phases 3-4 (search, YouTube, lyrics). Registered by createApp (server/app.js) with the shared context.
-import { HttpError, sendJson } from './http.js';
+import { HttpError, sendJson, readJson } from './http.js';
 import { inList } from './store.js';
 import { memberOrgIds } from './orgs.js';
+import { noDemo } from './demo.js';
+import { rateLimit } from './auth.js';
+import { str } from './validate.js';
+import { queryKey, cachedSearch, saveResults } from './youtube-search.js';
 
 export const LANGS = ['en', 'hi', 'ne', 'zh', 'ja', 'es']; // LANGUAGES in app.js (not imported: app.js imports this file)
 
@@ -70,7 +74,38 @@ export async function songLyrics(store, catalog, songId, user, lang = null) {
  * @param {object} ctx { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log }
  *   r: Router (r.get/post/put/patch/delete(pattern, handler)); auth(handler) adds ctx.user or 401s.
  */
-export function register({ r, store, auth }) {
+export function register({ r, store, auth, catalog, clientIp, log, youtubeSearch, youtubeDailyCap = 80 }) {
+  // Live YouTube search (spec 3.3 path B): the listener asks for it with a
+  // button when the local results fall short, so typing never spends quota.
+  // A query searched in the last 7 days answers from its cache; the results
+  // join the catalog, so later searches find them locally.
+  r.post('/api/search/youtube', auth(noDemo(async ({ req, res, user }) => {
+    if (!youtubeSearch?.enabled) throw new HttpError(503, 'YouTube search isn’t set up on this server', 'not_configured');
+    const body = await readJson(req, 4096);
+    const q = str(body.q, { name: 'q', min: 2, max: 100 });
+    const key = queryKey(q);
+    if (key.length < 2) throw new HttpError(400, 'Type a song or artist to search for', 'bad_request');
+    let songIds = await cachedSearch(store, key);
+    const cached = songIds !== null;
+    if (!cached) {
+      const busy = 'YouTube search is busy, try again later';
+      await rateLimit(store, `user:${user.id}:yt-search`, { limit: 10, windowSec: 3600, message: busy });
+      await rateLimit(store, `user:${user.id}:yt-search`, { limit: 30, windowSec: 86400, message: busy });
+      await rateLimit(store, `ip:${clientIp(req)}:yt-search`, { limit: 30, windowSec: 3600, message: busy });
+      await rateLimit(store, 'all:yt-search', { limit: youtubeDailyCap, windowSec: 86400, message: 'YouTube search has reached today’s limit, try again tomorrow' });
+      let videos;
+      try {
+        videos = await youtubeSearch.search(q, { lang: user.language });
+      } catch (err) {
+        log?.('[youtube-search]', err.message);
+        throw new HttpError(502, 'YouTube search isn’t answering right now, try again later', 'youtube_unavailable');
+      }
+      songIds = await saveResults(store, key, videos, { lang: user.language });
+    }
+    const songs = await catalog.songsByIds(songIds, { limit: 15 });
+    sendJson(res, 200, { songs: { items: songs }, cached });
+  })));
+
   // Timings for one recording, as far as the user may see them (global + their orgs').
   r.get('/api/sources/:id/timings', auth(async ({ res, user, params, query }) => {
     const id = params.id;

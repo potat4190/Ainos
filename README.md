@@ -54,6 +54,8 @@ Environment variables on Vercel:
 | `DATABASE_MIGRATION_URL` | Optional, build only: a connection as the tables' owner. When set, the build applies `schema.pg.sql` before checking it. |
 | `AINOS_SECRET_PREVIOUS` | Only while rotating `AINOS_SECRET`: the old value, still accepted for media URLs (see *Rotating secrets*). |
 | `YOUVERSION_APP_KEY` | Optional. YouVersion Platform App Key for Scripture text in the listener's Bible version. Without it, Scripture falls back to public-domain text (English: World English Bible; other languages: the reference alone). |
+| `YOUTUBE_API_KEY` | Optional. YouTube Data API v3 key (restrict it to the YouTube Data API in Google Cloud). Turns on "Search YouTube for …" in search: a signed-in listener (not the demo) can ask YouTube once per query when the catalog has fewer than 3 songs for it; the results join the catalog. Without it, search is local only. |
+| `YOUTUBE_DAILY_SEARCH_CAP` | Optional, default 80. Live YouTube searches a day for the whole app (YouTube allows 100 `search.list` calls a day per project). |
 | `ADMIN_USER_IDS` | Optional. Comma-separated user ids of catalog admins, who may edit a song's Scripture references. Find yours at `/api/me` (`id`) while signed in; Preview and Production have different ids. Demo accounts are never admins. |
 | `YOUTUBE_API_KEY` | Used from Phase 3, optional. YouTube Data API v3 key, restricted in Google Cloud to that API only. Without it, search shows only the local index. |
 | `CRON_SECRET` | Used from Phase 3. A long random string; Vercel sends it to cron routes, which refuse requests without it. |

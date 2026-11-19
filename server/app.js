@@ -18,6 +18,7 @@ import { normalizationGainDb } from './loudness.js';
 import { resetDemo, isDemo, noDemo, DEMO_USERNAMES, DEMO_SESSION_TTL_MS } from './demo.js';
 import { randomId, toUri, searchText } from './util.js';
 import { createScripture, referenceName, DEFAULT_VERSIONS } from './scripture.js';
+import { createYouTubeSearch, purgeYouTubeCache } from './youtube-search.js';
 import { FALLBACK_SOURCE } from './scripture-fallback.js';
 import { parseAdminIds, assertAdmin } from './admin.js';
 import { audit } from './audit.js';
@@ -59,6 +60,8 @@ export async function createApp({
   adminUserIds = process.env.ADMIN_USER_IDS,
   scripture = createScripture({ log }),
   scriptureDailyBudget = Number(process.env.SCRIPTURE_DAILY_BUDGET) || 20_000, // YouVersion requests a day, all listeners
+  youtubeSearch = createYouTubeSearch(),
+  youtubeDailyCap = Number(process.env.YOUTUBE_DAILY_SEARCH_CAP) || 80, // live YouTube searches a day, all listeners (YouTube allows 100)
 } = {}) {
   const adminIds = parseAdminIds(adminUserIds);
   let store;
@@ -84,7 +87,7 @@ export async function createApp({
 
   // Housekeeping: expired sessions, old mix snapshots and old rate-limit windows
   // are never read again; search rows written by older versions get folded text.
-  const housekeeping = () => Promise.all([purgeExpiredSessions(store), recommender.pruneSnapshots(), purgeRateLimits(store), catalog.foldMissing()])
+  const housekeeping = () => Promise.all([purgeExpiredSessions(store), recommender.pruneSnapshots(), purgeRateLimits(store), catalog.foldMissing(), purgeYouTubeCache(store)])
     .catch((err) => log('[housekeeping]', err.message));
   housekeeping();
   const housekeepingTimer = setInterval(housekeeping, 6 * 3600 * 1000);
@@ -305,7 +308,7 @@ export async function createApp({
   }));
 
   // Feature route modules (Phases 3-6), registered before the catalog routes.
-  const routeCtx = { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log };
+  const routeCtx = { r, store, auth, catalog, scripture, adminIds, clientIp, isSecure, trustProxy, log, youtubeSearch, youtubeDailyCap };
   registerListenerRoutes(routeCtx);
   registerChurchRoutes(routeCtx);
 
@@ -401,9 +404,10 @@ export async function createApp({
     });
   }));
 
-  r.get('/api/search', auth(async ({ res, query }) => {
+  r.get('/api/search', auth(async ({ res, query, user }) => {
     const q = (query.get('q') || '').slice(0, 100);
-    sendJson(res, 200, await catalog.search(q));
+    // live_search: may this user ask YouTube for more (POST /api/search/youtube)?
+    sendJson(res, 200, { ...await catalog.search(q), live_search: youtubeSearch.enabled && !isDemo(user) });
   }));
 
   r.get('/api/browse/genres', auth(async ({ res }) => {

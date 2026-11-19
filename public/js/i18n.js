@@ -1955,6 +1955,7 @@ const ERROR_KEYS = {
   bad_credentials: 'errBadCredentials', username_taken: 'errUsernameTaken', bad_username: 'errBadUsername', bad_password: 'errBadPassword',
   rate_limited: 'errRateLimited', network: 'errNetwork', offline: 'errOffline', timeout: 'errTimeout', server: 'errServer', demo_private: 'errDemoPrivate',
   demo_not_allowed: 'errDemoNotAllowed', forbidden_role: 'errForbiddenRole',
+  not_configured: 'errYouTubeSearch', youtube_unavailable: 'errYouTubeSearch',
 };
 
 /** A message for an API error in the current language (the server's English text when there is no translation). */

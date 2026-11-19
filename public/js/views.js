@@ -260,11 +260,16 @@ export async function search(el, params, app) {
   }
   const r = await api.get(`/api/search?q=${encodeURIComponent(q)}`);
   const songItems = r.songs?.items || [];
+  // Few songs here: offer one live YouTube search (spec 3.3 path B). A button,
+  // so typing never spends YouTube's small daily quota.
+  const live = r.live_search && songItems.length < 3 && q.trim().length >= 2 ? liveSearch(app, q.trim(), songItems) : null;
   if (!songItems.length && !r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) {
     results.append(empty(t('noResultsTitle', { q }), t('noResultsSub')));
+    if (live) results.append(live);
     return;
   }
   if (songItems.length) results.append(section(t('songsGroup'), h('div', { class: 'song-results', role: 'list' }, songItems.map((sg) => songResult(app, sg))), { sub: t('songsGroupSub') }));
+  if (live) results.append(live);
   if (!r.tracks.length && !r.artists.length && !r.albums.length && !r.playlists.length) return;
   const top = r.top?.item;
   const songs = r.tracks.slice(0, 4);
@@ -288,6 +293,30 @@ export async function search(el, params, app) {
   if (r.artists.length) results.append(section(t('artists'), grid(r.artists.map((a) => card(app, { art: img(a.image), title: a.name, sub: t('artist'), href: `#/artist/${a.id}`, round: true })))));
   if (r.albums.length) results.append(section(t('albums'), grid(r.albums.map((a) => card(app, { art: img(a.cover), title: a.title, sub: `${a.year} · ${a.artist.name}`, href: `#/album/${a.id}`, onPlay: async () => app.player.playContext(await loadCtx('album', a.id), 0) })))));
   if (r.playlists.length) results.append(section(t('filterPlaylists'), grid(r.playlists.map(translateEditorial).map((p) => card(app, { art: mosaic(p.covers), title: p.name, sub: t('byOwner', { name: p.owner.name }), href: `#/playlist/${p.id}` })))));
+}
+
+/** The "Search YouTube for …" section; its results replace the button. Songs already listed are left out. */
+function liveSearch(app, q, shown) {
+  const box = h('div', { class: 'live-search', 'aria-live': 'polite' });
+  const btn = h('button', { class: 'btn btn-ghost btn-sm', type: 'button' }, icon('search'), t('liveSearchBtn', { q }));
+  const hint = h('p', { class: 'dim small' }, t('liveSearchHint'));
+  btn.addEventListener('click', safely(async () => {
+    hint.textContent = t('liveSearching');
+    try {
+      const { songs } = await api.post('/api/search/youtube', { q });
+      const seen = new Set(shown.map((s) => s.id));
+      const items = (songs?.items || []).filter((sg) => !seen.has(sg.id));
+      clear(box);
+      box.append(items.length
+        ? section(t('liveResults'), h('div', { class: 'song-results', role: 'list' }, items.map((sg) => songResult(app, sg))))
+        : h('p', { class: 'muted' }, t('liveNone', { q })));
+    } catch (err) {
+      hint.textContent = t('liveSearchHint');
+      throw err;
+    }
+  }));
+  box.append(btn, hint);
+  return box;
 }
 
 export async function library(el, params, app) {

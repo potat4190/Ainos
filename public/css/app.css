@@ -472,6 +472,7 @@ dialog h2 { margin-bottom: 16px; }
 .yt-thumb { width: 96px; height: 72px; flex: none; object-fit: contain; background: #000; border-radius: 6px; }
 .np-left .yt-thumb-sm { width: 64px; height: 48px; }
 .song-results { display: flex; flex-direction: column; gap: 8px; }
+.live-search { margin: 8px 0 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .song-result { display: flex; align-items: flex-start; gap: 14px; padding: 10px; border-radius: 8px; background: var(--panel-2); }
 .song-result .art { width: 72px; height: 72px; flex: none; border-radius: 6px; }
 .song-result-main { flex: 1; min-width: 0; }

@@ -185,7 +185,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prSecE` | Ending | समापन | 6 |
 | [ ] | `prSecI` | Intro | आरंभ | 6 |
 | [ ] | `songsGroup` | Songs | गीत | 3-4 |
-| [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos रिकॉर्डिंग और YouTube के आधिकारिक वीडियो | 3-4 |
+| [ ] | `songsGroupSub` | Ainos recordings and YouTube videos | Ainos रिकॉर्डिंग और YouTube वीडियो | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
 | [ ] | `sourceNative` | Ainos recording | Ainos रिकॉर्डिंग | 3-4 |
 | [ ] | `kindOfficial` | Official video | आधिकारिक वीडियो | 3-4 |
@@ -195,8 +195,8 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `ytFallback` | YouTube couldn’t play this here. | YouTube इसे यहाँ नहीं चला सका। | 3-4 |
 | [ ] | `ytWatch` | Watch on YouTube ↗ | YouTube पर देखें ↗ | 3-4 |
 | [ ] | `ytFrameTitle` | YouTube video player: {title} | YouTube वीडियो प्लेयर: {title} | 3-4 |
-| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player, from the official channel. | आधिकारिक चैनल से, YouTube के अपने प्लेयर में चलता है। | 3-4 |
-| [ ] | `ytVideoLabel` | Official video on YouTube | YouTube पर आधिकारिक वीडियो | 3-4 |
+| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player. | YouTube के अपने प्लेयर में चलता है। | 3-4 |
+| [ ] | `ytVideoLabel` | Video on YouTube | YouTube पर वीडियो | 3-4 |
 | [ ] | `lyricsBtn` | Lyrics | बोल | 3-4 |
 | [ ] | `lyricsTitle` | Lyrics | बोल | 3-4 |
 | [ ] | `lyricsNone` | No lyrics for this song | इस गीत के बोल उपलब्ध नहीं हैं | 3-4 |
@@ -214,6 +214,12 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | टैग | 3-4 |
 | [ ] | `sectionIntro` | Intro | आरंभ | 3-4 |
 | [ ] | `sectionEnding` | Ending | समापन | 3-4 |
+| [ ] | `liveSearchBtn` | Search YouTube for “{q}” | YouTube पर “{q}” खोजें | 3 |
+| [ ] | `liveSearchHint` | Finds more songs on YouTube. They play in YouTube’s own player. | YouTube पर और गीत खोजता है। वे YouTube के अपने प्लेयर में चलते हैं। | 3 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube पर खोज रहे हैं… | 3 |
+| [ ] | `liveResults` | From YouTube | YouTube से | 3 |
+| [ ] | `liveNone` | YouTube found no songs for “{q}”. | YouTube पर “{q}” के लिए कोई गीत नहीं मिला। | 3 |
+| [ ] | `errYouTubeSearch` | YouTube search isn’t available right now. Try again later. | YouTube खोज अभी उपलब्ध नहीं है। बाद में फिर कोशिश करें। | 3 |
 
 ## Nepali (ne)
 
@@ -393,7 +399,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prSecE` | Ending | अन्त्य | 6 |
 | [ ] | `prSecI` | Intro | सुरुवात | 6 |
 | [ ] | `songsGroup` | Songs | गीतहरू | 3-4 |
-| [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos रेकर्डिङ र YouTube का आधिकारिक भिडियोहरू | 3-4 |
+| [ ] | `songsGroupSub` | Ainos recordings and YouTube videos | Ainos रेकर्डिङ र YouTube भिडियोहरू | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
 | [ ] | `sourceNative` | Ainos recording | Ainos रेकर्डिङ | 3-4 |
 | [ ] | `kindOfficial` | Official video | आधिकारिक भिडियो | 3-4 |
@@ -403,8 +409,8 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `ytFallback` | YouTube couldn’t play this here. | YouTube ले यसलाई यहाँ बजाउन सकेन। | 3-4 |
 | [ ] | `ytWatch` | Watch on YouTube ↗ | YouTube मा हेर्नुहोस् ↗ | 3-4 |
 | [ ] | `ytFrameTitle` | YouTube video player: {title} | YouTube भिडियो प्लेयर: {title} | 3-4 |
-| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player, from the official channel. | आधिकारिक च्यानलबाट, YouTube कै प्लेयरमा बज्छ। | 3-4 |
-| [ ] | `ytVideoLabel` | Official video on YouTube | YouTube मा आधिकारिक भिडियो | 3-4 |
+| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player. | YouTube कै प्लेयरमा बज्छ। | 3-4 |
+| [ ] | `ytVideoLabel` | Video on YouTube | YouTube मा भिडियो | 3-4 |
 | [ ] | `lyricsBtn` | Lyrics | गीतका शब्द | 3-4 |
 | [ ] | `lyricsTitle` | Lyrics | गीतका शब्द | 3-4 |
 | [ ] | `lyricsNone` | No lyrics for this song | यो गीतका शब्दहरू उपलब्ध छैनन् | 3-4 |
@@ -422,6 +428,12 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | ट्याग | 3-4 |
 | [ ] | `sectionIntro` | Intro | सुरुवात | 3-4 |
 | [ ] | `sectionEnding` | Ending | समापन | 3-4 |
+| [ ] | `liveSearchBtn` | Search YouTube for “{q}” | YouTube मा “{q}” खोज्नुहोस् | 3 |
+| [ ] | `liveSearchHint` | Finds more songs on YouTube. They play in YouTube’s own player. | YouTube मा थप गीतहरू खोज्छ। ती YouTube कै प्लेयरमा बज्छन्। | 3 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube मा खोज्दै… | 3 |
+| [ ] | `liveResults` | From YouTube | YouTube बाट | 3 |
+| [ ] | `liveNone` | YouTube found no songs for “{q}”. | YouTube मा “{q}” का लागि कुनै गीत भेटिएन। | 3 |
+| [ ] | `errYouTubeSearch` | YouTube search isn’t available right now. Try again later. | YouTube खोज अहिले उपलब्ध छैन। पछि फेरि प्रयास गर्नुहोस्। | 3 |
 
 ## Chinese (zh)
 
@@ -599,7 +611,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prSecE` | Ending | 结尾 | 6 |
 | [ ] | `prSecI` | Intro | 前奏 | 6 |
 | [ ] | `songsGroup` | Songs | 诗歌 | 3-4 |
-| [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos 录音和 YouTube 官方视频 | 3-4 |
+| [ ] | `songsGroupSub` | Ainos recordings and YouTube videos | Ainos 录音和 YouTube 视频 | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
 | [ ] | `sourceNative` | Ainos recording | Ainos 录音 | 3-4 |
 | [ ] | `kindOfficial` | Official video | 官方视频 | 3-4 |
@@ -609,8 +621,8 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `ytFallback` | YouTube couldn’t play this here. | YouTube 无法在这里播放此视频。 | 3-4 |
 | [ ] | `ytWatch` | Watch on YouTube ↗ | 在 YouTube 上观看 ↗ | 3-4 |
 | [ ] | `ytFrameTitle` | YouTube video player: {title} | YouTube 视频播放器：{title} | 3-4 |
-| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player, from the official channel. | 来自官方频道，在 YouTube 自己的播放器中播放。 | 3-4 |
-| [ ] | `ytVideoLabel` | Official video on YouTube | YouTube 官方视频 | 3-4 |
+| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player. | 在 YouTube 自己的播放器中播放。 | 3-4 |
+| [ ] | `ytVideoLabel` | Video on YouTube | YouTube 视频 | 3-4 |
 | [ ] | `lyricsBtn` | Lyrics | 歌词 | 3-4 |
 | [ ] | `lyricsTitle` | Lyrics | 歌词 | 3-4 |
 | [ ] | `lyricsNone` | No lyrics for this song | 这首诗歌没有歌词 | 3-4 |
@@ -628,6 +640,12 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | 尾句 | 3-4 |
 | [ ] | `sectionIntro` | Intro | 前奏 | 3-4 |
 | [ ] | `sectionEnding` | Ending | 结尾 | 3-4 |
+| [ ] | `liveSearchBtn` | Search YouTube for “{q}” | 在 YouTube 上搜索“{q}” | 3 |
+| [ ] | `liveSearchHint` | Finds more songs on YouTube. They play in YouTube’s own player. | 在 YouTube 上查找更多诗歌，在 YouTube 自己的播放器中播放。 | 3 |
+| [ ] | `liveSearching` | Searching YouTube… | 正在搜索 YouTube… | 3 |
+| [ ] | `liveResults` | From YouTube | 来自 YouTube | 3 |
+| [ ] | `liveNone` | YouTube found no songs for “{q}”. | YouTube 上没有找到“{q}”的诗歌。 | 3 |
+| [ ] | `errYouTubeSearch` | YouTube search isn’t available right now. Try again later. | YouTube 搜索暂时不可用，请稍后再试。 | 3 |
 
 ## Japanese (ja)
 
@@ -800,7 +818,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prSecE` | Ending | エンディング | 6 |
 | [ ] | `prSecI` | Intro | イントロ | 6 |
 | [ ] | `songsGroup` | Songs | 賛美歌 | 3-4 |
-| [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Ainos の録音と YouTube の公式動画 | 3-4 |
+| [ ] | `songsGroupSub` | Ainos recordings and YouTube videos | Ainos の録音と YouTube の動画 | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
 | [ ] | `sourceNative` | Ainos recording | Ainos の録音 | 3-4 |
 | [ ] | `kindOfficial` | Official video | 公式動画 | 3-4 |
@@ -810,8 +828,8 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `ytFallback` | YouTube couldn’t play this here. | YouTube はここでこの動画を再生できませんでした。 | 3-4 |
 | [ ] | `ytWatch` | Watch on YouTube ↗ | YouTube で見る ↗ | 3-4 |
 | [ ] | `ytFrameTitle` | YouTube video player: {title} | YouTube 動画プレーヤー：{title} | 3-4 |
-| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player, from the official channel. | 公式チャンネルから、YouTube 自身のプレーヤーで再生します。 | 3-4 |
-| [ ] | `ytVideoLabel` | Official video on YouTube | YouTube の公式動画 | 3-4 |
+| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player. | YouTube 自身のプレーヤーで再生します。 | 3-4 |
+| [ ] | `ytVideoLabel` | Video on YouTube | YouTube の動画 | 3-4 |
 | [ ] | `lyricsBtn` | Lyrics | 歌詞 | 3-4 |
 | [ ] | `lyricsTitle` | Lyrics | 歌詞 | 3-4 |
 | [ ] | `lyricsNone` | No lyrics for this song | この曲には歌詞がありません | 3-4 |
@@ -829,6 +847,12 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | タグ | 3-4 |
 | [ ] | `sectionIntro` | Intro | イントロ | 3-4 |
 | [ ] | `sectionEnding` | Ending | エンディング | 3-4 |
+| [ ] | `liveSearchBtn` | Search YouTube for “{q}” | YouTube で「{q}」を検索 | 3 |
+| [ ] | `liveSearchHint` | Finds more songs on YouTube. They play in YouTube’s own player. | YouTube でさらに曲を探します。YouTube のプレーヤーで再生されます。 | 3 |
+| [ ] | `liveSearching` | Searching YouTube… | YouTube を検索中… | 3 |
+| [ ] | `liveResults` | From YouTube | YouTube から | 3 |
+| [ ] | `liveNone` | YouTube found no songs for “{q}”. | YouTube で「{q}」の曲は見つかりませんでした。 | 3 |
+| [ ] | `errYouTubeSearch` | YouTube search isn’t available right now. Try again later. | YouTube 検索は現在利用できません。後でもう一度お試しください。 | 3 |
 
 ## Spanish (es)
 
@@ -1008,7 +1032,7 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `prSecE` | Ending | Final | 6 |
 | [ ] | `prSecI` | Intro | Intro | 6 |
 | [ ] | `songsGroup` | Songs | Canciones | 3-4 |
-| [ ] | `songsGroupSub` | Ainos recordings and official YouTube videos | Grabaciones de Ainos y videos oficiales de YouTube | 3-4 |
+| [ ] | `songsGroupSub` | Ainos recordings and YouTube videos | Grabaciones de Ainos y videos de YouTube | 3-4 |
 | [ ] | `sourceYouTube` | YouTube | YouTube | 3-4 |
 | [ ] | `sourceNative` | Ainos recording | Grabación de Ainos | 3-4 |
 | [ ] | `kindOfficial` | Official video | Video oficial | 3-4 |
@@ -1018,8 +1042,8 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `ytFallback` | YouTube couldn’t play this here. | YouTube no pudo reproducir esto aquí. | 3-4 |
 | [ ] | `ytWatch` | Watch on YouTube ↗ | Ver en YouTube ↗ | 3-4 |
 | [ ] | `ytFrameTitle` | YouTube video player: {title} | Reproductor de video de YouTube: {title} | 3-4 |
-| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player, from the official channel. | Se reproduce en el propio reproductor de YouTube, desde el canal oficial. | 3-4 |
-| [ ] | `ytVideoLabel` | Official video on YouTube | Video oficial en YouTube | 3-4 |
+| [ ] | `ytPlaysFrom` | Plays in YouTube’s own player. | Se reproduce en el propio reproductor de YouTube. | 3-4 |
+| [ ] | `ytVideoLabel` | Video on YouTube | Video en YouTube | 3-4 |
 | [ ] | `lyricsBtn` | Lyrics | Letra | 3-4 |
 | [ ] | `lyricsTitle` | Lyrics | Letra | 3-4 |
 | [ ] | `lyricsNone` | No lyrics for this song | Esta canción no tiene letra | 3-4 |
@@ -1037,6 +1061,12 @@ Catalog display names in other languages (from `scripts/catalog-names.js`, Phase
 | [ ] | `sectionTag` | Tag | Tag | 3-4 |
 | [ ] | `sectionIntro` | Intro | Intro | 3-4 |
 | [ ] | `sectionEnding` | Ending | Final | 3-4 |
+| [ ] | `liveSearchBtn` | Search YouTube for “{q}” | Buscar “{q}” en YouTube | 3 |
+| [ ] | `liveSearchHint` | Finds more songs on YouTube. They play in YouTube’s own player. | Busca más canciones en YouTube. Se reproducen en el reproductor de YouTube. | 3 |
+| [ ] | `liveSearching` | Searching YouTube… | Buscando en YouTube… | 3 |
+| [ ] | `liveResults` | From YouTube | De YouTube | 3 |
+| [ ] | `liveNone` | YouTube found no songs for “{q}”. | YouTube no encontró canciones para “{q}”. | 3 |
+| [ ] | `errYouTubeSearch` | YouTube search isn’t available right now. Try again later. | La búsqueda en YouTube no está disponible ahora. Inténtalo más tarde. | 3 |
 
 ## Catalog display names (Phase 1)
 
