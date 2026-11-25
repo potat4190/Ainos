@@ -220,12 +220,12 @@ export async function createApp({
   r.get('/api/scripture/versions', auth(async ({ req, res, user, query }) => {
     const language = query.get('lang') || user.language;
     if (!LANGUAGES.includes(language)) throw new HttpError(400, `lang must be one of: ${LANGUAGES.join(', ')}`);
-    await scriptureLimit(req, user);
+    const upstream = await scriptureLimit(req, user);
     const fallback = language === FALLBACK_SOURCE.language
       ? { abbreviation: FALLBACK_SOURCE.abbreviation, title: FALLBACK_SOURCE.title, copyright: FALLBACK_SOURCE.copyright } : null;
     const [versions, selected] = await Promise.all([scripture.listVersions(language), bibleVersionOf(user.id)]);
     // A version saved while using another language isn't in this list; send its name so the picker can show it.
-    const selectedVersion = selected && !versions.some((v) => v.id === selected) ? await scripture.describeVersion(selected) : null;
+    const selectedVersion = selected && !versions.some((v) => v.id === selected) ? await scripture.describeVersion(selected, { upstream }) : null;
     sendJson(res, 200, {
       language, versions, default: DEFAULT_VERSIONS[language] ?? null,
       selected, selected_version: selectedVersion, fallback,

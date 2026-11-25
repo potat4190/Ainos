@@ -326,8 +326,10 @@ export async function search(el, params, app) {
       return;
     }
     if (cancelled) return;
-    const added = r.live === 'searched' && (r.songs?.items || []).length > songsFound;
-    if (r.live === 'searched') show(r);
+    // More songs than before: this search added them, or one running at the same
+    // moment did (then this one is answered 'cached'). Either way, show them.
+    const added = (r.songs?.items || []).length > songsFound;
+    if (r.live === 'searched' || added) show(r);
     say(added ? 'liveAdded' : LIVE_NOTES[r.live] || null);
   };
   const timer = setTimeout(live, LIVE_WAIT_MS);

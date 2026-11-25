@@ -91,17 +91,21 @@ export function openTapSync(app, { track, sourceId, language, lines, existing = 
     rows[Math.min(cursor, rows.length - 1)]?.row.scrollIntoView({ block: 'nearest' });
   }
 
+  // Taps in the order made, each with the time it replaced, so Undo takes back the last one.
+  const taps = [];
   function tap() {
     if (!playingThis() || cursor >= lines.length) return;
+    taps.push({ i: cursor, before: times[cursor] });
     times[cursor] = Math.round(app.player.view().positionMs);
     cursor = times.findIndex((x, i) => i > cursor && !Number.isFinite(x));
     if (cursor < 0) cursor = lines.length;
     render();
   }
   function undo() {
-    const last = cursor > 0 ? cursor - 1 : lines.length - 1;
-    times[last] = NaN;
-    cursor = last;
+    const last = taps.pop();
+    if (!last) return; // nothing tapped in this dialog yet
+    times[last.i] = last.before;
+    cursor = last.i;
     render();
   }
 

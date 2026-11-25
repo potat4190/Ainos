@@ -134,6 +134,17 @@ test('a version is refused only when every language list loaded; a failed list i
   assert.equal(await createScripture({ appKey: '' }).versionStatus(111), 'unknown');
 });
 
+test('describeVersion: with the daily budget used up, only a cached name, never a call', async () => {
+  const fake = fakeYouVersion();
+  const s = createScripture({ appKey: KEY, fetch: fake.fetch });
+  assert.equal(await s.describeVersion(222, { upstream: false }), null, 'not cached yet: nothing, and no call');
+  assert.equal(fake.calls.length, 0);
+  assert.equal((await s.describeVersion(222)).abbreviation, 'PRB');
+  const calls = fake.calls.length;
+  assert.equal((await s.describeVersion(222, { upstream: false })).abbreviation, 'PRB', 'the cached name still shows');
+  assert.equal(fake.calls.length, calls);
+});
+
 test('after a timeout or a 5xx, YouVersion is left alone for a minute: answers come from the fallback at once', async () => {
   const fake = fakeYouVersion();
   let clock = 1_000_000;

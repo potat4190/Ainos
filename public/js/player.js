@@ -698,13 +698,21 @@ export class Player extends EventTarget {
       onState: (state) => {
         if (this.yt !== y) return;
         // Time actually playing, for the play_end event (YouTube reports no progress events of its own).
-        if (state === YT_STATE.PLAYING) { y.since ??= Date.now(); y.playing = true; y.problem = null; }
-        else if (y.since !== null) { y.msPlayed += Date.now() - y.since; y.since = null; }
+        if (state === YT_STATE.PLAYING) {
+          y.playing = true;
+          y.problem = null;
+          if (y.ended) this.#beginYouTubeSession('playbtn', y.ctrl.currentMs()); // played again after it finished
+          else if (y.pendingStart) this.#logYouTubeStart(y.pendingStart); // it was loaded paused and starts now
+          y.since ??= Date.now();
+        } else if (y.since !== null) { y.msPlayed += Date.now() - y.since; y.since = null; }
         if (state === YT_STATE.PAUSED) y.playing = false;
         else if (state === YT_STATE.ENDED) {
           y.playing = false;
           // Repeat-one loops the video itself (next() handles it), even with nothing queued.
           if (this.repeat === 'track' || this.peekNext()) { this.next('trackdone'); return; }
+          // Nothing comes next: the play is over now, not when something else replaces the video.
+          this.#endYouTubeSession('trackdone');
+          y.ended = true;
         }
         this.reportState(true);
         this.#changed();
@@ -719,17 +727,27 @@ export class Player extends EventTarget {
 
   // A video's play is logged like a song's, with its source instead of a track
   // (spec 3.4): the server keeps it as an event and never counts it as a stream.
+  // A video loaded paused (a transfer with play off) logs play_start only once it plays.
   #beginYouTubeSession(reason, positionMs) {
     const y = this.yt;
     y.msPlayed = 0;
     y.since = y.playing && y.since !== null ? Date.now() : null;
     y.reasonStart = reason;
+    y.ended = false;
+    y.pendingStart = { reason, positionMs };
+    if (y.playing) this.#logYouTubeStart(y.pendingStart);
+  }
+
+  #logYouTubeStart({ reason, positionMs }) {
+    const y = this.yt;
+    y.pendingStart = null;
     this.#log('play_start', { source_id: y.track.youtube.sourceId, reason, position_ms: Math.round(positionMs) });
   }
 
   #endYouTubeSession(reason) {
     const y = this.yt;
     if (!y || y.ended) return;
+    if (y.pendingStart) { y.pendingStart = null; return; } // it never started: no play to end
     if (y.since !== null) { y.msPlayed += Date.now() - y.since; y.since = y.playing ? Date.now() : null; }
     this.#log('play_end', { source_id: y.track.youtube.sourceId, reason, ms_played: Math.round(y.msPlayed), position_ms: Math.round(y.ctrl.currentMs()), data: { reason_start: y.reasonStart } });
     y.msPlayed = 0;

@@ -202,9 +202,16 @@ export function createScripture({ appKey = process.env.YOUVERSION_APP_KEY, fetch
     return version;
   }
 
-  /** A version's details for showing it, whatever its language; null when they can't be had. */
-  async function describeVersion(id) {
+  /**
+   * A version's details for showing it, whatever its language; null when they
+   * can't be had. upstream false (the daily budget is used up): only what is cached.
+   */
+  async function describeVersion(id, { upstream = true } = {}) {
     if (!appKey) return null;
+    if (!upstream) {
+      const hit = versionInfo.get(id);
+      return hit && now() - hit.at < DAY_MS ? hit.version : null;
+    }
     try {
       return await getVersion(id);
     } catch (err) {
