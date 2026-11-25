@@ -26,5 +26,5 @@ export const YOUTUBE_VIDEOS = [
   },
 ];
 
-/** The thumbnail YouTube serves for every public video. */
-export const thumbnailUrl = (videoId) => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+// The thumbnail YouTube serves for every public video (one definition, shared with the live search).
+export { thumbnailUrl } from '../server/youtube.js';

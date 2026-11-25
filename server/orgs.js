@@ -19,6 +19,16 @@ export const ROLE_CAN = Object.freeze({
 // What the shared church demo may never do, even as the demo church's admin (spec 5.7).
 const CHURCH_DEMO_FORBIDDEN = new Set(['members.manage', 'org.edit']);
 
+/**
+ * The role the church demo is "Viewing as" (spec 5.7 role preview): the
+ * session's choice, but only for the church demo account in the demo church.
+ * For every other user and org the stored role is the only one that counts.
+ */
+export function effectiveRole(user, orgId, role) {
+  if (isChurchDemo(user) && orgId === DEMO_ORG_ID && ROLES.includes(user.demoRole)) return user.demoRole;
+  return role;
+}
+
 /** The ids of the orgs a user belongs to (for "global + my orgs" visibility). */
 export async function memberOrgIds(store, user) {
   if (!user) return [];
@@ -46,8 +56,9 @@ export async function requireRole(store, user, orgId, permission) {
   if (isChurchDemo(user) && CHURCH_DEMO_FORBIDDEN.has(permission)) {
     throw new HttpError(403, 'The shared demo can’t do this. Sign up to use it.', 'demo_not_allowed');
   }
-  if (!allowed.includes(row.role)) throw new HttpError(403, 'Your role in this church can’t do this', 'forbidden_role');
-  return { org_id: row.id, role: row.role, org: { id: row.id, name: row.name, default_language: row.default_language } };
+  const role = effectiveRole(user, row.id, row.role);
+  if (!allowed.includes(role)) throw new HttpError(403, 'Your role in this church can’t do this', 'forbidden_role');
+  return { org_id: row.id, role, org: { id: row.id, name: row.name, default_language: row.default_language } };
 }
 
 /** What a role may do, for the UI (the server checks again on every request). */

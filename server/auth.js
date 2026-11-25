@@ -48,6 +48,11 @@ export async function createSession(store, userId, { ttlMs = SESSION_TTL_MS } = 
   return token;
 }
 
+/** The church demo's "Viewing as" role for this one session (null = its real role). */
+export async function setSessionDemoRole(store, token, role) {
+  await store.run('UPDATE sessions SET demo_role = ? WHERE token_hash = ?', [role, sha256(token)]);
+}
+
 export async function destroySession(store, token) {
   if (token) await store.run('DELETE FROM sessions WHERE token_hash = ?', [sha256(token)]);
 }
@@ -68,14 +73,15 @@ export const clearCookie = ({ secure = false } = {}) => `${SESSION_COOKIE}=; Pat
 export async function userFromRequest(store, req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
-  const row = await store.get(`SELECT u.id, u.username, u.display_name, u.language, s.expires_at
+  const row = await store.get(`SELECT u.id, u.username, u.display_name, u.language, s.expires_at, s.demo_role
               FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, [sha256(token)]);
   if (!row) return null;
   if (row.expires_at < Date.now()) {
     await destroySession(store, token);
     return null;
   }
-  return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token };
+  // demoRole only ever matters for the church demo in the demo church (orgs.js requireRole).
+  return { id: row.id, username: row.username, display_name: row.display_name, language: row.language || 'en', token, demoRole: row.demo_role ?? null };
 }
 
 /**
@@ -127,6 +133,18 @@ export async function rateLimit(store, key, { limit, windowSec, message = 'Too m
     const retryAfter = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
     throw new HttpError(429, message, 'rate_limited', { 'Retry-After': String(retryAfter) });
   }
+}
+
+/**
+ * Whether rateLimit(store, key, { limit, windowSec }) would let one more hit
+ * through, without counting it. For callers that must check several limits
+ * before spending any of them.
+ */
+export async function rateLimitAllows(store, key, { limit, windowSec, now = Date.now() }) {
+  if (!Number.isInteger(windowSec)) throw new Error(`rateLimitAllows: windowSec must be a positive integer, got ${windowSec}`);
+  checkLimit('rateLimitAllows', limit, windowSec * 1000, MAX_WINDOW_SEC * 1000);
+  const row = await store.get('SELECT hits, window_start FROM rate_limits WHERE key = ?', [`${key}/${windowSec}s`]);
+  return !row || Number(row.window_start) < now - windowSec * 1000 || Number(row.hits) < limit;
 }
 
 /**

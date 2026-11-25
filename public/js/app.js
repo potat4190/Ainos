@@ -1,4 +1,4 @@
-import { api, onUnauthorized } from './api.js';
+import { api, onUnauthorized, youtubeTrack } from './api.js';
 import { h, icon, clear, img, mosaic, likedArt, fmtTime, fmtNumber, toast, showMenu, promptDialog, bindSlider, setSlider, safely } from './ui.js';
 import { Player, uriToRoute } from './player.js';
 import { Connect, deviceIdentity } from './connect.js';
@@ -8,8 +8,8 @@ import * as church from './church.js';
 import { watchUrl } from './youtube.js';
 
 const $ = (id) => document.getElementById(id);
-const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist'];
-const VIEWS = { ...views, church: church.church, setlist: church.setlist };
+const ROUTES = ['home', 'search', 'library', 'album', 'artist', 'song', 'playlist', 'mix', 'radio', 'liked', 'genre', 'recent', 'stats', 'internals', 'docs', 'settings', 'downloads', 'church', 'setlist', 'join'];
+const VIEWS = { ...views, church: church.church, setlist: church.setlist, join: church.join };
 const KEY_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
 class App {
@@ -202,6 +202,7 @@ class App {
     const identity = deviceIdentity();
     this.player = new Player({ deviceId: identity.id });
     this.player.me = this.me;
+    this.player.youtubeMount = (track) => this.youtubeHost(track);
     this.connect = new Connect(this.player, identity);
     this.player.connect = this.connect;
     this.connect.start();
@@ -732,16 +733,20 @@ class App {
 
   /** Play an official YouTube video (a song source from search) in the visible embed; native audio pauses. */
   playYouTube(song, source) {
-    const y = source.youtube;
-    const track = {
-      id: `yt:${source.id}`, title: song.name, artist: { id: null, name: song.artist.name }, album: { id: null, title: '', cover: y.thumbnail },
-      duration_ms: y.duration_ms || 0, song_id: song.id, language: song.language, youtube: { ...y, sourceId: source.id },
-    };
+    this.player.startTrack(youtubeTrack(song, source), { reason: 'clickrow' });
+  }
+
+  /**
+   * Where the player mounts a video, whether picked here, reached in the queue
+   * or transferred from another device: the YouTube box in the right panel,
+   * which opens for it (spec 3.4: always visible, never audio only).
+   */
+  youtubeHost(track) {
     if (!this.rightMode || this.rightMode === 'lyrics') this.rightMode = 'now'; // the panel holds the player; not saved as the user's choice
     const host = h('div');
     clear(this.rp.yt.frame).append(host);
-    this.player.playYouTube(track, host, { title: t('ytFrameTitle', { title: y.title }) });
-    this.renderRight();
+    queueMicrotask(() => this.renderRight());
+    return { host, title: t('ytFrameTitle', { title: track.youtube.title }) };
   }
 
   /** Show the YouTube box (player, fallback below it, YouTube's own title and channel) while a video is the current item. */
@@ -796,7 +801,7 @@ class App {
   }
 
   queueItem(tr, { current = false, onPlay, onRemove } = {}) {
-    const row = h('div', { class: `queue-item${current ? ' current' : ''}` }, img(tr.album.cover), h('div', { class: 'meta' }, h('div', { class: 't' }, tr.title), h('div', { class: 's' }, tr.artist.name)));
+    const row = h('div', { class: `queue-item${current ? ' current' : ''}` }, img(tr.album.cover), h('div', { class: 'meta' }, h('div', { class: 't' }, tr.title), h('div', { class: 's' }, tr.youtube ? `${tr.artist.name} · ${t('sourceYouTube')}` : tr.artist.name)));
     if (onPlay) { row.style.cursor = 'pointer'; row.addEventListener('dblclick', onPlay); row.addEventListener('click', (e) => { if (matchMedia('(pointer: coarse)').matches || e.detail === 0) onPlay(); }); }
     if (onRemove) {
       const x = h('button', { class: 'icon-btn', 'aria-label': t('removeFromQueueLabel', { title: tr.title }) }, icon('close'));

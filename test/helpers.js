@@ -4,6 +4,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { generateCatalog } from '../scripts/generate.js';
 import { createApp } from '../server/app.js';
+import { createYouTube } from '../server/youtube.js';
 
 /**
  * Fresh catalog (short tracks) + running server on a random port.
@@ -14,7 +15,8 @@ export async function startTestServer({ prepare, ...options } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ainos-test-'));
   await generateCatalog({ dataDir, quick: true, quiet: true });
   const extra = prepare ? await prepare(dataDir) : {};
-  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000, ...options, ...extra });
+  // No YouTube key unless a test passes its own client (with a fake fetch): tests never call YouTube.
+  const app = await createApp({ dataDir, databaseUrl: null, log: () => {}, authAttemptsPerMinute: 10_000, youtube: createYouTube({ apiKey: '' }), ...options, ...extra });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   return {

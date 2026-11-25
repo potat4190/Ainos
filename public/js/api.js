@@ -55,11 +55,33 @@ export function rememberTracks(tracks) {
 export function cachedTrack(id) {
   return trackCache.get(id) || null;
 }
+/**
+ * An official YouTube video (a song source) as a player item: Ainos's song
+ * record, with the video in `youtube`. Its id, "yt:<source id>", travels in
+ * the queue and over Connect like a track id.
+ */
+export function youtubeTrack(song, source) {
+  const y = source.youtube;
+  return {
+    id: `yt:${source.id}`, title: song.name, artist: { id: null, name: song.artist.name }, album: { id: null, title: '', cover: y.thumbnail },
+    duration_ms: y.duration_ms || 0, song_id: song.id, language: song.language, youtube: { ...y, sourceId: source.id },
+  };
+}
+
 export async function tracksByIds(ids) {
   const missing = [...new Set(ids)].filter((id) => !trackCache.has(id));
-  for (let i = 0; i < missing.length; i += 100) {
-    const { tracks } = await api.get(`/api/tracks?ids=${missing.slice(i, i + 100).map(encodeURIComponent).join(',')}`);
+  const videos = missing.filter((id) => id.startsWith('yt:'));
+  const native = missing.filter((id) => !id.startsWith('yt:'));
+  for (let i = 0; i < native.length; i += 100) {
+    const { tracks } = await api.get(`/api/tracks?ids=${native.slice(i, i + 100).map(encodeURIComponent).join(',')}`);
     rememberTracks(tracks);
   }
+  // A video no longer available just drops out, like a track the server no longer knows.
+  await Promise.all(videos.map(async (id) => {
+    try {
+      const { song, source } = await api.get(`/api/sources/${encodeURIComponent(id.slice(3))}`);
+      if (source?.youtube) rememberTracks([youtubeTrack(song, source)]);
+    } catch { /* gone */ }
+  }));
   return ids.map((id) => trackCache.get(id)).filter(Boolean);
 }

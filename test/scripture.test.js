@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { startTestServer, client, login, signup } from './helpers.js';
-import { createScripture, fallbackText, referenceName, dayOfYear, YOUVERSION_API } from '../server/scripture.js';
+import { createScripture, fallbackText, referenceName, dayOfYear, dateIn, YOUVERSION_API } from '../server/scripture.js';
 import { FALLBACK_SOURCE, FALLBACK_VERSES, VOTD_FALLBACK } from '../server/scripture-fallback.js';
 import { HYMNS } from '../scripts/hymns.js';
 import { HYMN_IDS } from '../scripts/generate.js';
@@ -105,6 +105,18 @@ test('the bundled fallback is public-domain WEB text covering every hymn referen
   assert.equal(dayOfYear(new Date(Date.UTC(2024, 11, 31))), 366);
 });
 
+test('the Verse of the Day turns over at the listener’s midnight, not UTC’s', async () => {
+  const evening = new Date(Date.UTC(2026, 0, 1, 20, 0)); // 1 Jan 20:00 UTC = 2 Jan 01:45 in Kathmandu
+  assert.equal(dayOfYear(dateIn('Asia/Kathmandu', evening)), 2);
+  assert.equal(dayOfYear(dateIn('America/Los_Angeles', new Date(Date.UTC(2026, 0, 2, 3, 0)))), 1, 'still 1 Jan in Los Angeles');
+  for (const zone of [null, '', 'Not/A_Zone', 'x'.repeat(65), 42]) assert.equal(dateIn(zone, evening), evening, `${zone}: UTC`);
+  const s = createScripture({ appKey: '', now: () => evening.getTime() });
+  assert.equal((await s.getVerseOfTheDay({ timeZone: 'Asia/Kathmandu' })).usfm, VOTD_FALLBACK[1]);
+  assert.equal((await s.getVerseOfTheDay({ timeZone: 'Asia/Tokyo' })).day, 2);
+  assert.equal((await s.getVerseOfTheDay()).usfm, VOTD_FALLBACK[0], 'no zone: the UTC day');
+  assert.equal((await s.getVerseOfTheDay({ timeZone: 'Not/A_Zone' })).day, 1);
+});
+
 test('a version is refused only when every language list loaded; a failed list is retried later, not on every request', async () => {
   const fake = fakeYouVersion();
   let failHindi = true;
@@ -120,6 +132,17 @@ test('a version is refused only when every language list loaded; a failed list i
   clock += 6 * 60 * 1000;
   assert.equal(await s.versionStatus(999), 'not_allowed', 'retried after 5 minutes');
   assert.equal(await createScripture({ appKey: '' }).versionStatus(111), 'unknown');
+});
+
+test('describeVersion: with the daily budget used up, only a cached name, never a call', async () => {
+  const fake = fakeYouVersion();
+  const s = createScripture({ appKey: KEY, fetch: fake.fetch });
+  assert.equal(await s.describeVersion(222, { upstream: false }), null, 'not cached yet: nothing, and no call');
+  assert.equal(fake.calls.length, 0);
+  assert.equal((await s.describeVersion(222)).abbreviation, 'PRB');
+  const calls = fake.calls.length;
+  assert.equal((await s.describeVersion(222, { upstream: false })).abbreviation, 'PRB', 'the cached name still shows');
+  assert.equal(fake.calls.length, calls);
 });
 
 test('after a timeout or a 5xx, YouVersion is left alone for a minute: answers come from the fallback at once', async () => {
@@ -225,6 +248,9 @@ test('without a key: English gets the WEB text with its attribution, other langu
   const votd = await c.get('/api/scripture/votd');
   assert.equal(votd.status, 200);
   assert.ok(VOTD_FALLBACK.includes(votd.json.usfm));
+  for (const tz of ['Asia/Kathmandu', 'Not/A_Zone', 'x'.repeat(500)]) {
+    assert.equal((await c.get(`/api/scripture/votd?tz=${encodeURIComponent(tz)}`)).status, 200, `?tz=${tz.slice(0, 20)} answers`);
+  }
   const versions = await c.get('/api/scripture/versions?lang=en');
   assert.deepEqual([versions.json.versions, versions.json.fallback.abbreviation], [[], 'WEB']);
   assert.equal((await c.putJson('/api/me/bible-version', { version: 111 })).status, 400, 'no version can be chosen without a key');
@@ -265,6 +291,12 @@ test('with a key: YouVersion text in the chosen version, with its attribution; t
   assert.equal((await c.get('/api/me')).json.bible_version, 111);
   assert.equal((await c.get('/api/scripture/JHN.3.16')).json.version.id, 111);
   assert.equal((await c.putJson('/api/me/bible-version', { version: 999 })).status, 400);
+  // A version saved while using another language is named in the picker, not shown as a bare id.
+  await c.putJson('/api/me/bible-version', { version: 222 });
+  const other = (await c.get('/api/scripture/versions?lang=en')).json;
+  assert.deepEqual([other.selected, other.selected_version?.abbreviation, other.selected_version?.title], [222, 'PRB', 'Prueba']);
+  await c.putJson('/api/me/bible-version', { version: 111 });
+  assert.equal((await c.get('/api/scripture/versions?lang=en')).json.selected_version, null, 'one in the list needs no extra name');
   assert.equal((await c.putJson('/api/me/bible-version', { version: '1; DROP TABLE users' })).status, 400);
   const votd = await c.get('/api/scripture/votd');
   assert.deepEqual([votd.json.usfm, votd.json.source, votd.json.version.id], ['ISA.12.2', 'youversion', 111]);

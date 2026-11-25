@@ -480,6 +480,8 @@ dialog h2 { margin-bottom: 16px; }
 .source-btn { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 4px 8px; border-radius: 6px; text-align: left; }
 .source-btn:hover { background: var(--panel-3); }
 .source-btn .source-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-row { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.source-row .source-btn { flex: 1; }
 .source-btn .dim { flex: none; font-size: 12.5px; white-space: nowrap; }
 
 /* Synced lyrics (Phase 4). */
@@ -504,3 +506,21 @@ dialog h2 { margin-bottom: 16px; }
   .source-btn { min-height: 44px; flex-wrap: wrap; row-gap: 0; }
   .source-btn .dim { flex: 1 1 100%; padding-left: 28px; white-space: normal; }
 }
+
+/* Tap-to-sync (spec 4.4) */
+.lyrics-sync:empty { display: none; }
+.lyrics-sync { margin-top: 6px; }
+.sync-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 6px; }
+.sync-tap { min-width: 160px; }
+.sync-clock { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.sync-list { list-style: none; margin: 8px 0; padding: 0; max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.sync-row { display: grid; grid-template-columns: 76px 1fr 64px 32px 32px; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.sync-row.next { box-shadow: inset 3px 0 0 var(--accent); background: var(--panel-3); }
+.sync-row.done .sync-time { color: var(--text); }
+.sync-time { font-variant-numeric: tabular-nums; color: var(--text-3); text-align: right; }
+.sync-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-options { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.sync-offset { width: 110px; }
+
+/* What a live YouTube search is doing, under the search results' top edge. */
+.live-status { margin: 0 0 16px; font-size: 13px; }

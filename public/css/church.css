@@ -183,3 +183,14 @@
 .ch-setlist .icon-btn { margin-right: 6px; }
 .ch-nochurch { max-width: 640px; }
 .ch-create { margin-top: 12px; max-width: 420px; }
+
+/* Members, invites and the church demo's role preview */
+.ch-member { padding: 6px 6px 6px 12px; }
+.ch-member .ch-row-title, .ch-member .ch-row-main { flex: 1; min-width: 0; }
+.ch-invites { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ch-invite-new { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ch-invite-made { padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ch-invite-made p { margin: 0 0 8px; }
+.ch-invite-copy { display: flex; gap: 8px; }
+.ch-preview { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; border-radius: 10px; border: 1px dashed var(--line); background: var(--panel); }
+.ch-preview-label { display: inline-flex; align-items: center; gap: 8px; }

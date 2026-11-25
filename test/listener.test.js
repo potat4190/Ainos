@@ -4,7 +4,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { startTestServer, login, signup } from './helpers.js';
+import { DatabaseSync } from 'node:sqlite';
+import { startTestServer, login, signup, client } from './helpers.js';
 import { HYMN_IDS, YOUTUBE_IDS, hymnTimings, hymnOrder } from '../scripts/generate.js';
 import { HYMNS } from '../scripts/hymns.js';
 import { YOUTUBE_VIDEOS } from '../scripts/youtube-videos.js';
@@ -131,4 +132,125 @@ test('the frontend never builds DOM from HTML strings or inline styles (strict C
     const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'public', 'js', f), 'utf8');
     assert.doesNotMatch(src, /innerHTML|outerHTML|insertAdjacentHTML|setAttribute\('style'|\.onerror\s*=/, f);
   }
+});
+
+test('tap-to-sync: a church leader saves its church’s timings, a catalog admin the global ones; lines and times are checked', async () => {
+  let adminId;
+  const own = await startTestServer({
+    prepare: (dataDir) => {
+      const db = new DatabaseSync(path.join(dataDir, 'ainos.db'), { readOnly: true });
+      try { adminId = db.prepare('SELECT MAX(id) AS n FROM users').get().n + 1; } finally { db.close(); }
+      return { adminUserIds: String(adminId) };
+    },
+  });
+  try {
+    const admin = await signup(own.base, 'catalog-admin');
+    assert.equal((await admin.get('/api/me')).json.id, adminId);
+    const leader = await signup(own.base, 'lea-leader');
+    const member = await signup(own.base, 'max-member');
+    const outsider = await signup(own.base, 'oz-outsider');
+    const orgId = (await leader.post('/api/orgs', { name: 'Hillside' })).json.id;
+    const memberId = (await member.get('/api/me')).json.id;
+    await own.app.store.run("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'member', 0)", [orgId, memberId]);
+    // The church's own words for the YouTube song (as a paste would give them).
+    const ytSong = YOUTUBE_IDS.song(CARRY.videoId);
+    const ytSource = YOUTUBE_IDS.source(CARRY.videoId);
+    await own.app.store.run("INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES ('hs1', ?, 'en', 'V1', 'first line\nsecond line', '', ?)", [ytSong, orgId]);
+    await own.app.store.run("INSERT INTO song_sections (id, song_id, language, label, lines, folded, org_id) VALUES ('hs2', ?, 'en', 'C', 'chorus line', '', ?)", [ytSong, orgId]);
+
+    const url = `/api/sources/${ytSource}/timings`;
+    const body = { org_id: orgId, language: 'en', offset_ms: -200, timings: [{ label: 'V1', line: 0, ms: 1000 }, { label: 'V1', line: 1, ms: 4000 }, { label: 'C', line: 0, ms: 9000 }] };
+    const saved = await leader.putJson(url, body);
+    assert.equal(saved.status, 200, saved.text);
+    assert.deepEqual(saved.json.timings.map((x) => [x.org_id, x.offset_ms, x.timings.length]), [[orgId, -200, 3]]);
+    const again = await leader.putJson(url, { ...body, timings: body.timings.slice(0, 2) });
+    assert.equal(again.json.timings.length, 1, 'a new sync replaces the church’s earlier one');
+    assert.equal(again.json.timings[0].timings.length, 2);
+    assert.deepEqual((await member.get(url)).json.timings.map((x) => x.org_id), [orgId], 'members see their church’s timings');
+    assert.deepEqual((await outsider.get(url)).json.timings, [], 'other people do not');
+
+    assert.equal((await member.putJson(url, body)).status, 403, 'members do not sync');
+    assert.equal((await outsider.putJson(url, body)).status, 404, 'not their church');
+    assert.equal((await outsider.putJson(url, { ...body, org_id: null })).status, 403, 'global timings are for catalog admins');
+    assert.equal((await (await login(own.base)).putJson(url, { ...body, org_id: null })).status, 403, 'the demo is never an admin');
+    for (const [timings, why] of [
+      [[{ label: 'V1', line: 0, ms: 4000 }, { label: 'V1', line: 1, ms: 1000 }], 'times must rise'],
+      [[{ label: 'V2', line: 0, ms: 1000 }], 'no such section'],
+      [[{ label: 'V1', line: 2, ms: 1000 }], 'no such line'],
+      [[{ label: 'V1', line: 0, ms: -5 }], 'negative time'],
+      [[], 'empty'],
+      [Array.from({ length: 401 }, (_, i) => ({ label: 'V1', line: 0, ms: i + 1 })), 'too many'],
+    ]) assert.equal((await leader.putJson(url, { ...body, timings })).status, 400, why);
+    assert.equal((await leader.putJson(url, { ...body, language: 'xx' })).status, 400);
+    assert.equal((await leader.putJson(url, { ...body, offset_ms: 120_000 })).status, 400);
+    assert.equal((await leader.putJson('/api/sources/nope/timings', body)).status, 404);
+
+    // The global hymn timings: admins only, and within the recording's length.
+    const hymnUrl = `/api/sources/${HYMN_IDS.source('amazing-grace')}/timings`;
+    const hymnTiming = [{ label: 'V1', line: 0, ms: 500 }, { label: 'V1', line: 1, ms: 3000 }];
+    assert.equal((await admin.putJson(hymnUrl, { language: 'en', timings: [{ label: 'V1', line: 0, ms: 10 * 3600 * 1000 }] })).status, 400, 'past the end of the recording');
+    const global = await admin.putJson(hymnUrl, { language: 'en', timings: hymnTiming });
+    assert.equal(global.status, 200, global.text);
+    const seen = (await outsider.get(hymnUrl)).json.timings;
+    assert.ok(seen.some((x) => x.org_id === null && x.arrangement_id === null && JSON.stringify(x.timings) === JSON.stringify(hymnTiming)), 'global: seen by all');
+    assert.ok(seen.some((x) => x.arrangement_id !== null), 'the generator’s timings for its Recording arrangement stay');
+
+    // Two saves at once (a double-click on Save) leave one row for the church, not two.
+    const both = await Promise.all([leader.putJson(url, body), leader.putJson(url, body)]);
+    assert.deepEqual(both.map((x) => x.status), [200, 200]);
+    const rows = await own.app.store.all('SELECT id FROM lyric_timings WHERE source_id = ? AND org_id = ?', [ytSource, orgId]);
+    assert.equal(rows.length, 1, 'saves at the same time replace each other, they do not pile up');
+
+    const actions = await own.app.store.all("SELECT org_id, action FROM audit_log WHERE action = 'timings.replace'");
+    assert.deepEqual(actions.map((x) => x.org_id), [orgId, orgId, null, orgId, orgId]);
+  } finally {
+    await own.close();
+  }
+});
+
+test('YouTube plays are kept as events, never streams; unknown or mixed-up sources are dropped', async () => {
+  const c = await signup(srv.base, 'yt-listener');
+  const yt = YOUTUBE_IDS.source(CARRY.videoId);
+  const r = await c.post('/api/events', { events: [
+    { type: 'play_start', source_id: yt, device_id: 'd1', reason: 'clickrow' },
+    { type: 'play_end', source_id: yt, device_id: 'd1', reason: 'trackdone', ms_played: 95_000, data: { position_ms: 95_000 } },
+    { type: 'play_end', source_id: 'nope', ms_played: 95_000 },
+    { type: 'play_end', source_id: HYMN_IDS.source('amazing-grace'), ms_played: 95_000 },
+    { type: 'play_end', source_id: yt, track_id: HYMN_IDS.track('amazing-grace'), ms_played: 95_000 },
+  ] });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json, { accepted: 2, rejected: 3, streams_counted: 0 });
+  const me = (await c.get('/api/me')).json.id;
+  const rows = await srv.app.store.all('SELECT type, track_id, ms_played, payload FROM events WHERE user_id = ? ORDER BY id', [me]);
+  assert.deepEqual(rows.map((x) => [x.type, x.track_id, JSON.parse(x.payload).source, JSON.parse(x.payload).source_id]), [['play_start', null, 'youtube', yt], ['play_end', null, 'youtube', yt]]);
+  assert.equal(JSON.parse(rows[1].payload).position_ms, 95_000);
+  assert.equal((await srv.app.store.get('SELECT COUNT(*) AS n FROM streams WHERE user_id = ?', [me])).n, 0);
+});
+
+test('GET /api/sources/:id: a source with its song, so a queued or transferred video can be shown anywhere', async () => {
+  const c = await login(srv.base);
+  const yt = YOUTUBE_IDS.source(CARRY.videoId);
+  const r = await c.get(`/api/sources/${yt}`);
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([r.json.song.id, r.json.song.name, r.json.song.artist], [YOUTUBE_IDS.song(CARRY.videoId), 'Carry My Cross', { name: 'Victory Worship' }]);
+  assert.deepEqual([r.json.source.id, r.json.source.source, r.json.source.youtube.videoId], [yt, 'youtube', CARRY.videoId]);
+  assert.equal((await c.get(`/api/sources/${HYMN_IDS.source('amazing-grace')}`)).json.source.track.id, HYMN_IDS.track('amazing-grace'));
+  assert.equal((await c.get('/api/sources/nope')).status, 404);
+  // A church's own song is its members' only.
+  const db = srv.app.store;
+  await db.run("INSERT INTO orgs (id, name, default_language, created_by, created_at) VALUES ('org-src-1', 'Hidden', 'en', 1, 0)");
+  await db.run("INSERT INTO songs (id, title, artist, language, public_domain, org_id, created_at, updated_at) VALUES ('orgsong-src', 'Ours', '', 'en', 0, 'org-src-1', 0, 0)");
+  await db.run("INSERT INTO song_sources (id, song_id, source, track_id, youtube_video_id, kind, available) VALUES ('orgsrc-1', 'orgsong-src', 'ainos', ?, NULL, NULL, 1)", [HYMN_IDS.track('amazing-grace')]);
+  assert.equal((await c.get('/api/sources/orgsrc-1')).status, 404);
+  assert.equal((await client(srv.base).get(`/api/sources/${yt}`)).status, 401);
+});
+
+test('search_cache keeps one row per folded query and language (an empty list is a remembered miss)', async () => {
+  const save = (q, lang, ids, at) => srv.app.store.run(`INSERT INTO search_cache (query_folded, language, results, fetched_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (query_folded, language) DO UPDATE SET results = excluded.results, fetched_at = excluded.fetched_at`, [q, lang, JSON.stringify(ids), at]);
+  await save('way maker', 'en', [], 1);
+  await save('way maker', 'en', ['abcdefghijk'], 2);
+  await save('way maker', 'es', [], 3);
+  const rows = await srv.app.store.all("SELECT language, results, fetched_at FROM search_cache WHERE query_folded = 'way maker' ORDER BY language");
+  assert.deepEqual(rows.map((r) => [r.language, r.results, Number(r.fetched_at)]), [['en', '["abcdefghijk"]', 2], ['es', '[]', 3]]);
 });

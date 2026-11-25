@@ -1954,13 +1954,23 @@ export function t(key, vars = {}) {
 const ERROR_KEYS = {
   bad_credentials: 'errBadCredentials', username_taken: 'errUsernameTaken', bad_username: 'errBadUsername', bad_password: 'errBadPassword',
   rate_limited: 'errRateLimited', network: 'errNetwork', offline: 'errOffline', timeout: 'errTimeout', server: 'errServer', demo_private: 'errDemoPrivate',
-  demo_not_allowed: 'errDemoNotAllowed', forbidden_role: 'errForbiddenRole',
+  demo_not_allowed: 'errDemoNotAllowed', forbidden_role: 'errForbiddenRole', last_admin: 'errLastAdmin', invite_invalid: 'errInviteInvalid',
 };
 
 /** A message for an API error in the current language (the server's English text when there is no translation). */
 export function errorText(err) {
   const key = ERROR_KEYS[err?.code] || (err?.status >= 500 ? 'errServer' : err?.status === 429 ? 'errRateLimited' : null);
   return key ? t(key) : err?.message || t('errServer');
+}
+
+const SECTION_KEYS = { C: 'sectionChorus', C2: 'sectionChorus2', PC: 'sectionPreChorus', B: 'sectionBridge', T: 'sectionTag', I: 'sectionIntro', E: 'sectionEnding' };
+
+/** A lyric section label as shown everywhere (lyrics view, church dashboard, slides): 'V2' → "Verse 2", 'C' → "Chorus". */
+export function sectionName(label) {
+  const l = label == null ? '' : String(label);
+  const v = /^V(\d+)$/.exec(l);
+  if (v) return t('sectionVerse', { n: new Intl.NumberFormat(currentLang).format(Number(v[1])) });
+  return SECTION_KEYS[l] ? t(SECTION_KEYS[l]) : l;
 }
 
 export function langDisplayName(code) {

@@ -147,6 +147,13 @@ const CHURCH_DEMO_DISPLAY_NAME = 'Church Demo';
 const demoChurchId = (key) => seededId(mulberry32(hashSeed(`demo-church:${key}`)));
 export const DEMO_ORG_ID = demoChurchId('org');
 export const DEMO_ORG_NAME = 'Ainos Demo Church';
+// Placeholder members (spec 5.7): display names only. They are simulated users
+// with no password, so nobody can sign in as them; the names are reserved at signup.
+export const DEMO_PLACEHOLDERS = Object.freeze([
+  { username: 'church-demo-leader', name: 'Demo Leader', role: 'leader' },
+  { username: 'church-demo-operator', name: 'Demo Operator', role: 'operator' },
+  { username: 'church-demo-member', name: 'Demo Member', role: 'member' },
+]);
 // The hymns' song ids, made the way scripts/generate.js makes them (HYMN_IDS.song).
 export const hymnSongId = (slug) => seededId(mulberry32(hashSeed(`song:${slug}`)));
 
@@ -194,8 +201,16 @@ export async function resetChurchDemo(store, { language = 'en', now = Date.now()
     await t.run("DELETE FROM search_index WHERE kind = 'song' AND ref_id IN (SELECT id FROM songs WHERE org_id = ?)", [org]);
     await t.run('DELETE FROM songs WHERE org_id = ?', [org]);
     await t.run('DELETE FROM audit_log WHERE org_id = ?', [org]);
+    await t.run('DELETE FROM org_invites WHERE org_id = ?', [org]);
     await t.run('DELETE FROM org_members WHERE org_id = ?', [org]);
     await t.run("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)", [org, uid, now]);
+    for (const [i, p] of DEMO_PLACEHOLDERS.entries()) {
+      await t.run('INSERT INTO users (username, display_name, password_hash, language, is_simulated, created_at) VALUES (?, ?, NULL, ?, 1, ?) ON CONFLICT DO NOTHING',
+        [p.username, p.name, 'en', now]);
+      // Only our own placeholder: if a real account somehow holds the name, it is left out of the demo.
+      const row = await t.get('SELECT id FROM users WHERE lower(username) = ? AND is_simulated = 1', [p.username]);
+      if (row) await t.run('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', [org, row.id, p.role, now - (i + 1) * DAY]);
+    }
 
     // This Sunday: a welcome, three hymns around a psalm, and a blank to end on.
     const setlistId = demoChurchId('setlist:this-sunday');

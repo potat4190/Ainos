@@ -14,6 +14,10 @@ import { generateCatalog, HYMN_IDS, YOUTUBE_IDS, hymnTimings } from '../scripts/
 import { HYMNS } from '../scripts/hymns.js';
 import { seedPostgres, schemaColumns } from '../scripts/seed-postgres.js';
 import { ARTISTS, ALBUMS, TRACKS } from '../scripts/catalog-names.js';
+import { toPg } from '../server/store.js';
+import { resetChurchDemo, DEMO_ORG_ID, DEMO_PLACEHOLDERS } from '../server/demo.js';
+import { importVideo, hideVideo } from '../server/youtube-import.js';
+import { thumbnailUrl } from '../server/youtube.js';
 
 const PGlite = await import('@electric-sql/pglite').then((m) => m.PGlite, () => null);
 const SKIP = !PGlite && 'needs npm install (@electric-sql/pglite, a dev dependency)';
@@ -311,6 +315,105 @@ test('Phases 3-4 on an existing database: the curated YouTube song and the hymn 
   await pg.db.query(`INSERT INTO lyric_timings (id, source_id, language, offset_ms, timings, org_id, updated_at) VALUES ('church-t', $1, 'en', 0, '[]', 'org-a', 0)`, [HYMN_IDS.source('amazing-grace')]);
   await seed(pg, full);
   assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM lyric_timings WHERE id = 'church-t' AND timings = '[]'"), 1, 'church timings kept');
+});
+
+/** The app's Store interface (server/store.js) over one PGlite session, for code that takes a store. */
+function pgStore(pg) {
+  const mk = () => ({
+    async all(sql, params = []) { return (await pg.db.query(toPg(sql), params)).rows; },
+    async get(sql, params = []) { return (await pg.db.query(toPg(sql), params)).rows[0]; },
+    async run(sql, params = []) { return { changes: (await pg.db.query(toPg(sql), params)).affectedRows ?? 0 }; },
+  });
+  const inner = { ...mk(), tx: (f) => f(inner) };
+  return {
+    ...mk(),
+    async tx(fn) {
+      await pg.db.exec('BEGIN');
+      try { const out = await fn(inner); await pg.db.exec('COMMIT'); return out; } catch (err) { await pg.db.exec('ROLLBACK'); throw err; }
+    },
+  };
+}
+
+test('churches on an existing database: sessions gain demo_role, invites arrive, and the church demo resets with its placeholders', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  // A database from before role preview and invites, with a signed-in user.
+  await pg.connectTo('owner');
+  await pg.db.exec('DROP TABLE org_invites; ALTER TABLE sessions DROP COLUMN demo_role');
+  const user = Number((await rows(pg, "INSERT INTO users (username, display_name, created_at) VALUES ('ruth', 'Ruth', 0) RETURNING id"))[0].id);
+  await pg.db.query("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ('h1', $1, 0, 9)", [user]);
+  await pg.db.exec(SCHEMA);
+  await pg.db.exec(SCHEMA);
+  assert.deepEqual((await rows(pg, "SELECT token_hash, demo_role FROM sessions")).map((r) => [r.token_hash, r.demo_role]), [['h1', null]], 'the session survives the migration');
+  assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', 'org_invites', 'SELECT,INSERT,UPDATE,DELETE') AS ok"))[0].ok, true);
+
+  // The church demo resets as the app's role, twice (placeholders are made once, then reused).
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const uid = await resetChurchDemo(store, { passwordHash: 'scrypt$x' });
+  await pg.db.query("INSERT INTO org_invites (id, org_id, role, token_hash, created_at, expires_at, max_uses) VALUES ('i1', $1, 'member', 'th', 0, 1, 1)", [DEMO_ORG_ID]);
+  assert.equal(await resetChurchDemo(store, { passwordHash: 'scrypt$x' }), uid);
+  await pg.connectTo('owner');
+  const members = await rows(pg, 'SELECT u.username, u.is_simulated, u.password_hash, m.role FROM org_members m JOIN users u ON u.id = m.user_id WHERE m.org_id = $1 ORDER BY u.username', [DEMO_ORG_ID]);
+  assert.deepEqual(members.map((r) => [r.username, r.role, Number(r.is_simulated), r.password_hash]), [
+    ['church-demo', 'admin', 0, 'scrypt$x'],
+    ...DEMO_PLACEHOLDERS.map((p) => [p.username, p.role, 1, null]).sort((a, b) => a[0].localeCompare(b[0])),
+  ]);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM users WHERE username LIKE 'church-demo-%'"), 3, 'made once');
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM org_invites WHERE org_id = $1', [DEMO_ORG_ID]), 0, 'invites wiped at reset');
+});
+
+test('live search on an existing database: search_cache arrives, the app role keeps one row per query and language, and a deploy leaves it alone', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  await pg.connectTo('owner');
+  await pg.db.exec('DROP TABLE search_cache');
+  await pg.db.exec(SCHEMA);
+  await pg.db.exec(SCHEMA);
+  assert.equal((await rows(pg, "SELECT has_table_privilege('ainos_app', 'search_cache', 'SELECT,INSERT,UPDATE,DELETE') AS ok"))[0].ok, true);
+  assert.equal((await rows(pg, "SELECT relrowsecurity AS on FROM pg_class WHERE relname = 'search_cache'"))[0].on, true);
+
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const save = (q, lang, ids, at) => store.run(`INSERT INTO search_cache (query_folded, language, results, fetched_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (query_folded, language) DO UPDATE SET results = excluded.results, fetched_at = excluded.fetched_at`, [q, lang, JSON.stringify(ids), at]);
+  await save('way maker', 'en', [], 1);
+  await save('way maker', 'en', ['abcdefghijk'], 2);
+  await save('way maker', 'es', [], 3);
+  const saved = await store.all('SELECT language, results, fetched_at FROM search_cache ORDER BY language');
+  assert.deepEqual(saved.map((r) => [r.language, r.results, Number(r.fetched_at)]), [['en', '["abcdefghijk"]', 2], ['es', '[]', 3]]);
+
+  // The generated catalog has no such table rows: a deploy's catalog sync never touches them.
+  await seed(pg, full);
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM search_cache'), 2);
+});
+
+test('the YouTube importer on Postgres, as the app role: add, match, repeat, hide; a deploy keeps what it added', { skip: SKIP }, async () => {
+  const pg = await newDatabase();
+  await seed(pg, full);
+  await pg.connectTo('app');
+  const store = pgStore(pg);
+  const video = (videoId, title, over = {}) => ({ videoId, title, channelId: 'UCx', channelTitle: 'Sinach', thumbnail: thumbnailUrl(videoId), durationMs: 240_000,
+    embeddable: true, public: true, live: false, categoryId: '10', defaultLanguage: 'en', ...over });
+  const first = await importVideo(store, video('pgvid000001', '100% Way_Maker (Official Lyric Video)'), { now: 5000 });
+  assert.equal(first.status, 'added');
+  assert.equal(first.createdSong, true);
+  const live = await importVideo(store, video('pgvid000002', '100% WAY_MAKER [Live] | Sinach'));
+  assert.deepEqual([live.status, live.createdSong, live.songId], ['added', false, first.songId], 'matched through search_index with LIKE wildcards escaped');
+  assert.equal((await importVideo(store, video('pgvid000003', '100% WayXMaker'))).createdSong, true, '"_" is not "any character"');
+  const again = await importVideo(store, video('pgvid000001', 'Renamed on YouTube'), { now: 9000 });
+  assert.equal(again.status, 'exists');
+  assert.deepEqual((await rows(pg, "SELECT title, fetched_at FROM youtube_video_cache WHERE video_id = 'pgvid000001'")).map((r) => [r.title, Number(r.fetched_at)]), [['Renamed on YouTube', 9000]]);
+  assert.equal(await hideVideo(store, 'pgvid000002'), true);
+  assert.equal((await importVideo(store, video('pgvid000002', 'x'))).status, 'hidden');
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'youtube.%'"), 4);
+
+  // The next deploy's catalog sync leaves live-added songs, sources, cache rows and search entries alone.
+  await seed(pg, full);
+  assert.equal(await count(pg, 'SELECT COUNT(*) AS n FROM songs WHERE id = $1', [first.songId]), 1);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM song_sources WHERE youtube_video_id LIKE 'pgvid%'"), 3);
+  assert.deepEqual((await rows(pg, "SELECT title, fetched_at FROM youtube_video_cache WHERE video_id = 'pgvid000001'")).map((r) => [r.title, Number(r.fetched_at)]), [['Renamed on YouTube', 9000]]);
+  assert.equal(await count(pg, "SELECT COUNT(*) AS n FROM search_index WHERE kind = 'song' AND ref_id = $1", [first.songId]), 1);
 });
 
 test('a generated file that lost a table’s rows does not wipe the lyrics', { skip: SKIP }, async () => {
