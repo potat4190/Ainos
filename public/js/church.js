@@ -579,7 +579,14 @@ export async function join(el, params, app) {
   } else {
     const accept = h('button', { type: 'button', class: 'btn btn-primary btn-sm' }, t('chJoinBtn'));
     accept.addEventListener('click', safely(async () => {
-      const joined = await api.post('/api/invites/redeem', { token: params.id || '' });
+      if (accept.disabled) return;
+      accept.disabled = true; // one request, however many clicks
+      let joined;
+      try {
+        joined = await api.post('/api/invites/redeem', { token: params.id || '' });
+      } finally {
+        accept.disabled = false;
+      }
       forgetSyncTargets();
       rememberChurch(joined.org_id);
       const nav = document.getElementById('nav-church');

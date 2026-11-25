@@ -246,10 +246,18 @@ export function register({ r, store, auth, scripture, clientIp, isSecure, trustP
       if (existing) return { org_id: inv.org_id, role: existing.role, already_member: true }; // the invite isn't used up
       const { n } = await t.get('SELECT COUNT(*) AS n FROM org_members WHERE user_id = ?', [user.id]);
       if (Number(n) >= LIMITS.orgsPerUser) throw new HttpError(409, `You can belong to at most ${LIMITS.orgsPerUser} churches`, 'limit_reached');
-      // Counted with a guard, so two people taking the last use at once can't both get in.
+      // The same person redeeming twice at once (a double click, two tabs): the
+      // second insert waits for the first and finds the membership there.
+      const added = await t.run('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT (org_id, user_id) DO NOTHING',
+        [inv.org_id, user.id, inv.role, now]);
+      if (!added.changes) {
+        const member = await t.get('SELECT role FROM org_members WHERE org_id = ? AND user_id = ?', [inv.org_id, user.id]);
+        return { org_id: inv.org_id, role: member?.role ?? inv.role, already_member: true };
+      }
+      // Counted with a guard, so two people taking the last use at once can't both get in
+      // (the loser's transaction rolls back, membership included).
       const { changes } = await t.run('UPDATE org_invites SET uses = uses + 1 WHERE id = ? AND uses < max_uses AND revoked_at IS NULL', [inv.id]);
       if (!changes) throw inviteInvalid();
-      await t.run('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', [inv.org_id, user.id, inv.role, now]);
       await audit(t, { orgId: inv.org_id, userId: user.id, action: 'invite.redeem', targetType: 'invite', targetId: inv.id, details: { role: inv.role } });
       return { org_id: inv.org_id, role: inv.role, already_member: false };
     });

@@ -188,6 +188,47 @@ test('when YouTube can’t be asked nothing is remembered, and the search still 
   assert.equal(yt.calls.length, 4);
 });
 
+test('a database failure mid-search still answers, and the query is not remembered as a miss', async () => {
+  const a = await signup(srv.base, 'live-dberr');
+  yt.calls.length = 0;
+  yt.answer = () => [video(vid(80), 'Broken Database Song', 'Some Band')];
+  const realAll = store.all;
+  store.all = function (sql, params) {
+    if (/ss\.youtube_video_id IN/.test(sql)) return Promise.reject(new Error('connection lost'));
+    return realAll.call(this, sql, params);
+  };
+  let r;
+  try {
+    r = await search(a, 'broken database song');
+  } finally {
+    store.all = realAll;
+  }
+  assert.deepEqual([r.live, r.songs.items.length], ['unavailable', 0], 'the search answers from the catalog');
+  assert.equal(await cacheRow('broken database song'), undefined, 'the claim was taken back');
+  const again = await search(a, 'broken database song');
+  assert.deepEqual([again.live, again.songs.items.length, yt.calls.length], ['searched', 1, 2], 'so it can be tried again');
+});
+
+test('while YouTube is paused, an attempt spends no one’s allowance', async () => {
+  const a = await signup(srv.base, 'live-paused');
+  const id = (await a.get('/api/me')).json.id;
+  const counted = async () => (await store.all("SELECT key, hits FROM rate_limits WHERE key LIKE ? OR key LIKE 'youtube:search:all/%'", [`user:${id}:yt-search/%`]))
+    .map((x) => `${x.key.startsWith('user:') ? 'user' : 'app'}${x.key.slice(x.key.lastIndexOf('/'))}=${x.hits}`).sort();
+  const before = await counted();
+  yt.calls.length = 0;
+  for (const [reason, live] of [['quota', 'capped'], ['paused', 'unavailable']]) {
+    youtube.blocked = () => reason;
+    try {
+      assert.equal((await search(a, `paused song ${reason}`)).live, live, reason);
+    } finally {
+      delete youtube.blocked;
+    }
+  }
+  assert.equal(yt.calls.length, 0, 'YouTube is not called while paused');
+  assert.deepEqual(await counted(), before, 'no allowance was used');
+  assert.equal(await cacheRow('paused song quota'), undefined);
+});
+
 test('the same new query twice at once asks YouTube once', async () => {
   const a = await signup(srv.base, 'live-twice');
   yt.calls.length = 0;
@@ -261,6 +302,9 @@ test('the daily cap stops live searches for everyone, and the key never shows (r
     assert.equal(calls.length, 3);
     assert.equal((await own.app.store.get("SELECT 1 AS x FROM search_cache WHERE query_folded = 'quota song'")), undefined);
     mode = 'ok';
+    // During the client's pause nothing is asked and nothing counted: the two cap uses left stay.
+    assert.equal((await go(a, 'paused hour song')).live, 'capped');
+    assert.equal(calls.length, 3);
     clock += 2 * 3600 * 1000; // past the client's pause after a quota answer
 
     assert.equal((await go(b, 'cap song two')).live, 'searched');

@@ -226,5 +226,11 @@ export function createYouTube({ apiKey = process.env.YOUTUBE_API_KEY, fetch = gl
     return details.ok ? { ok: true, videos: details.videos.filter(isPlayableMusic) } : details;
   }
 
-  return { searchVideos, videoDetails, hasKey: !!apiKey };
+  /** Why no call can be made right now ('no_key', or the pause's 'paused' | 'quota'); null when one can. */
+  function blocked() {
+    if (!apiKey) return 'no_key';
+    return now() < pausedUntil ? pauseReason : null;
+  }
+
+  return { searchVideos, videoDetails, blocked, hasKey: !!apiKey };
 }

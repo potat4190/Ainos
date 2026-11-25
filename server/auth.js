@@ -136,6 +136,18 @@ export async function rateLimit(store, key, { limit, windowSec, message = 'Too m
 }
 
 /**
+ * Whether rateLimit(store, key, { limit, windowSec }) would let one more hit
+ * through, without counting it. For callers that must check several limits
+ * before spending any of them.
+ */
+export async function rateLimitAllows(store, key, { limit, windowSec, now = Date.now() }) {
+  if (!Number.isInteger(windowSec)) throw new Error(`rateLimitAllows: windowSec must be a positive integer, got ${windowSec}`);
+  checkLimit('rateLimitAllows', limit, windowSec * 1000, MAX_WINDOW_SEC * 1000);
+  const row = await store.get('SELECT hits, window_start FROM rate_limits WHERE key = ?', [`${key}/${windowSec}s`]);
+  return !row || Number(row.window_start) < now - windowSec * 1000 || Number(row.hits) < limit;
+}
+
+/**
  * Delete rate-limit windows that ended long ago. rateLimit() keys end in
  * "/<seconds>s" and may run up to a day; the older per-minute limiters'
  * keys have no "/", so theirs go after an hour, as before.

@@ -16,7 +16,7 @@
 // It never fails a search: whatever happens, the caller answers from the
 // catalog, with `live` saying what happened.
 import { HttpError } from './http.js';
-import { rateLimit } from './auth.js';
+import { rateLimit, rateLimitAllows } from './auth.js';
 import { isDemo } from './demo.js';
 import { fold } from './util.js';
 import { inList } from './store.js';
@@ -44,15 +44,27 @@ export function foldQuery(q) {
 export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChannels = [], clientIp, log = () => {}, now = Date.now }) {
   const verified = new Set(verifiedChannels.map((name) => fold(name)));
 
-  // true when the hit is within the limit; a refusal is an answer here, not an error.
-  async function within(key, limit, windowSec) {
-    try {
-      await rateLimit(store, key, { limit, windowSec, now: now() });
-      return true;
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 429) return false;
-      throw err;
+  // Who may spend a live search, and on what: the user's hour and day, their
+  // address's hour, and the app's day. `refusal` is what run() answers when one is used up.
+  const allowances = (req, user) => [
+    { key: `user:${user.id}:yt-search`, limit: LIMITS.userHour, windowSec: 3600, refusal: 'limited' },
+    { key: `user:${user.id}:yt-search`, limit: LIMITS.userDay, windowSec: 86_400, refusal: 'limited' },
+    { key: `ip:${clientIp(req)}:yt-search`, limit: LIMITS.ipHour, windowSec: 3600, refusal: 'limited' },
+    { key: 'youtube:search:all', limit: dailyCap, windowSec: 86_400, refusal: 'capped' },
+  ];
+
+  // Count one use of each allowance; the first refusal when one is over (a
+  // request racing this one took the last use). A 429 is an answer here, not an error.
+  async function spend(list) {
+    for (const a of list) {
+      try {
+        await rateLimit(store, a.key, { limit: a.limit, windowSec: a.windowSec, now: now() });
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 429) return a.refusal;
+        throw err;
+      }
     }
+    return null;
   }
 
   /**
@@ -62,11 +74,21 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
    *   'enough'      the catalog already has enough songs
    *   'cached'      this query went to YouTube within the last week
    *   'limited'     this user or address has made too many live searches
-   *   'capped'      the app's daily allowance is used up
-   *   'unavailable' YouTube could not be asked (nothing is remembered)
+   *   'capped'      the app's daily allowance is used up (or YouTube's quota is)
+   *   'unavailable' YouTube could not be asked, or something went wrong (nothing is remembered)
    *   'searched'    YouTube was asked; search the catalog again
+   * Never throws: a live search must not fail the search it came with.
    */
-  async function run({ req, user, q, wanted, localSongs }) {
+  async function run(args) {
+    try {
+      return await attempt(args);
+    } catch (err) {
+      log('[live-search]', err?.message);
+      return 'unavailable';
+    }
+  }
+
+  async function attempt({ req, user, q, wanted, localSongs }) {
     if (!wanted || !youtube?.hasKey || !user || isDemo(user)) return 'off';
     const key = foldQuery(q);
     if (!key) return 'off';
@@ -76,10 +98,14 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
     const fresh = await store.get('SELECT 1 AS x FROM search_cache WHERE query_folded = ? AND language = ? AND fetched_at > ?', [key, language, at - CACHE_MS]);
     if (fresh) return 'cached';
 
-    if (!(await within(`user:${user.id}:yt-search`, LIMITS.userHour, 3600))) return 'limited';
-    if (!(await within(`user:${user.id}:yt-search`, LIMITS.userDay, 86_400))) return 'limited';
-    if (!(await within(`ip:${clientIp(req)}:yt-search`, LIMITS.ipHour, 3600))) return 'limited';
-    if (!(await within('youtube:search:all', dailyCap, 86_400))) return 'capped';
+    // Refusals first, counting nothing: an attempt that never reaches YouTube
+    // must not use up anyone's allowance (nor the app's).
+    const list = allowances(req, user);
+    for (const a of list) {
+      if (!(await rateLimitAllows(store, a.key, { limit: a.limit, windowSec: a.windowSec, now: at }))) return a.refusal;
+    }
+    const blocked = youtube.blocked?.(); // the client is pausing after an outage or a quota answer
+    if (blocked) return blocked === 'quota' ? 'capped' : 'unavailable';
 
     // Claim the query before asking, so the same search arriving twice at once asks YouTube once.
     const claim = await store.run(`INSERT INTO search_cache (query_folded, language, results, fetched_at) VALUES (?, ?, '[]', ?)
@@ -87,6 +113,26 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
     [key, language, at, at - CACHE_MS]);
     if (!claim.changes) return 'cached';
 
+    // From here on the claim says "nothing found"; anything short of a finished
+    // search takes it back, so the query can be tried again.
+    const release = async () => {
+      try {
+        await store.run('DELETE FROM search_cache WHERE query_folded = ? AND language = ? AND fetched_at = ?', [key, language, at]);
+      } catch (err) {
+        log('[live-search] release', err?.message);
+      }
+    };
+    try {
+      const refused = await spend(list);
+      if (refused) { await release(); return refused; }
+      return await searchAndImport({ q, user, key, language, at, release });
+    } catch (err) {
+      await release();
+      throw err;
+    }
+  }
+
+  async function searchAndImport({ q, user, key, language, at, release }) {
     let found;
     try {
       found = await youtube.searchVideos(q, { language }); // the words as typed (the client cuts them to 100 characters)
@@ -96,7 +142,7 @@ export function createLiveSearch({ store, youtube, dailyCap = 80, verifiedChanne
     }
     if (!found.ok) {
       // Not an answer about YouTube's catalog: forget the claim so the query can be tried again.
-      await store.run('DELETE FROM search_cache WHERE query_folded = ? AND language = ? AND fetched_at = ?', [key, language, at]);
+      await release();
       return found.reason === 'quota' ? 'capped' : 'unavailable';
     }
 

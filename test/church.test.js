@@ -315,6 +315,38 @@ test('invites: the link is shown once and only its hash stored; they expire, are
   const actions = (await db().all('SELECT action FROM audit_log WHERE org_id = ?', [orgA])).map((x) => x.action);
   for (const a of ['invite.create', 'invite.redeem', 'invite.revoke']) assert.ok(actions.includes(a), a);
 
+  // A double click: both requests succeed, one use is spent, one membership made.
+  const dbl = (await A.post(base, { role: 'member' })).json;
+  const D = await signup(srv.base, 'dora-doubleclick');
+  const both = await Promise.all([D.post('/api/invites/redeem', { token: dbl.token }), D.post('/api/invites/redeem', { token: dbl.token })]);
+  assert.deepEqual(both.map((r) => r.status), [200, 200], both.map((r) => r.text).join(' '));
+  assert.deepEqual(both.map((r) => r.json.already_member).sort(), [false, true]);
+  assert.equal(Number((await db().get('SELECT uses FROM org_invites WHERE id = ?', [dbl.id])).uses), 1);
+
+  // The race as Postgres runs it: the second request's membership check misses the
+  // first one's row (not yet committed then), so its insert is what finds it.
+  const leaderLink = (await A.post(base, { role: 'leader' })).json;
+  const R = await signup(srv.base, 'rita-race');
+  const rId = (await R.get('/api/me')).json.id;
+  await db().run('INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)', [orgA, rId, 'leader', Date.now()]);
+  const store = db();
+  const realTx = store.tx;
+  store.tx = (fn) => realTx.call(store, (t) => fn(new Proxy(t, {
+    get: (target, prop) => (prop === 'get'
+      ? (sql, params) => (/FROM org_members WHERE org_id = \? AND user_id = \?$/.test(sql.trim()) && params?.[1] === rId && !store.missedOnce
+        ? ((store.missedOnce = true), undefined) : target.get(sql, params))
+      : typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop]),
+  })));
+  let raced;
+  try {
+    raced = await R.post('/api/invites/redeem', { token: leaderLink.token });
+  } finally {
+    store.tx = realTx;
+    delete store.missedOnce;
+  }
+  assert.deepEqual([raced.status, raced.json.already_member, raced.json.role], [200, true, 'leader'], raced.text);
+  assert.equal(Number((await db().get('SELECT uses FROM org_invites WHERE id = ?', [leaderLink.id])).uses), 0, 'the one-use link is still unused');
+
   // Redeeming is limited to 10 tries an hour; every failure looks the same until then.
   const guesser = await signup(srv.base, 'gus-guesser');
   let limited = null;
